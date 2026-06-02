@@ -1,4 +1,5 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
+use crate::types::ability::StaticAbility;
 use crate::types::{GameState, ObjectId, PlayerId, Step};
 use std::collections::HashMap;
 
@@ -20,7 +21,7 @@ pub fn declare_attackers(
         if obj.controller != player_id {
             return Err(EngineError::NotYourCard);
         }
-        if obj.summoning_sick {
+        if obj.summoning_sick && !obj.has_keyword(StaticAbility::Haste) {
             return Err(EngineError::SummoningSick);
         }
         if obj.tapped {
@@ -32,7 +33,14 @@ pub fn declare_attackers(
     }
 
     for &id in attacker_ids {
-        state.objects.get_mut(&id).unwrap().tapped = true;
+        if !state
+            .objects
+            .get(&id)
+            .unwrap()
+            .has_keyword(StaticAbility::Vigilance)
+        {
+            state.objects.get_mut(&id).unwrap().tapped = true;
+        }
     }
     state.combat.attackers = attacker_ids.to_vec();
     state.combat.blocking_map = attacker_ids.iter().map(|&id| (id, vec![])).collect();
@@ -192,6 +200,61 @@ mod tests {
         state.battlefield.push(id);
         state.add_object(obj);
         id
+    }
+
+    fn keyword_creature(
+        state: &mut GameState,
+        owner: PlayerId,
+        power: i32,
+        toughness: i32,
+        keywords: Vec<crate::types::ability::StaticAbility>,
+    ) -> ObjectId {
+        use crate::types::{
+            AbilityAST, CardDefinition,
+            card::{CardType, TypeLine},
+        };
+        let id = state.alloc_id();
+        let def = CardDefinition {
+            name: "Test Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: keywords
+                .into_iter()
+                .map(|k| AbilityAST::Static(k))
+                .collect(),
+            power: Some(power),
+            toughness: Some(toughness),
+        };
+        let mut obj = crate::types::CardObject::new(id, def, owner, Zone::Battlefield);
+        obj.summoning_sick = false;
+        state.battlefield.push(id);
+        state.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn vigilant_attacker_does_not_tap() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Vigilance]);
+        let gs = declare_attackers(gs, PlayerId(0), &[id]).unwrap();
+        assert!(!gs.objects[&id].tapped); // vigilance: does not tap when attacking
+    }
+
+    #[test]
+    fn haste_creature_can_attack_while_summoning_sick() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Haste]);
+        gs.objects.get_mut(&id).unwrap().summoning_sick = true; // still sick
+        // Should be able to declare it as attacker
+        let gs = declare_attackers(gs, PlayerId(0), &[id]).unwrap();
+        assert!(gs.combat.attackers.contains(&id));
     }
 
     #[test]
