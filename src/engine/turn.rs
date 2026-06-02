@@ -98,9 +98,10 @@ pub fn draw_card(mut state: GameState, player_id: PlayerId) -> GameState {
 }
 
 fn cleanup_step(mut state: GameState) -> GameState {
-    // CR 514.2: remove damage from all permanents.
+    // CR 514.2: remove damage from all permanents and clear deathtouch flag.
     for obj in state.objects.values_mut() {
         obj.damage_marked = 0;
+        obj.damaged_by_deathtouch = false;
     }
     // CR 514.1: discard to hand size — not enforced in Phase 1 (scripted game stays under 7).
     state

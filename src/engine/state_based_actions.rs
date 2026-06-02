@@ -1,4 +1,4 @@
-use crate::types::{GameState, ObjectId, PlayerId, Zone};
+use crate::types::{GameState, ObjectId, PlayerId, Zone, ability::StaticAbility};
 
 /// Repeatedly finds and applies SBAs until no new ones trigger (CR 704.3).
 pub fn check_and_apply_sbas(state: GameState) -> GameState {
@@ -32,16 +32,16 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     // CR 704.5g: creature on battlefield with toughness ≤ 0 → graveyard.
     // CR 704.5h: creature with damage ≥ toughness → graveyard.
     // CR 704.5h (deathtouch): creature dealt any deathtouch damage → graveyard.
+    // CR 702.12b: Indestructible creatures are exempt from both 704.5g and 704.5h.
     for &id in &state.battlefield {
         if let Some(obj) = state.objects.get(&id) {
-            if obj.is_creature() {
-                if let Some(toughness) = obj.effective_toughness() {
-                    if toughness <= 0
-                        || obj.damage_marked as i32 >= toughness
-                        || obj.damaged_by_deathtouch
-                    {
-                        sbas.push(Sba::MoveToGraveyard(id));
-                    }
+            if obj.is_creature() && !obj.has_keyword(StaticAbility::Indestructible) {
+                let lethal_damage = obj
+                    .effective_toughness()
+                    .map(|t| t <= 0 || obj.damage_marked as i32 >= t)
+                    .unwrap_or(false);
+                if lethal_damage || obj.damaged_by_deathtouch {
+                    sbas.push(Sba::MoveToGraveyard(id));
                 }
             }
         }
@@ -161,6 +161,90 @@ mod tests {
         let gs = check_and_apply_sbas(gs);
 
         assert_eq!(gs.winner(), Some(PlayerId(1)));
+    }
+
+    fn keyword_creature_on_battlefield(
+        state: &mut GameState,
+        owner: PlayerId,
+        power: i32,
+        toughness: i32,
+        keywords: Vec<crate::types::ability::StaticAbility>,
+    ) -> ObjectId {
+        use crate::types::{AbilityAST, CardDefinition, CardType, TypeLine};
+        let id = state.alloc_id();
+        let def = CardDefinition {
+            name: "Test".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: keywords
+                .into_iter()
+                .map(|k| AbilityAST::Static(k))
+                .collect(),
+            power: Some(power),
+            toughness: Some(toughness),
+        };
+        let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        obj.summoning_sick = false;
+        state.battlefield.push(id);
+        state.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn indestructible_survives_lethal_damage() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_state();
+        let id = keyword_creature_on_battlefield(
+            &mut gs,
+            PlayerId(0),
+            2,
+            2,
+            vec![StaticAbility::Indestructible],
+        );
+        gs.objects.get_mut(&id).unwrap().damage_marked = 5; // more than toughness
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(gs.battlefield.contains(&id)); // survives
+    }
+
+    #[test]
+    fn deathtouch_damage_kills_non_indestructible_creature() {
+        let mut gs = make_state();
+        let db = test_db();
+        let id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Hill Giant").unwrap().clone(),
+        );
+        gs.objects.get_mut(&id).unwrap().damaged_by_deathtouch = true;
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(!gs.battlefield.contains(&id));
+    }
+
+    #[test]
+    fn indestructible_survives_deathtouch_damage() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_state();
+        let id = keyword_creature_on_battlefield(
+            &mut gs,
+            PlayerId(0),
+            2,
+            2,
+            vec![StaticAbility::Indestructible],
+        );
+        gs.objects.get_mut(&id).unwrap().damaged_by_deathtouch = true;
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(gs.battlefield.contains(&id)); // indestructible ignores both 704.5g and 704.5h
     }
 
     #[test]
