@@ -299,3 +299,213 @@ fn drawing_from_empty_library_loses_the_game() {
     assert!(gs.is_game_over());
     assert_eq!(gs.winner(), Some(PlayerId(1)));
 }
+
+/// Navigate from the initial Untap step to DeclareAttackers without triggering draw
+/// (which would kill the active player if the library is empty).
+fn advance_to_declare_attackers(gs: GameState) -> GameState {
+    assert_eq!(gs.step(), Step::Untap);
+    // Untap → Upkeep → Draw → PreCombatMain → BeginningOfCombat → DeclareAttackers
+    // Skipping apply_step_start so no draw happens.
+    let gs = advance_step(gs); // → Upkeep
+    let gs = advance_step(gs); // → Draw
+    let gs = advance_step(gs); // → PreCombatMain
+    let gs = advance_step(gs); // → BeginningOfCombat
+    let gs = advance_step(gs); // → DeclareAttackers
+    assert_eq!(gs.step(), Step::DeclareAttackers);
+    gs
+}
+
+#[test]
+fn first_striker_kills_blocker_and_survives_unscathed() {
+    // Anaba Bodyguard (3/2 First Strike) attacks; Grizzly Bears (2/2) blocks.
+    // Round 1: Bodyguard deals 3 (kills Bears). Bears can't deal back.
+    // Round 2: no blockers — Bodyguard untouched. Player takes no damage (creature was blocked).
+    let db = card_db();
+    let mut gs = GameState::new(vec![
+        Player::new(PlayerId(0), "Alice"),
+        Player::new(PlayerId(1), "Bob"),
+    ]);
+
+    let bodyguard_id = {
+        let id = gs.alloc_id();
+        let mut obj = CardObject::new(
+            id,
+            db.get("Anaba Bodyguard").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        id
+    };
+    let bears_id = {
+        let id = gs.alloc_id();
+        let mut obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(1),
+            Zone::Battlefield,
+        );
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        id
+    };
+
+    let gs = advance_to_declare_attackers(gs);
+    let gs = declare_attackers(gs, PlayerId(0), &[bodyguard_id]).unwrap();
+    let gs = advance_step(gs); // → DeclareBlockers
+    let gs = declare_blockers(gs, PlayerId(1), &[(bears_id, bodyguard_id)]).unwrap();
+    let gs = advance_step(gs); // → CombatDamage
+
+    // Round 1: first strike
+    let gs = deal_combat_damage(gs);
+    assert!(
+        !gs.battlefield.contains(&bears_id),
+        "Bears should be dead after round 1"
+    );
+    assert_eq!(
+        gs.objects[&bodyguard_id].damage_marked, 0,
+        "Bodyguard takes no damage in round 1"
+    );
+
+    // Advance to queued second round
+    let gs = advance_step(gs);
+    assert_eq!(gs.step(), Step::CombatDamage);
+    let gs = deal_combat_damage(gs);
+
+    assert!(gs.battlefield.contains(&bodyguard_id), "Bodyguard survives");
+    assert_eq!(
+        gs.get_player(PlayerId(1)).unwrap().life,
+        20,
+        "No damage to player (blocker absorbed)"
+    );
+}
+
+#[test]
+fn trample_excess_kills_player() {
+    // Charging Badger is only 1/1 — not enough to demonstrate excess with a single blocker.
+    // Use a manually-constructed 5/5 trampler instead.
+    use mecha_oracle::types::ability::StaticAbility;
+    use mecha_oracle::types::{
+        AbilityAST, CardDefinition,
+        card::{CardType, TypeLine},
+    };
+
+    let db = card_db();
+    let mut gs = GameState::new(vec![
+        Player::new(PlayerId(0), "Alice"),
+        Player::new(PlayerId(1), "Bob"),
+    ]);
+
+    // Construct a 5/5 trampler inline
+    let trampler_def = CardDefinition {
+        name: "Big Trampler".into(),
+        mana_cost: None,
+        type_line: TypeLine {
+            supertypes: vec![],
+            card_types: vec![CardType::Creature],
+            subtypes: vec![],
+        },
+        oracle_text: String::new(),
+        abilities: vec![AbilityAST::Static(StaticAbility::Trample)],
+        power: Some(5),
+        toughness: Some(5),
+    };
+
+    let trampler_id = {
+        let id = gs.alloc_id();
+        let mut obj = CardObject::new(id, trampler_def, PlayerId(0), Zone::Battlefield);
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        id
+    };
+    let blocker_id = {
+        let id = gs.alloc_id();
+        let mut obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(), // 2/2
+            PlayerId(1),
+            Zone::Battlefield,
+        );
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        id
+    };
+
+    let gs = advance_to_declare_attackers(gs);
+    let gs = declare_attackers(gs, PlayerId(0), &[trampler_id]).unwrap();
+    let gs = advance_step(gs); // → DeclareBlockers
+    let gs = declare_blockers(gs, PlayerId(1), &[(blocker_id, trampler_id)]).unwrap();
+    let gs = advance_step(gs); // → CombatDamage
+    let gs = deal_combat_damage(gs);
+
+    assert!(!gs.battlefield.contains(&blocker_id), "2/2 blocker dies");
+    assert_eq!(
+        gs.get_player(PlayerId(1)).unwrap().life,
+        17,
+        "3 trample damage to player"
+    );
+}
+
+#[test]
+fn deathtouch_rat_kills_hill_giant() {
+    // Typhoid Rats (1/1 Deathtouch) attacks; Hill Giant (3/3) blocks.
+    // Rats deal 1 deathtouch damage → Giant dies. Giant deals 3 → Rats die.
+    let db = card_db();
+    let mut gs = GameState::new(vec![
+        Player::new(PlayerId(0), "Alice"),
+        Player::new(PlayerId(1), "Bob"),
+    ]);
+
+    let rats_id = {
+        let id = gs.alloc_id();
+        let mut obj = CardObject::new(
+            id,
+            db.get("Typhoid Rats").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        id
+    };
+    let giant_id = {
+        let id = gs.alloc_id();
+        let mut obj = CardObject::new(
+            id,
+            db.get("Hill Giant").unwrap().clone(),
+            PlayerId(1),
+            Zone::Battlefield,
+        );
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        id
+    };
+
+    let gs = advance_to_declare_attackers(gs);
+    let gs = declare_attackers(gs, PlayerId(0), &[rats_id]).unwrap();
+    let gs = advance_step(gs); // → DeclareBlockers
+    let gs = declare_blockers(gs, PlayerId(1), &[(giant_id, rats_id)]).unwrap();
+    let gs = advance_step(gs); // → CombatDamage
+    let gs = deal_combat_damage(gs);
+
+    assert!(
+        !gs.battlefield.contains(&giant_id),
+        "Hill Giant killed by deathtouch"
+    );
+    assert!(
+        !gs.battlefield.contains(&rats_id),
+        "Typhoid Rats killed by 3 damage"
+    );
+    assert_eq!(
+        gs.get_player(PlayerId(1)).unwrap().life,
+        20,
+        "No damage to player"
+    );
+}

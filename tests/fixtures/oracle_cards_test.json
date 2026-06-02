@@ -389,4 +389,41 @@
       "cardhoarder": "https://www.cardhoarder.com/cards/27040?affiliate_id=scryfall&ref=card-profile&utm_campaign=affiliate&utm_medium=card&utm_source=scryfall"
     }
   }
+  ,
+  {
+    "object": "card",
+    "name": "Serra Angel",
+    "mana_cost": "{3}{W}{W}",
+    "type_line": "Creature — Angel",
+    "oracle_text": "Flying, vigilance",
+    "power": "4",
+    "toughness": "4"
+  },
+  {
+    "object": "card",
+    "name": "Charging Badger",
+    "mana_cost": "{G}",
+    "type_line": "Creature — Badger",
+    "oracle_text": "Trample",
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "object": "card",
+    "name": "Typhoid Rats",
+    "mana_cost": "{B}",
+    "type_line": "Creature — Rat",
+    "oracle_text": "Deathtouch (Any amount of damage this deals to a creature is enough to destroy it.)",
+    "power": "1",
+    "toughness": "1"
+  },
+  {
+    "object": "card",
+    "name": "Anaba Bodyguard",
+    "mana_cost": "{3}{R}",
+    "type_line": "Creature — Minotaur Warrior",
+    "oracle_text": "First strike",
+    "power": "3",
+    "toughness": "2"
+  }
 ]
