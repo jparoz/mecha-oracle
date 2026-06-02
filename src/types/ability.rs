@@ -1,6 +1,17 @@
-/// A continuous effect (e.g. Flying, Trample). Phase 2+ adds keyword variants.
-#[derive(Debug, Clone)]
-pub struct StaticAbility;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticAbility {
+    Flying,
+    Reach,
+    Trample,
+    FirstStrike,
+    DoubleStrike,
+    Vigilance,
+    Haste,
+    Lifelink,
+    Deathtouch,
+    Menace,
+    Indestructible,
+}
 
 /// The event that fires a triggered ability. Phase 2+ adds condition variants.
 #[derive(Debug, Clone)]
