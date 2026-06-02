@@ -1,7 +1,7 @@
-pub mod state_based_actions;
-pub mod mana;
 pub mod casting;
 pub mod combat;
+pub mod mana;
+pub mod state_based_actions;
 pub mod turn;
 
 #[derive(Debug, Clone, PartialEq)]

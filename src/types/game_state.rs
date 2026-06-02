@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use super::ids::{ObjectId, PlayerId};
 use super::card_object::CardObject;
+use super::ids::{ObjectId, PlayerId};
 use super::player::Player;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Phase {
@@ -37,7 +37,10 @@ pub struct CombatState {
 
 impl CombatState {
     pub fn empty() -> Self {
-        Self { attackers: vec![], blocking_map: HashMap::new() }
+        Self {
+            attackers: vec![],
+            blocking_map: HashMap::new(),
+        }
     }
 }
 
@@ -46,16 +49,16 @@ pub struct GameState {
     /// All card objects that exist in the game, keyed by their unique id.
     pub objects: HashMap<ObjectId, CardObject>,
     pub players: Vec<Player>,
-    pub libraries:   HashMap<PlayerId, Vec<ObjectId>>,
-    pub hands:       HashMap<PlayerId, Vec<ObjectId>>,
-    pub graveyards:  HashMap<PlayerId, Vec<ObjectId>>,
+    pub libraries: HashMap<PlayerId, Vec<ObjectId>>,
+    pub hands: HashMap<PlayerId, Vec<ObjectId>>,
+    pub graveyards: HashMap<PlayerId, Vec<ObjectId>>,
     pub battlefield: Vec<ObjectId>,
-    pub stack:       Vec<ObjectId>,
-    pub exile:       Vec<ObjectId>,
-    pub active_player:   PlayerId,
+    pub stack: Vec<ObjectId>,
+    pub exile: Vec<ObjectId>,
+    pub active_player: PlayerId,
     pub priority_player: PlayerId,
     pub phase: Phase,
-    pub step:  Step,
+    pub step: Step,
     pub turn_number: u32,
     pub lands_played_this_turn: u32,
     pub combat: CombatState,
@@ -67,8 +70,8 @@ impl GameState {
     pub fn new(players: Vec<Player>) -> Self {
         assert!(!players.is_empty());
         let active = players[0].id;
-        let mut libraries  = HashMap::new();
-        let mut hands      = HashMap::new();
+        let mut libraries = HashMap::new();
+        let mut hands = HashMap::new();
         let mut graveyards = HashMap::new();
         for p in &players {
             libraries.insert(p.id, vec![]);
@@ -82,12 +85,12 @@ impl GameState {
             hands,
             graveyards,
             battlefield: vec![],
-            stack:       vec![],
-            exile:       vec![],
-            active_player:   active,
+            stack: vec![],
+            exile: vec![],
+            active_player: active,
             priority_player: active,
             phase: Phase::Beginning,
-            step:  Step::Untap,
+            step: Step::Untap,
             turn_number: 1,
             lands_played_this_turn: 0,
             combat: CombatState::empty(),
@@ -115,8 +118,11 @@ impl GameState {
     }
 
     pub fn opponent_of(&self, player: PlayerId) -> PlayerId {
-        self.players.iter().find(|p| p.id != player)
-            .expect("opponent not found").id
+        self.players
+            .iter()
+            .find(|p| p.id != player)
+            .expect("opponent not found")
+            .id
     }
 
     pub fn is_game_over(&self) -> bool {
@@ -124,7 +130,9 @@ impl GameState {
     }
 
     pub fn winner(&self) -> Option<PlayerId> {
-        if !self.is_game_over() { return None; }
+        if !self.is_game_over() {
+            return None;
+        }
         self.players.iter().find(|p| !p.has_lost).map(|p| p.id)
     }
 }

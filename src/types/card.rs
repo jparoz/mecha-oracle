@@ -1,5 +1,5 @@
-use super::mana::ManaCost;
 use super::ability::AbilityAST;
+use super::mana::ManaCost;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Supertype {
@@ -37,11 +37,16 @@ impl TypeLine {
     }
 
     pub fn is_permanent(&self) -> bool {
-        self.card_types.iter().any(|t| matches!(
-            t,
-            CardType::Creature | CardType::Land | CardType::Artifact
-            | CardType::Enchantment | CardType::Planeswalker
-        ))
+        self.card_types.iter().any(|t| {
+            matches!(
+                t,
+                CardType::Creature
+                    | CardType::Land
+                    | CardType::Artifact
+                    | CardType::Enchantment
+                    | CardType::Planeswalker
+            )
+        })
     }
 }
 
@@ -61,7 +66,11 @@ impl CardDefinition {
     pub fn grizzly_bears() -> Self {
         Self {
             name: "Grizzly Bears".into(),
-            mana_cost: Some(ManaCost { generic: 1, green: 1, ..Default::default() }),
+            mana_cost: Some(ManaCost {
+                generic: 1,
+                green: 1,
+                ..Default::default()
+            }),
             type_line: TypeLine {
                 supertypes: vec![],
                 card_types: vec![CardType::Creature],
@@ -77,7 +86,11 @@ impl CardDefinition {
     pub fn hill_giant() -> Self {
         Self {
             name: "Hill Giant".into(),
-            mana_cost: Some(ManaCost { generic: 2, green: 1, ..Default::default() }),
+            mana_cost: Some(ManaCost {
+                generic: 2,
+                green: 1,
+                ..Default::default()
+            }),
             type_line: TypeLine {
                 supertypes: vec![],
                 card_types: vec![CardType::Creature],

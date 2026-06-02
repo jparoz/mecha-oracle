@@ -1,12 +1,11 @@
 use mecha_oracle::engine::{
     casting::{cast_creature, play_land},
-    combat::{declare_attackers, declare_blockers, deal_combat_damage},
+    combat::{deal_combat_damage, declare_attackers, declare_blockers},
     mana::tap_land_for_mana,
-    turn::{apply_step_start, advance_step, draw_card},
+    turn::{advance_step, apply_step_start, draw_card},
 };
 use mecha_oracle::types::{
-    CardDefinition, CardObject, GameState, ObjectId, Phase, Player, PlayerId,
-    Step, Zone,
+    CardDefinition, CardObject, GameState, ObjectId, Phase, Player, PlayerId, Step, Zone,
 };
 
 fn make_game() -> (GameState, Vec<ObjectId>, Vec<ObjectId>) {
@@ -58,11 +57,11 @@ fn make_game() -> (GameState, Vec<ObjectId>, Vec<ObjectId>) {
 fn run_beginning(gs: GameState) -> GameState {
     assert_eq!(gs.step, Step::Untap);
     let gs = apply_step_start(gs); // untap + clear sickness
-    let gs = advance_step(gs);     // → Upkeep
+    let gs = advance_step(gs); // → Upkeep
     let gs = apply_step_start(gs);
-    let gs = advance_step(gs);     // → Draw
+    let gs = advance_step(gs); // → Draw
     let gs = apply_step_start(gs); // draw a card
-    let gs = advance_step(gs);     // → PreCombatMain/Main
+    let gs = advance_step(gs); // → PreCombatMain/Main
     gs
 }
 
@@ -164,11 +163,7 @@ fn scripted_game_runs_to_completion() {
         .copied()
         .find(|&id| gs.objects[&id].is_creature())
     {
-        let cost = gs.objects[&bear_id]
-            .definition
-            .mana_cost
-            .clone()
-            .unwrap();
+        let cost = gs.objects[&bear_id].definition.mana_cost.clone().unwrap();
         let gs = tap_all_lands_for_player(gs, PlayerId(0));
         let available = gs.get_player(PlayerId(0)).unwrap().mana_pool.total();
         if available >= cost.converted_mana_cost() {
@@ -207,9 +202,7 @@ fn scripted_game_runs_to_completion() {
         .battlefield
         .iter()
         .copied()
-        .find(|&id| {
-            gs.objects[&id].is_creature() && gs.objects[&id].controller == PlayerId(0)
-        });
+        .find(|&id| gs.objects[&id].is_creature() && gs.objects[&id].controller == PlayerId(0));
 
     // Enter combat phase (BeginningOfCombat)
     let gs = advance_step(gs); // PreCombatMain,Main → Combat,BeginningOfCombat
@@ -268,7 +261,12 @@ fn player_dies_at_zero_life_ends_game() {
 
     // Set up a 3/3 attacker
     let id = gs.alloc_id();
-    let mut obj = CardObject::new(id, CardDefinition::hill_giant(), PlayerId(0), Zone::Battlefield);
+    let mut obj = CardObject::new(
+        id,
+        CardDefinition::hill_giant(),
+        PlayerId(0),
+        Zone::Battlefield,
+    );
     obj.summoning_sick = false;
     gs.battlefield.push(id);
     gs.add_object(obj);

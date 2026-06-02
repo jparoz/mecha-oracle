@@ -1,49 +1,60 @@
-use crate::types::{GameState, Phase, Step, Zone, ObjectId, PlayerId, CombatState};
+use crate::types::{CombatState, GameState, ObjectId, Phase, PlayerId, Step, Zone};
 
 /// Apply the automatic rules for the start of the current step/phase.
 pub fn apply_step_start(state: GameState) -> GameState {
     match (&state.phase, &state.step) {
-        (Phase::Beginning, Step::Untap)   => untap_step(state),
-        (Phase::Beginning, Step::Draw)    => draw_step(state),
-        (Phase::Ending, Step::Cleanup)    => cleanup_step(state),
-        _                                  => state,
+        (Phase::Beginning, Step::Untap) => untap_step(state),
+        (Phase::Beginning, Step::Draw) => draw_step(state),
+        (Phase::Ending, Step::Cleanup) => cleanup_step(state),
+        _ => state,
     }
 }
 
 /// Advance to the next step/phase. At end of Cleanup, rotate to the next player's turn.
 pub fn advance_step(state: GameState) -> GameState {
     match (&state.phase, &state.step) {
-        (Phase::Beginning,      Step::Untap)             => set(state, Phase::Beginning,      Step::Upkeep),
-        (Phase::Beginning,      Step::Upkeep)            => set(state, Phase::Beginning,      Step::Draw),
-        (Phase::Beginning,      Step::Draw)              => set(state, Phase::PreCombatMain,  Step::Main),
-        (Phase::PreCombatMain,  Step::Main)              => set(state, Phase::Combat,         Step::BeginningOfCombat),
-        (Phase::Combat,         Step::BeginningOfCombat) => set(state, Phase::Combat,         Step::DeclareAttackers),
-        (Phase::Combat,         Step::DeclareAttackers)  => set(state, Phase::Combat,         Step::DeclareBlockers),
-        (Phase::Combat,         Step::DeclareBlockers)   => set(state, Phase::Combat,         Step::CombatDamage),
-        (Phase::Combat,         Step::CombatDamage)      => set(state, Phase::Combat,         Step::EndOfCombat),
-        (Phase::Combat,         Step::EndOfCombat)       => set(state, Phase::PostCombatMain, Step::Main),
-        (Phase::PostCombatMain, Step::Main)              => set(state, Phase::Ending,         Step::End),
-        (Phase::Ending,         Step::End)               => set(state, Phase::Ending,         Step::Cleanup),
-        (Phase::Ending,         Step::Cleanup)           => start_next_turn(state),
-        _                                                => state,
+        (Phase::Beginning, Step::Untap) => set(state, Phase::Beginning, Step::Upkeep),
+        (Phase::Beginning, Step::Upkeep) => set(state, Phase::Beginning, Step::Draw),
+        (Phase::Beginning, Step::Draw) => set(state, Phase::PreCombatMain, Step::Main),
+        (Phase::PreCombatMain, Step::Main) => set(state, Phase::Combat, Step::BeginningOfCombat),
+        (Phase::Combat, Step::BeginningOfCombat) => {
+            set(state, Phase::Combat, Step::DeclareAttackers)
+        }
+        (Phase::Combat, Step::DeclareAttackers) => set(state, Phase::Combat, Step::DeclareBlockers),
+        (Phase::Combat, Step::DeclareBlockers) => set(state, Phase::Combat, Step::CombatDamage),
+        (Phase::Combat, Step::CombatDamage) => set(state, Phase::Combat, Step::EndOfCombat),
+        (Phase::Combat, Step::EndOfCombat) => set(state, Phase::PostCombatMain, Step::Main),
+        (Phase::PostCombatMain, Step::Main) => set(state, Phase::Ending, Step::End),
+        (Phase::Ending, Step::End) => set(state, Phase::Ending, Step::Cleanup),
+        (Phase::Ending, Step::Cleanup) => start_next_turn(state),
+        _ => state,
     }
 }
 
 fn set(mut state: GameState, phase: Phase, step: Step) -> GameState {
     state.phase = phase;
-    state.step  = step;
+    state.step = step;
     state
 }
 
 fn untap_step(mut state: GameState) -> GameState {
     let active = state.active_player;
     // CR 502: untap all permanents the active player controls; clear summoning sickness.
-    let to_untap: Vec<ObjectId> = state.battlefield.iter()
-        .filter(|&&id| state.objects.get(&id).map(|o| o.controller == active).unwrap_or(false))
-        .copied().collect();
+    let to_untap: Vec<ObjectId> = state
+        .battlefield
+        .iter()
+        .filter(|&&id| {
+            state
+                .objects
+                .get(&id)
+                .map(|o| o.controller == active)
+                .unwrap_or(false)
+        })
+        .copied()
+        .collect();
     for id in to_untap {
         if let Some(obj) = state.objects.get_mut(&id) {
-            obj.tapped         = false;
+            obj.tapped = false;
             obj.summoning_sick = false;
         }
     }
@@ -59,17 +70,26 @@ fn draw_step(state: GameState) -> GameState {
 
 /// Draw the top card of a player's library. If the library is empty, that player loses (CR 704.5b).
 pub fn draw_card(mut state: GameState, player_id: PlayerId) -> GameState {
-    let top = state.libraries.get_mut(&player_id)
-        .and_then(|lib| if lib.is_empty() { None } else { Some(lib.remove(0)) });
+    let top = state.libraries.get_mut(&player_id).and_then(|lib| {
+        if lib.is_empty() {
+            None
+        } else {
+            Some(lib.remove(0))
+        }
+    });
 
     match top {
         None => {
-            if let Some(p) = state.get_player_mut(player_id) { p.has_lost = true; }
+            if let Some(p) = state.get_player_mut(player_id) {
+                p.has_lost = true;
+            }
             state.game_over = true;
         }
         Some(card_id) => {
             state.hands.get_mut(&player_id).unwrap().push(card_id);
-            if let Some(obj) = state.objects.get_mut(&card_id) { obj.zone = Zone::Hand; }
+            if let Some(obj) = state.objects.get_mut(&card_id) {
+                obj.zone = Zone::Hand;
+            }
         }
     }
     state
@@ -87,13 +107,13 @@ fn cleanup_step(mut state: GameState) -> GameState {
 fn start_next_turn(mut state: GameState) -> GameState {
     state = cleanup_step(state);
     let next = state.opponent_of(state.active_player);
-    state.active_player          = next;
-    state.priority_player        = next;
-    state.turn_number           += 1;
+    state.active_player = next;
+    state.priority_player = next;
+    state.turn_number += 1;
     state.lands_played_this_turn = 0;
-    state.combat                 = CombatState::empty();
+    state.combat = CombatState::empty();
     state.phase = Phase::Beginning;
-    state.step  = Step::Untap;
+    state.step = Step::Untap;
     state
 }
 
@@ -153,7 +173,12 @@ mod tests {
     fn untap_step_clears_summoning_sickness() {
         let mut gs = make_state();
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(id, CardDefinition::grizzly_bears(), PlayerId(0), Zone::Battlefield);
+        let mut obj = CardObject::new(
+            id,
+            CardDefinition::grizzly_bears(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
         obj.summoning_sick = true;
         gs.battlefield.push(id);
         gs.add_object(obj);
@@ -167,7 +192,7 @@ mod tests {
     fn draw_step_moves_top_card_to_hand() {
         let mut gs = make_state();
         gs.phase = Phase::Beginning;
-        gs.step  = Step::Draw;
+        gs.step = Step::Draw;
         let card_id = put_in_library(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
 
         let gs = apply_step_start(gs);
@@ -181,7 +206,7 @@ mod tests {
     fn drawing_from_empty_library_causes_loss() {
         let mut gs = make_state();
         gs.phase = Phase::Beginning;
-        gs.step  = Step::Draw;
+        gs.step = Step::Draw;
         // library is empty by default
 
         let gs = apply_step_start(gs);
@@ -194,9 +219,14 @@ mod tests {
     fn cleanup_step_removes_damage_from_creatures() {
         let mut gs = make_state();
         gs.phase = Phase::Ending;
-        gs.step  = Step::Cleanup;
+        gs.step = Step::Cleanup;
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(id, CardDefinition::grizzly_bears(), PlayerId(0), Zone::Battlefield);
+        let mut obj = CardObject::new(
+            id,
+            CardDefinition::grizzly_bears(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
         obj.damage_marked = 1;
         obj.summoning_sick = false;
         gs.battlefield.push(id);
@@ -211,18 +241,27 @@ mod tests {
     fn advance_step_sequences_correctly() {
         let gs = make_state(); // Beginning/Untap
         let gs = advance_step(gs);
-        assert_eq!((gs.phase.clone(), gs.step.clone()), (Phase::Beginning, Step::Upkeep));
+        assert_eq!(
+            (gs.phase.clone(), gs.step.clone()),
+            (Phase::Beginning, Step::Upkeep)
+        );
         let gs = advance_step(gs);
-        assert_eq!((gs.phase.clone(), gs.step.clone()), (Phase::Beginning, Step::Draw));
+        assert_eq!(
+            (gs.phase.clone(), gs.step.clone()),
+            (Phase::Beginning, Step::Draw)
+        );
         let gs = advance_step(gs);
-        assert_eq!((gs.phase.clone(), gs.step.clone()), (Phase::PreCombatMain, Step::Main));
+        assert_eq!(
+            (gs.phase.clone(), gs.step.clone()),
+            (Phase::PreCombatMain, Step::Main)
+        );
     }
 
     #[test]
     fn end_of_cleanup_rotates_active_player_and_resets_turn() {
         let mut gs = make_state();
         gs.phase = Phase::Ending;
-        gs.step  = Step::Cleanup;
+        gs.step = Step::Cleanup;
         gs.lands_played_this_turn = 1;
 
         let gs = advance_step(gs);
@@ -231,7 +270,7 @@ mod tests {
         assert_eq!(gs.turn_number, 2);
         assert_eq!(gs.lands_played_this_turn, 0);
         assert_eq!(gs.phase, Phase::Beginning);
-        assert_eq!(gs.step,  Step::Untap);
+        assert_eq!(gs.step, Step::Untap);
     }
 
     #[test]

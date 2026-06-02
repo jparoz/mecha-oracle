@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crate::types::{GameState, ObjectId, PlayerId, Phase, Step};
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
+use crate::types::{GameState, ObjectId, Phase, PlayerId, Step};
+use std::collections::HashMap;
 
 /// Declare attackers: tap them and record in CombatState (CR 508).
 pub fn declare_attackers(
@@ -8,17 +8,27 @@ pub fn declare_attackers(
     player_id: PlayerId,
     attacker_ids: &[ObjectId],
 ) -> Result<GameState, EngineError> {
-    if state.active_player != player_id { return Err(EngineError::CannotCastNow); }
+    if state.active_player != player_id {
+        return Err(EngineError::CannotCastNow);
+    }
     if state.phase != Phase::Combat || state.step != Step::DeclareAttackers {
         return Err(EngineError::CannotCastNow);
     }
 
     for &id in attacker_ids {
         let obj = state.objects.get(&id).ok_or(EngineError::CardNotFound)?;
-        if obj.controller != player_id { return Err(EngineError::NotYourCard); }
-        if obj.summoning_sick { return Err(EngineError::SummoningSick); }
-        if obj.tapped         { return Err(EngineError::CreatureTapped); }
-        if !obj.is_creature() { return Err(EngineError::NotACreature); }
+        if obj.controller != player_id {
+            return Err(EngineError::NotYourCard);
+        }
+        if obj.summoning_sick {
+            return Err(EngineError::SummoningSick);
+        }
+        if obj.tapped {
+            return Err(EngineError::CreatureTapped);
+        }
+        if !obj.is_creature() {
+            return Err(EngineError::NotACreature);
+        }
     }
 
     for &id in attacker_ids {
@@ -38,17 +48,30 @@ pub fn declare_blockers(
     blocks: &[(ObjectId, ObjectId)],
 ) -> Result<GameState, EngineError> {
     let defending_player = state.opponent_of(state.active_player);
-    if player_id != defending_player { return Err(EngineError::CannotCastNow); }
+    if player_id != defending_player {
+        return Err(EngineError::CannotCastNow);
+    }
     if state.phase != Phase::Combat || state.step != Step::DeclareBlockers {
         return Err(EngineError::CannotCastNow);
     }
 
     for &(blocker_id, attacker_id) in blocks {
-        let obj = state.objects.get(&blocker_id).ok_or(EngineError::CardNotFound)?;
-        if obj.controller != player_id { return Err(EngineError::NotYourCard); }
-        if obj.tapped { return Err(EngineError::CreatureTapped); }
-        if !obj.is_creature() { return Err(EngineError::NotACreature); }
-        if !state.combat.attackers.contains(&attacker_id) { return Err(EngineError::CannotCastNow); }
+        let obj = state
+            .objects
+            .get(&blocker_id)
+            .ok_or(EngineError::CardNotFound)?;
+        if obj.controller != player_id {
+            return Err(EngineError::NotYourCard);
+        }
+        if obj.tapped {
+            return Err(EngineError::CreatureTapped);
+        }
+        if !obj.is_creature() {
+            return Err(EngineError::NotACreature);
+        }
+        if !state.combat.attackers.contains(&attacker_id) {
+            return Err(EngineError::CannotCastNow);
+        }
     }
 
     // Re-build blocking_map from declarations; declaration order = damage assignment order.
@@ -56,7 +79,12 @@ pub fn declare_blockers(
         attackers_blockers.clear();
     }
     for &(blocker_id, attacker_id) in blocks {
-        state.combat.blocking_map.entry(attacker_id).or_default().push(blocker_id);
+        state
+            .combat
+            .blocking_map
+            .entry(attacker_id)
+            .or_default()
+            .push(blocker_id);
     }
 
     Ok(state)
@@ -75,7 +103,9 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
     let mut damage_to_objects: HashMap<ObjectId, u32> = HashMap::new();
 
     for &attacker_id in &attackers {
-        let attacker_power = state.objects.get(&attacker_id)
+        let attacker_power = state
+            .objects
+            .get(&attacker_id)
             .and_then(|o| o.effective_power())
             .map(|p| p.max(0) as u32)
             .unwrap_or(0);
@@ -88,12 +118,16 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             // Assign damage in order: at least lethal to each before the next (CR 510.1c).
             let mut remaining = attacker_power;
             for (i, &blocker_id) in blockers.iter().enumerate() {
-                if remaining == 0 { break; }
+                if remaining == 0 {
+                    break;
+                }
                 let is_last = i == blockers.len() - 1;
                 let assign = if is_last {
                     remaining
                 } else {
-                    let toughness = state.objects.get(&blocker_id)
+                    let toughness = state
+                        .objects
+                        .get(&blocker_id)
                         .and_then(|o| o.effective_toughness())
                         .map(|t| t.max(0) as u32)
                         .unwrap_or(0);
@@ -107,7 +141,9 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
 
         // Every blocker deals its power to the attacker.
         for &blocker_id in &blockers {
-            let blocker_power = state.objects.get(&blocker_id)
+            let blocker_power = state
+                .objects
+                .get(&blocker_id)
                 .and_then(|o| o.effective_power())
                 .map(|p| p.max(0) as u32)
                 .unwrap_or(0);
@@ -117,10 +153,14 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
 
     // Apply all damage simultaneously.
     for (pid, dmg) in damage_to_players {
-        if let Some(p) = state.get_player_mut(pid) { p.life -= dmg; }
+        if let Some(p) = state.get_player_mut(pid) {
+            p.life -= dmg;
+        }
     }
     for (oid, dmg) in damage_to_objects {
-        if let Some(obj) = state.objects.get_mut(&oid) { obj.damage_marked += dmg; }
+        if let Some(obj) = state.objects.get_mut(&oid) {
+            obj.damage_marked += dmg;
+        }
     }
 
     check_and_apply_sbas(state)
@@ -137,7 +177,7 @@ mod tests {
             Player::new(PlayerId(1), "Bob"),
         ]);
         gs.phase = Phase::Combat;
-        gs.step  = Step::DeclareAttackers;
+        gs.step = Step::DeclareAttackers;
         gs
     }
 
@@ -168,7 +208,7 @@ mod tests {
     fn blocked_creatures_deal_damage_to_each_other() {
         let mut gs = make_combat_state();
         let attacker = add_creature(&mut gs, PlayerId(0), CardDefinition::grizzly_bears()); // 2/2
-        let blocker  = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears()); // 2/2
+        let blocker = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears()); // 2/2
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
         gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
@@ -185,8 +225,8 @@ mod tests {
     #[test]
     fn larger_creature_kills_smaller_and_survives() {
         let mut gs = make_combat_state();
-        let giant  = add_creature(&mut gs, PlayerId(0), CardDefinition::hill_giant()); // 3/3
-        let bear   = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears()); // 2/2
+        let giant = add_creature(&mut gs, PlayerId(0), CardDefinition::hill_giant()); // 3/3
+        let bear = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears()); // 2/2
         gs = declare_attackers(gs, PlayerId(0), &[giant]).unwrap();
         gs.step = Step::DeclareBlockers;
         gs = declare_blockers(gs, PlayerId(1), &[(bear, giant)]).unwrap();
@@ -194,8 +234,8 @@ mod tests {
 
         let gs = deal_combat_damage(gs);
 
-        assert!(gs.battlefield.contains(&giant));       // 3/3 survives 2 damage
-        assert!(!gs.battlefield.contains(&bear));        // 2/2 dies to 3 damage
+        assert!(gs.battlefield.contains(&giant)); // 3/3 survives 2 damage
+        assert!(!gs.battlefield.contains(&bear)); // 2/2 dies to 3 damage
         assert_eq!(gs.objects[&giant].damage_marked, 2);
     }
 
@@ -205,19 +245,25 @@ mod tests {
         let bear_id = add_creature(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
         gs.objects.get_mut(&bear_id).unwrap().summoning_sick = true;
 
-        assert!(matches!(declare_attackers(gs, PlayerId(0), &[bear_id]), Err(EngineError::SummoningSick)));
+        assert!(matches!(
+            declare_attackers(gs, PlayerId(0), &[bear_id]),
+            Err(EngineError::SummoningSick)
+        ));
     }
 
     #[test]
     fn tapped_creature_cannot_block() {
         let mut gs = make_combat_state();
         let attacker = add_creature(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
-        let blocker  = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears());
+        let blocker = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears());
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.objects.get_mut(&blocker).unwrap().tapped = true;
         gs.step = Step::DeclareBlockers;
 
-        assert!(matches!(declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]), Err(EngineError::CreatureTapped)));
+        assert!(matches!(
+            declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]),
+            Err(EngineError::CreatureTapped)
+        ));
     }
 
     #[test]
@@ -236,10 +282,10 @@ mod tests {
 
         // Use hill_giant as a base and override P/T for this test
         let mut giant_def = CardDefinition::hill_giant();
-        giant_def.power     = Some(5);
+        giant_def.power = Some(5);
         giant_def.toughness = Some(5);
         let attacker = add_creature(&mut gs, PlayerId(0), giant_def);
-        gs.objects.get_mut(&attacker).unwrap().current_power     = Some(5);
+        gs.objects.get_mut(&attacker).unwrap().current_power = Some(5);
         gs.objects.get_mut(&attacker).unwrap().current_toughness = Some(5);
 
         let block1 = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears());

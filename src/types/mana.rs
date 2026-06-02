@@ -42,11 +42,11 @@ pub struct ManaPool {
 impl ManaPool {
     pub fn add(&mut self, color: ManaColor, amount: u32) {
         match color {
-            ManaColor::White    => self.white    += amount,
-            ManaColor::Blue     => self.blue     += amount,
-            ManaColor::Black    => self.black    += amount,
-            ManaColor::Red      => self.red      += amount,
-            ManaColor::Green    => self.green    += amount,
+            ManaColor::White => self.white += amount,
+            ManaColor::Blue => self.blue += amount,
+            ManaColor::Black => self.black += amount,
+            ManaColor::Red => self.red += amount,
+            ManaColor::Green => self.green += amount,
             ManaColor::Colorless => self.colorless += amount,
         }
     }
@@ -81,13 +81,21 @@ mod tests {
 
     #[test]
     fn mana_cost_cmc() {
-        let cost = ManaCost { generic: 1, green: 1, ..Default::default() };
+        let cost = ManaCost {
+            generic: 1,
+            green: 1,
+            ..Default::default()
+        };
         assert_eq!(cost.converted_mana_cost(), 2);
     }
 
     #[test]
     fn mana_cost_total_colored_excludes_generic() {
-        let cost = ManaCost { generic: 3, red: 2, ..Default::default() };
+        let cost = ManaCost {
+            generic: 3,
+            red: 2,
+            ..Default::default()
+        };
         assert_eq!(cost.total_colored(), 2);
         assert_eq!(cost.converted_mana_cost(), 5);
     }

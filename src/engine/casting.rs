@@ -1,22 +1,44 @@
-use crate::types::{GameState, ObjectId, PlayerId, Zone, Phase};
 use super::{EngineError, mana::pay_mana_cost, state_based_actions::check_and_apply_sbas};
+use crate::types::{GameState, ObjectId, Phase, PlayerId, Zone};
 
 /// Move a land from hand to battlefield. One per turn, main phase only (CR 305).
-pub fn play_land(mut state: GameState, player_id: PlayerId, object_id: ObjectId) -> Result<GameState, EngineError> {
-    if state.active_player != player_id { return Err(EngineError::CannotCastNow); }
+pub fn play_land(
+    mut state: GameState,
+    player_id: PlayerId,
+    object_id: ObjectId,
+) -> Result<GameState, EngineError> {
+    if state.active_player != player_id {
+        return Err(EngineError::CannotCastNow);
+    }
     if !matches!(state.phase, Phase::PreCombatMain | Phase::PostCombatMain) {
         return Err(EngineError::CannotCastNow);
     }
-    if state.lands_played_this_turn >= 1 { return Err(EngineError::LandLimitReached); }
-
-    {
-        let hand = state.hands.get(&player_id).ok_or(EngineError::CardNotFound)?;
-        if !hand.contains(&object_id) { return Err(EngineError::CardNotInHand); }
-        let obj = state.objects.get(&object_id).ok_or(EngineError::CardNotFound)?;
-        if !obj.is_land() { return Err(EngineError::NotALand); }
+    if state.lands_played_this_turn >= 1 {
+        return Err(EngineError::LandLimitReached);
     }
 
-    state.hands.get_mut(&player_id).unwrap().retain(|&id| id != object_id);
+    {
+        let hand = state
+            .hands
+            .get(&player_id)
+            .ok_or(EngineError::CardNotFound)?;
+        if !hand.contains(&object_id) {
+            return Err(EngineError::CardNotInHand);
+        }
+        let obj = state
+            .objects
+            .get(&object_id)
+            .ok_or(EngineError::CardNotFound)?;
+        if !obj.is_land() {
+            return Err(EngineError::NotALand);
+        }
+    }
+
+    state
+        .hands
+        .get_mut(&player_id)
+        .unwrap()
+        .retain(|&id| id != object_id);
     state.battlefield.push(object_id);
     {
         let obj = state.objects.get_mut(&object_id).unwrap();
@@ -30,24 +52,49 @@ pub fn play_land(mut state: GameState, player_id: PlayerId, object_id: ObjectId)
 
 /// Cast a creature from hand. Sorcery speed: active player's main phase, empty stack (CR 307).
 /// Phase 1: spell resolves immediately (no stack).
-pub fn cast_creature(mut state: GameState, player_id: PlayerId, object_id: ObjectId) -> Result<GameState, EngineError> {
-    if state.active_player != player_id { return Err(EngineError::CannotCastNow); }
+pub fn cast_creature(
+    mut state: GameState,
+    player_id: PlayerId,
+    object_id: ObjectId,
+) -> Result<GameState, EngineError> {
+    if state.active_player != player_id {
+        return Err(EngineError::CannotCastNow);
+    }
     if !matches!(state.phase, Phase::PreCombatMain | Phase::PostCombatMain) {
         return Err(EngineError::CannotCastNow);
     }
-    if !state.stack.is_empty() { return Err(EngineError::CannotCastNow); }
+    if !state.stack.is_empty() {
+        return Err(EngineError::CannotCastNow);
+    }
 
     let cost = {
-        let hand = state.hands.get(&player_id).ok_or(EngineError::CardNotFound)?;
-        if !hand.contains(&object_id) { return Err(EngineError::CardNotInHand); }
-        let obj = state.objects.get(&object_id).ok_or(EngineError::CardNotFound)?;
-        if !obj.is_creature() { return Err(EngineError::NotACreature); }
-        obj.definition.mana_cost.clone().ok_or(EngineError::CannotCastNow)?
+        let hand = state
+            .hands
+            .get(&player_id)
+            .ok_or(EngineError::CardNotFound)?;
+        if !hand.contains(&object_id) {
+            return Err(EngineError::CardNotInHand);
+        }
+        let obj = state
+            .objects
+            .get(&object_id)
+            .ok_or(EngineError::CardNotFound)?;
+        if !obj.is_creature() {
+            return Err(EngineError::NotACreature);
+        }
+        obj.definition
+            .mana_cost
+            .clone()
+            .ok_or(EngineError::CannotCastNow)?
     };
 
     state = pay_mana_cost(state, player_id, &cost)?;
 
-    state.hands.get_mut(&player_id).unwrap().retain(|&id| id != object_id);
+    state
+        .hands
+        .get_mut(&player_id)
+        .unwrap()
+        .retain(|&id| id != object_id);
     state.battlefield.push(object_id);
     {
         let obj = state.objects.get_mut(&object_id).unwrap();
@@ -69,7 +116,7 @@ mod tests {
             Player::new(PlayerId(1), "Bob"),
         ]);
         gs.phase = Phase::PreCombatMain;
-        gs.step  = Step::Main;
+        gs.step = Step::Main;
         gs
     }
 
@@ -100,7 +147,10 @@ mod tests {
         gs.lands_played_this_turn = 1;
         let forest_id = put_in_hand(&mut gs, PlayerId(0), CardDefinition::forest());
 
-        assert!(matches!(play_land(gs, PlayerId(0), forest_id), Err(EngineError::LandLimitReached)));
+        assert!(matches!(
+            play_land(gs, PlayerId(0), forest_id),
+            Err(EngineError::LandLimitReached)
+        ));
     }
 
     #[test]
@@ -122,7 +172,10 @@ mod tests {
         let mut gs = make_state();
         let bear_id = put_in_hand(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
 
-        assert!(matches!(cast_creature(gs, PlayerId(0), bear_id), Err(EngineError::InsufficientMana)));
+        assert!(matches!(
+            cast_creature(gs, PlayerId(0), bear_id),
+            Err(EngineError::InsufficientMana)
+        ));
     }
 
     #[test]
@@ -131,6 +184,9 @@ mod tests {
         gs.phase = Phase::Combat;
         let forest_id = put_in_hand(&mut gs, PlayerId(0), CardDefinition::forest());
 
-        assert!(matches!(play_land(gs, PlayerId(0), forest_id), Err(EngineError::CannotCastNow)));
+        assert!(matches!(
+            play_land(gs, PlayerId(0), forest_id),
+            Err(EngineError::CannotCastNow)
+        ));
     }
 }

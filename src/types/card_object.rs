@@ -1,6 +1,6 @@
+use super::card::CardDefinition;
 use super::ids::{ObjectId, PlayerId};
 use super::zone::Zone;
-use super::card::CardDefinition;
 
 /// A card object in the game — a unique instance distinct from its definition.
 /// Multiple copies of "Grizzly Bears" each have their own ObjectId.
@@ -38,11 +38,19 @@ impl CardObject {
         }
     }
 
-    pub fn is_creature(&self) -> bool { self.definition.type_line.is_creature() }
-    pub fn is_land(&self)    -> bool { self.definition.type_line.is_land() }
+    pub fn is_creature(&self) -> bool {
+        self.definition.type_line.is_creature()
+    }
+    pub fn is_land(&self) -> bool {
+        self.definition.type_line.is_land()
+    }
 
-    pub fn effective_power(&self)     -> Option<i32> { self.current_power }
-    pub fn effective_toughness(&self) -> Option<i32> { self.current_toughness }
+    pub fn effective_power(&self) -> Option<i32> {
+        self.current_power
+    }
+    pub fn effective_toughness(&self) -> Option<i32> {
+        self.current_toughness
+    }
 
     /// Engine checks abilities from the AST before applying base rules.
     /// Phase 1: always returns false — no abilities parsed yet.
@@ -52,16 +60,11 @@ impl CardObject {
     }
 
     pub fn can_attack(&self) -> bool {
-        self.is_creature()
-            && self.zone == Zone::Battlefield
-            && !self.tapped
-            && !self.summoning_sick
+        self.is_creature() && self.zone == Zone::Battlefield && !self.tapped && !self.summoning_sick
     }
 
     pub fn can_block(&self) -> bool {
-        self.is_creature()
-            && self.zone == Zone::Battlefield
-            && !self.tapped
+        self.is_creature() && self.zone == Zone::Battlefield && !self.tapped
     }
 }
 

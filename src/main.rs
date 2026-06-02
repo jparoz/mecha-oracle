@@ -1,7 +1,5 @@
-use mecha_oracle::engine::turn::{apply_step_start, advance_step};
-use mecha_oracle::types::{
-    CardDefinition, CardObject, GameState, Player, PlayerId, Step, Zone,
-};
+use mecha_oracle::engine::turn::{advance_step, apply_step_start};
+use mecha_oracle::types::{CardDefinition, CardObject, GameState, Player, PlayerId, Step, Zone};
 
 fn main() {
     println!("=== mecha-oracle: MTG Rules Engine — Phase 1 Demo ===\n");
@@ -15,10 +13,10 @@ fn main() {
         let turn = gs.turn_number;
 
         if step == Step::Untap {
-            println!("--- Turn {} (Active: {:?}) ---", turn, active);
+            println!("--- Turn {turn} (Active: {active:?}) ---");
             let life0 = gs.get_player(PlayerId(0)).unwrap().life;
             let life1 = gs.get_player(PlayerId(1)).unwrap().life;
-            println!("  Life: Alice={}, Bob={}", life0, life1);
+            println!("  Life: Alice={life0}, Bob={life1}");
         }
 
         gs = apply_step_start(gs);
@@ -27,7 +25,7 @@ fn main() {
     }
 
     match gs.winner() {
-        Some(pid) => println!("\nGame over! Winner: {:?}", pid),
+        Some(pid) => println!("\nGame over! Winner: {pid:?}"),
         None => println!("\nGame ended (draw or step limit reached)."),
     }
 }
