@@ -1,1 +1,17 @@
-// placeholder — implemented in Task 6
+pub mod state_based_actions;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum EngineError {
+    CardNotFound,
+    CardNotInHand,
+    CardNotOnBattlefield,
+    AlreadyTapped,
+    InsufficientMana,
+    CannotCastNow,
+    LandLimitReached,
+    NotALand,
+    NotACreature,
+    NotYourCard,
+    SummoningSick,
+    CreatureTapped,
+}

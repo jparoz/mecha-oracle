@@ -1,0 +1,157 @@
+use crate::types::{GameState, ObjectId, PlayerId, Zone};
+
+/// Repeatedly finds and applies SBAs until no new ones trigger (CR 704.3).
+pub fn check_and_apply_sbas(state: GameState) -> GameState {
+    let mut state = state;
+    loop {
+        let sbas = find_sbas(&state);
+        if sbas.is_empty() { break; }
+        state = apply_sbas(state, sbas);
+    }
+    state
+}
+
+#[derive(Debug, Clone)]
+enum Sba {
+    PlayerLoses(PlayerId),
+    MoveToGraveyard(ObjectId),
+}
+
+fn find_sbas(state: &GameState) -> Vec<Sba> {
+    let mut sbas = vec![];
+
+    // CR 704.5a: player with 0 or less life loses.
+    for player in &state.players {
+        if !player.has_lost && player.life <= 0 {
+            sbas.push(Sba::PlayerLoses(player.id));
+        }
+    }
+
+    // CR 704.5g: creature on battlefield with toughness ≤ 0 → graveyard.
+    // CR 704.5h: creature with damage ≥ toughness → graveyard.
+    for &id in &state.battlefield {
+        if let Some(obj) = state.objects.get(&id) {
+            if obj.is_creature() {
+                if let Some(toughness) = obj.effective_toughness() {
+                    if toughness <= 0 || obj.damage_marked as i32 >= toughness {
+                        sbas.push(Sba::MoveToGraveyard(id));
+                    }
+                }
+            }
+        }
+    }
+
+    sbas
+}
+
+fn apply_sbas(mut state: GameState, sbas: Vec<Sba>) -> GameState {
+    for sba in sbas {
+        match sba {
+            Sba::PlayerLoses(pid) => {
+                if let Some(p) = state.get_player_mut(pid) {
+                    p.has_lost = true;
+                }
+                state.game_over = true;
+            }
+            Sba::MoveToGraveyard(id) => {
+                state = move_to_graveyard(state, id);
+            }
+        }
+    }
+    state
+}
+
+pub fn move_to_graveyard(mut state: GameState, object_id: ObjectId) -> GameState {
+    state.battlefield.retain(|&id| id != object_id);
+    if let Some(obj) = state.objects.get_mut(&object_id) {
+        let owner = obj.owner;
+        obj.zone = Zone::Graveyard;
+        obj.damage_marked = 0;
+        obj.tapped = false;
+        if let Some(gy) = state.graveyards.get_mut(&owner) {
+            gy.push(object_id);
+        }
+    }
+    state
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{CardDefinition, CardObject, Player, Zone};
+
+    fn make_state() -> GameState {
+        GameState::new(vec![
+            Player::new(PlayerId(0), "Alice"),
+            Player::new(PlayerId(1), "Bob"),
+        ])
+    }
+
+    fn add_creature_to_battlefield(state: &mut GameState, owner: PlayerId, def: CardDefinition) -> ObjectId {
+        let id = state.alloc_id();
+        let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        obj.summoning_sick = false;
+        state.battlefield.push(id);
+        state.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn creature_with_lethal_damage_goes_to_graveyard() {
+        let mut gs = make_state();
+        let bear_id = add_creature_to_battlefield(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        gs.objects.get_mut(&bear_id).unwrap().damage_marked = 2; // toughness = 2, lethal
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(!gs.battlefield.contains(&bear_id));
+        assert!(gs.graveyards[&PlayerId(0)].contains(&bear_id));
+        assert_eq!(gs.objects[&bear_id].zone, Zone::Graveyard);
+    }
+
+    #[test]
+    fn creature_below_lethal_damage_survives() {
+        let mut gs = make_state();
+        let bear_id = add_creature_to_battlefield(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        gs.objects.get_mut(&bear_id).unwrap().damage_marked = 1; // toughness = 2, survives
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(gs.battlefield.contains(&bear_id));
+    }
+
+    #[test]
+    fn player_at_zero_life_loses() {
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(1)).unwrap().life = 0;
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(gs.is_game_over());
+        assert_eq!(gs.winner(), Some(PlayerId(0)));
+    }
+
+    #[test]
+    fn player_at_negative_life_loses() {
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().life = -3;
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert_eq!(gs.winner(), Some(PlayerId(1)));
+    }
+
+    #[test]
+    fn multiple_dying_creatures_all_go_to_graveyard() {
+        let mut gs = make_state();
+        let bear1 = add_creature_to_battlefield(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear2 = add_creature_to_battlefield(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        gs.objects.get_mut(&bear1).unwrap().damage_marked = 5;
+        gs.objects.get_mut(&bear2).unwrap().damage_marked = 5;
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(gs.battlefield.is_empty());
+        assert_eq!(gs.graveyards[&PlayerId(0)].len(), 2);
+    }
+}
