@@ -17,5 +17,7 @@ impl fmt::Display for ParseError {
     }
 }
 
+impl std::error::Error for ParseError {}
+
 mod oracle;
 pub use oracle::parse_oracle_text;
