@@ -129,19 +129,66 @@ pub fn declare_blockers(
     Ok(state)
 }
 
-/// Deal combat damage simultaneously (CR 510).
-/// Each attacking creature deals damage equal to power.
-/// Each blocking creature deals damage equal to power to the attacker.
-/// Multiple blockers: attacker assigns at least lethal to each before moving to next.
+/// Deal combat damage (CR 510). Handles first strike / double strike two-round system (CR 510.4).
+/// If any first/double striker is present and we haven't done the first-strike round yet,
+/// only those creatures deal damage and a second CombatDamage step is queued.
+/// In the second round, double strikers and vanilla creatures deal damage (not first-strike-only).
+/// If no first/double strikers are present, all creatures deal damage in a single round.
 pub fn deal_combat_damage(mut state: GameState) -> GameState {
     let defending_player = state.opponent_of(state.active_player);
     let attackers = state.combat.attackers.clone();
     let blocking_map = state.combat.blocking_map.clone();
 
+    // Determine whether any participating creature has first or double strike.
+    let any_first_or_double = attackers
+        .iter()
+        .chain(blocking_map.values().flatten())
+        .any(|&id| {
+            state
+                .objects
+                .get(&id)
+                .map(|o| {
+                    o.has_keyword(StaticAbility::FirstStrike)
+                        || o.has_keyword(StaticAbility::DoubleStrike)
+                })
+                .unwrap_or(false)
+        });
+
+    let first_round = any_first_or_double && !state.combat.first_strike_done;
+    let second_round = any_first_or_double && state.combat.first_strike_done;
+
+    // If this is the first-strike round, queue the regular damage round (CR 510.4).
+    if first_round {
+        state.combat.first_strike_done = true;
+        state.extra_steps.push_back(Step::CombatDamage);
+    }
+
+    // Determine which creatures deal damage this round:
+    //   first round  → first strike / double strike only
+    //   second round → any creature WITHOUT first strike (double strikers included)
+    //   no first/double strikers → all creatures deal (standard single round)
+    let deals_this_round = |id: ObjectId| -> bool {
+        let Some(obj) = state.objects.get(&id) else {
+            return false;
+        };
+        if first_round {
+            obj.has_keyword(StaticAbility::FirstStrike)
+                || obj.has_keyword(StaticAbility::DoubleStrike)
+        } else if second_round {
+            !obj.has_keyword(StaticAbility::FirstStrike)
+        } else {
+            true
+        }
+    };
+
     let mut damage_to_players: HashMap<PlayerId, i32> = HashMap::new();
     let mut damage_to_objects: HashMap<ObjectId, u32> = HashMap::new();
 
     for &attacker_id in &attackers {
+        if !deals_this_round(attacker_id) {
+            continue;
+        }
+
         let attacker_power = state
             .objects
             .get(&attacker_id)
@@ -154,7 +201,6 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
         if blockers.is_empty() {
             *damage_to_players.entry(defending_player).or_insert(0) += attacker_power as i32;
         } else {
-            // Assign damage in order: at least lethal to each before the next (CR 510.1c).
             let mut remaining = attacker_power;
             for (i, &blocker_id) in blockers.iter().enumerate() {
                 if remaining == 0 {
@@ -170,7 +216,6 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                         .and_then(|o| o.effective_toughness())
                         .map(|t| t.max(0) as u32)
                         .unwrap_or(0);
-                    // Must assign lethal; if we can't reach lethal, assign all.
                     remaining.min(toughness.max(1))
                 };
                 *damage_to_objects.entry(blocker_id).or_insert(0) += assign;
@@ -178,8 +223,10 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             }
         }
 
-        // Every blocker deals its power to the attacker.
         for &blocker_id in &blockers {
+            if !deals_this_round(blocker_id) {
+                continue;
+            }
             let blocker_power = state
                 .objects
                 .get(&blocker_id)
@@ -190,7 +237,6 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
         }
     }
 
-    // Apply all damage simultaneously.
     for (pid, dmg) in damage_to_players {
         if let Some(p) = state.get_player_mut(pid) {
             p.life -= dmg;
@@ -489,6 +535,104 @@ mod tests {
         gs.step = Step::DeclareBlockers;
         // No blockers declared — legal (creature is unblocked)
         assert!(declare_blockers(gs, PlayerId(1), &[]).is_ok());
+    }
+
+    #[test]
+    fn first_striker_kills_blocker_before_it_can_deal_damage() {
+        // 3/2 First Strike vs 2/2 vanilla:
+        // Round 1: first striker deals 3 (lethal to 2/2). 2/2 can't deal back.
+        // Round 2: 2/2 is dead, no damage back to first striker.
+        use crate::engine::turn::advance_step;
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker =
+            keyword_creature(&mut gs, PlayerId(0), 3, 2, vec![StaticAbility::FirstStrike]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
+        gs.step = Step::CombatDamage;
+
+        // Round 1
+        let gs = deal_combat_damage(gs);
+
+        // Blocker should be dead; attacker should be undamaged
+        assert!(!gs.battlefield.contains(&blocker));
+        assert_eq!(gs.objects[&attacker].damage_marked, 0);
+        // A second CombatDamage step should be queued
+        assert!(!gs.extra_steps.is_empty());
+
+        // Advance to second round
+        let gs = advance_step(gs); // pops extra_steps → CombatDamage
+        let gs = deal_combat_damage(gs);
+
+        // No blockers left — attacker still undamaged; player untouched (attacker was blocked)
+        assert_eq!(gs.objects[&attacker].damage_marked, 0);
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 20);
+    }
+
+    #[test]
+    fn double_striker_deals_damage_in_both_rounds() {
+        // 2/2 Double Strike vs 3/3:
+        // Round 1: double striker deals 2. Round 2: double striker deals another 2.
+        // 3/3 deals 3 in round 2. 3/3 has 4 damage total (lethal), double striker has 3 (lethal).
+        use crate::engine::turn::advance_step;
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(
+            &mut gs,
+            PlayerId(0),
+            2,
+            2,
+            vec![StaticAbility::DoubleStrike],
+        );
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 3, 3, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
+        gs.step = Step::CombatDamage;
+
+        // Round 1: only double striker deals damage
+        let gs = deal_combat_damage(gs);
+        assert_eq!(gs.objects[&blocker].damage_marked, 2);
+        assert_eq!(gs.objects[&attacker].damage_marked, 0); // blocker hasn't dealt yet
+
+        // Round 2: double striker AND non-first-strikers (none; blocker is vanilla) deal damage
+        let gs = advance_step(gs);
+        assert_eq!(gs.step(), Step::CombatDamage);
+        let gs = deal_combat_damage(gs);
+
+        // Both die
+        assert!(!gs.battlefield.contains(&blocker));
+        assert!(!gs.battlefield.contains(&attacker));
+    }
+
+    #[test]
+    fn no_first_strikers_means_single_round_and_no_extra_step() {
+        // Vanilla combat: no extra step should be queued
+        let db = test_db();
+        let mut gs = make_combat_state();
+        let attacker = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let blocker = add_creature(
+            &mut gs,
+            PlayerId(1),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
+        gs.step = Step::CombatDamage;
+
+        let gs = deal_combat_damage(gs);
+
+        // Both die; no extra step queued
+        assert!(!gs.battlefield.contains(&attacker));
+        assert!(!gs.battlefield.contains(&blocker));
+        assert!(gs.extra_steps.is_empty());
     }
 
     #[test]
