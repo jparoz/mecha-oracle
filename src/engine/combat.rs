@@ -80,6 +80,17 @@ pub fn declare_blockers(
         if !state.combat.attackers.contains(&attacker_id) {
             return Err(EngineError::CannotCastNow);
         }
+        // CR 702.9b: a creature with flying can only be blocked by creatures with flying or reach.
+        if state
+            .objects
+            .get(&attacker_id)
+            .map(|a| a.has_keyword(StaticAbility::Flying))
+            .unwrap_or(false)
+        {
+            if !obj.has_keyword(StaticAbility::Flying) && !obj.has_keyword(StaticAbility::Reach) {
+                return Err(EngineError::InvalidBlocker);
+            }
+        }
     }
 
     // Re-build blocking_map from declarations; declaration order = damage assignment order.
@@ -93,6 +104,26 @@ pub fn declare_blockers(
             .entry(attacker_id)
             .or_default()
             .push(blocker_id);
+    }
+
+    // CR 702.111b: a creature with menace can't be blocked by exactly one creature.
+    for &attacker_id in &state.combat.attackers {
+        if state
+            .objects
+            .get(&attacker_id)
+            .map(|a| a.has_keyword(StaticAbility::Menace))
+            .unwrap_or(false)
+        {
+            let num_blockers = state
+                .combat
+                .blocking_map
+                .get(&attacker_id)
+                .map(|v| v.len())
+                .unwrap_or(0);
+            if num_blockers == 1 {
+                return Err(EngineError::MenaceRequiresTwoBlockers);
+            }
+        }
     }
 
     Ok(state)
@@ -377,6 +408,87 @@ mod tests {
         );
         let gs = declare_attackers(gs, PlayerId(0), &[bear_id]).unwrap();
         assert!(gs.objects[&bear_id].tapped);
+    }
+
+    #[test]
+    fn non_flier_cannot_block_flier() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]); // no flying/reach
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        assert!(matches!(
+            declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]),
+            Err(EngineError::InvalidBlocker)
+        ));
+    }
+
+    #[test]
+    fn flier_can_block_flier() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Flying]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        assert!(declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).is_ok());
+    }
+
+    #[test]
+    fn reach_creature_can_block_flier() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Reach]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        assert!(declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).is_ok());
+    }
+
+    #[test]
+    fn menace_requires_two_or_more_blockers() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Menace]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        // Exactly one blocker → illegal
+        assert!(matches!(
+            declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]),
+            Err(EngineError::MenaceRequiresTwoBlockers)
+        ));
+    }
+
+    #[test]
+    fn menace_allows_two_blockers() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 4, 4, vec![StaticAbility::Menace]);
+        let blocker1 = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        let blocker2 = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        assert!(
+            declare_blockers(
+                gs,
+                PlayerId(1),
+                &[(blocker1, attacker), (blocker2, attacker)]
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn menace_allows_zero_blockers() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Menace]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        // No blockers declared — legal (creature is unblocked)
+        assert!(declare_blockers(gs, PlayerId(1), &[]).is_ok());
     }
 
     #[test]
