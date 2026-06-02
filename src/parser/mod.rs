@@ -1,1 +1,2 @@
-// placeholder — implemented in Task 5
+mod oracle;
+pub use oracle::parse_oracle_text;
