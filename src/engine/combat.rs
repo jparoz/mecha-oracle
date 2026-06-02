@@ -134,12 +134,14 @@ pub fn declare_blockers(
 /// only those creatures deal damage and a second CombatDamage step is queued.
 /// In the second round, double strikers and vanilla creatures deal damage (not first-strike-only).
 /// If no first/double strikers are present, all creatures deal damage in a single round.
+/// Also handles Trample (CR 702.19), Deathtouch (CR 702.2c), and Lifelink (CR 702.15).
 pub fn deal_combat_damage(mut state: GameState) -> GameState {
+    use std::collections::HashSet;
+
     let defending_player = state.opponent_of(state.active_player);
     let attackers = state.combat.attackers.clone();
     let blocking_map = state.combat.blocking_map.clone();
 
-    // Determine whether any participating creature has first or double strike.
     let any_first_or_double = attackers
         .iter()
         .chain(blocking_map.values().flatten())
@@ -157,16 +159,11 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
     let first_round = any_first_or_double && !state.combat.first_strike_done;
     let second_round = any_first_or_double && state.combat.first_strike_done;
 
-    // If this is the first-strike round, queue the regular damage round (CR 510.4).
     if first_round {
         state.combat.first_strike_done = true;
         state.extra_steps.push_back(Step::CombatDamage);
     }
 
-    // Determine which creatures deal damage this round:
-    //   first round  → first strike / double strike only
-    //   second round → any creature WITHOUT first strike (double strikers included)
-    //   no first/double strikers → all creatures deal (standard single round)
     let deals_this_round = |id: ObjectId| -> bool {
         let Some(obj) = state.objects.get(&id) else {
             return false;
@@ -183,68 +180,135 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
 
     let mut damage_to_players: HashMap<PlayerId, i32> = HashMap::new();
     let mut damage_to_objects: HashMap<ObjectId, u32> = HashMap::new();
+    let mut lifelink_gain: HashMap<PlayerId, i32> = HashMap::new();
+    let mut deathtouch_targets: HashSet<ObjectId> = HashSet::new();
 
     for &attacker_id in &attackers {
         if !deals_this_round(attacker_id) {
             continue;
         }
 
-        let attacker_power = state
-            .objects
-            .get(&attacker_id)
-            .and_then(|o| o.effective_power())
-            .map(|p| p.max(0) as u32)
-            .unwrap_or(0);
+        let (atk_power, has_trample, has_deathtouch, has_lifelink, atk_controller) = {
+            let obj = match state.objects.get(&attacker_id) {
+                Some(o) => o,
+                None => continue,
+            };
+            (
+                obj.effective_power().map(|p| p.max(0) as u32).unwrap_or(0),
+                obj.has_keyword(StaticAbility::Trample),
+                obj.has_keyword(StaticAbility::Deathtouch),
+                obj.has_keyword(StaticAbility::Lifelink),
+                obj.controller,
+            )
+        };
 
         let blockers = blocking_map.get(&attacker_id).cloned().unwrap_or_default();
+        let mut total_damage_dealt = 0u32;
 
         if blockers.is_empty() {
-            *damage_to_players.entry(defending_player).or_insert(0) += attacker_power as i32;
+            *damage_to_players.entry(defending_player).or_insert(0) += atk_power as i32;
+            total_damage_dealt = atk_power;
         } else {
-            let mut remaining = attacker_power;
-            for (i, &blocker_id) in blockers.iter().enumerate() {
+            let mut remaining = atk_power;
+            for &blocker_id in &blockers {
                 if remaining == 0 {
                     break;
                 }
-                let is_last = i == blockers.len() - 1;
-                let assign = if is_last {
-                    remaining
+                // Lethal threshold: 1 if attacker has deathtouch (CR 702.2c), else remaining toughness.
+                let lethal = if has_deathtouch {
+                    1u32
                 } else {
-                    let toughness = state
+                    state
                         .objects
                         .get(&blocker_id)
                         .and_then(|o| o.effective_toughness())
-                        .map(|t| t.max(0) as u32)
-                        .unwrap_or(0);
-                    remaining.min(toughness.max(1))
+                        .map(|t| {
+                            (t.max(0) as u32).saturating_sub(
+                                state
+                                    .objects
+                                    .get(&blocker_id)
+                                    .map(|o| o.damage_marked)
+                                    .unwrap_or(0),
+                            )
+                        })
+                        .unwrap_or(0)
+                        .max(1)
                 };
+                let assign = remaining.min(lethal);
                 *damage_to_objects.entry(blocker_id).or_insert(0) += assign;
                 remaining -= assign;
+                total_damage_dealt += assign;
+                if has_deathtouch && assign > 0 {
+                    deathtouch_targets.insert(blocker_id);
+                }
+            }
+            // Remaining damage: to player if trample, otherwise pile on last blocker.
+            if remaining > 0 {
+                if has_trample {
+                    *damage_to_players.entry(defending_player).or_insert(0) += remaining as i32;
+                    total_damage_dealt += remaining;
+                } else if let Some(&last) = blockers.last() {
+                    *damage_to_objects.entry(last).or_insert(0) += remaining;
+                    if has_deathtouch {
+                        deathtouch_targets.insert(last);
+                    }
+                    total_damage_dealt += remaining;
+                }
             }
         }
 
+        if has_lifelink && total_damage_dealt > 0 {
+            *lifelink_gain.entry(atk_controller).or_insert(0) += total_damage_dealt as i32;
+        }
+
+        // Blockers deal their damage back to the attacker.
         for &blocker_id in &blockers {
             if !deals_this_round(blocker_id) {
                 continue;
             }
-            let blocker_power = state
-                .objects
-                .get(&blocker_id)
-                .and_then(|o| o.effective_power())
-                .map(|p| p.max(0) as u32)
-                .unwrap_or(0);
-            *damage_to_objects.entry(attacker_id).or_insert(0) += blocker_power;
+            let (blk_power, blk_deathtouch, blk_lifelink, blk_controller) = {
+                let obj = match state.objects.get(&blocker_id) {
+                    Some(o) => o,
+                    None => continue,
+                };
+                (
+                    obj.effective_power().map(|p| p.max(0) as u32).unwrap_or(0),
+                    obj.has_keyword(StaticAbility::Deathtouch),
+                    obj.has_keyword(StaticAbility::Lifelink),
+                    obj.controller,
+                )
+            };
+            if blk_power > 0 {
+                *damage_to_objects.entry(attacker_id).or_insert(0) += blk_power;
+                if blk_deathtouch {
+                    deathtouch_targets.insert(attacker_id);
+                }
+                if blk_lifelink {
+                    *lifelink_gain.entry(blk_controller).or_insert(0) += blk_power as i32;
+                }
+            }
         }
     }
 
-    for (pid, dmg) in damage_to_players {
-        if let Some(p) = state.get_player_mut(pid) {
+    // Apply all damage and effects simultaneously.
+    for (pid, dmg) in &damage_to_players {
+        if let Some(p) = state.get_player_mut(*pid) {
             p.life -= dmg;
         }
     }
     for (oid, dmg) in damage_to_objects {
         if let Some(obj) = state.objects.get_mut(&oid) {
             obj.damage_marked += dmg;
+        }
+    }
+    for oid in deathtouch_targets {
+        if let Some(obj) = state.objects.get_mut(&oid) {
+            obj.damaged_by_deathtouch = true;
+        }
+    }
+    for (pid, gain) in lifelink_gain {
+        if let Some(p) = state.get_player_mut(pid) {
+            p.life += gain;
         }
     }
 
@@ -633,6 +697,87 @@ mod tests {
         assert!(!gs.battlefield.contains(&attacker));
         assert!(!gs.battlefield.contains(&blocker));
         assert!(gs.extra_steps.is_empty());
+    }
+
+    #[test]
+    fn trample_sends_excess_to_player() {
+        // 5/5 Trample vs 2/2 blocker: 2 to blocker (lethal), 3 tramples through
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 5, 5, vec![StaticAbility::Trample]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
+        gs.step = Step::CombatDamage;
+
+        let gs = deal_combat_damage(gs);
+
+        assert!(!gs.battlefield.contains(&blocker));
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 17); // 20 - 3
+    }
+
+    #[test]
+    fn trample_deathtouch_one_damage_is_lethal_per_blocker() {
+        // 5/5 Trample + Deathtouch vs 4/4 blocker: 1 damage is lethal (deathtouch),
+        // 4 tramples through to defending player
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(
+            &mut gs,
+            PlayerId(0),
+            5,
+            5,
+            vec![StaticAbility::Trample, StaticAbility::Deathtouch],
+        );
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 4, 4, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
+        gs.step = Step::CombatDamage;
+
+        let gs = deal_combat_damage(gs);
+
+        assert!(!gs.battlefield.contains(&blocker)); // 1 deathtouch damage kills 4/4
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 16); // 20 - 4 trample
+    }
+
+    #[test]
+    fn lifelink_attacker_gains_life_from_combat_damage() {
+        // 3/3 Lifelink unblocked: controller gains 3 life
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 3, 3, vec![StaticAbility::Lifelink]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
+        gs.step = Step::CombatDamage;
+
+        let gs = deal_combat_damage(gs);
+
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, 23); // 20 + 3
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 17); // 20 - 3
+    }
+
+    #[test]
+    fn deathtouch_marks_target_for_sba() {
+        // 1/1 Deathtouch vs 4/4: deathtouch creature deals 1 damage, flag set on 4/4
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker =
+            keyword_creature(&mut gs, PlayerId(0), 1, 1, vec![StaticAbility::Deathtouch]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 4, 4, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
+        gs.step = Step::CombatDamage;
+
+        let gs = deal_combat_damage(gs);
+
+        // 4/4 received deathtouch damage → SBAs already ran → it should be dead
+        assert!(!gs.battlefield.contains(&blocker));
+        // 1/1 received 4 damage (lethal) → also dead
+        assert!(!gs.battlefield.contains(&attacker));
     }
 
     #[test]

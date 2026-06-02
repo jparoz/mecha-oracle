@@ -31,11 +31,15 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
 
     // CR 704.5g: creature on battlefield with toughness ≤ 0 → graveyard.
     // CR 704.5h: creature with damage ≥ toughness → graveyard.
+    // CR 704.5h (deathtouch): creature dealt any deathtouch damage → graveyard.
     for &id in &state.battlefield {
         if let Some(obj) = state.objects.get(&id) {
             if obj.is_creature() {
                 if let Some(toughness) = obj.effective_toughness() {
-                    if toughness <= 0 || obj.damage_marked as i32 >= toughness {
+                    if toughness <= 0
+                        || obj.damage_marked as i32 >= toughness
+                        || obj.damaged_by_deathtouch
+                    {
                         sbas.push(Sba::MoveToGraveyard(id));
                     }
                 }
@@ -69,6 +73,7 @@ pub fn move_to_graveyard(mut state: GameState, object_id: ObjectId) -> GameState
         let owner = obj.owner;
         obj.zone = Zone::Graveyard;
         obj.damage_marked = 0;
+        obj.damaged_by_deathtouch = false;
         obj.tapped = false;
         if let Some(gy) = state.graveyards.get_mut(&owner) {
             gy.push(object_id);
