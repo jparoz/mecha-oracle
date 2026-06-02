@@ -10,9 +10,14 @@ pub fn apply_step_start(state: GameState) -> GameState {
     }
 }
 
-/// Advance to the next step/phase. At end of Cleanup, rotate to the next player's turn.
-/// The match is exhaustive — every step must have a successor.
+/// Advance to the next step/phase. Checks `extra_steps` queue first (for dynamically
+/// inserted steps such as the second combat damage round per CR 510.4).
 pub fn advance_step(state: GameState) -> GameState {
+    let mut state = state;
+    if let Some(next) = state.extra_steps.pop_front() {
+        state.step = next;
+        return state;
+    }
     match state.step {
         Step::Untap => set(state, Step::Upkeep),
         Step::Upkeep => set(state, Step::Draw),
@@ -291,5 +296,18 @@ mod tests {
 
         assert!(gs.hands[&PlayerId(0)].contains(&card_id));
         assert!(gs.libraries[&PlayerId(0)].is_empty());
+    }
+
+    #[test]
+    fn advance_step_consumes_extra_steps_before_static_sequence() {
+        let mut gs = make_state();
+        gs.step = Step::CombatDamage;
+        gs.extra_steps.push_back(Step::CombatDamage); // simulate second combat damage round
+
+        let gs = advance_step(gs);
+
+        // Should have consumed the queued step, not gone to EndOfCombat
+        assert_eq!(gs.step(), Step::CombatDamage);
+        assert!(gs.extra_steps.is_empty());
     }
 }
