@@ -34,15 +34,16 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     // CR 704.5h (deathtouch): creature dealt any deathtouch damage → graveyard.
     // CR 702.12b: Indestructible creatures are exempt from both 704.5g and 704.5h.
     for &id in &state.battlefield {
-        if let Some(obj) = state.objects.get(&id) {
-            if obj.is_creature() && !obj.has_keyword(StaticAbility::Indestructible) {
-                let lethal_damage = obj
-                    .effective_toughness()
-                    .map(|t| t <= 0 || obj.damage_marked as i32 >= t)
-                    .unwrap_or(false);
-                if lethal_damage || obj.damaged_by_deathtouch {
-                    sbas.push(Sba::MoveToGraveyard(id));
-                }
+        if let Some(obj) = state.objects.get(&id)
+            && obj.is_creature()
+            && !obj.has_keyword(StaticAbility::Indestructible)
+        {
+            let lethal_damage = obj
+                .effective_toughness()
+                .map(|t| t <= 0 || obj.damage_marked as i32 >= t)
+                .unwrap_or(false);
+            if lethal_damage || obj.damaged_by_deathtouch {
+                sbas.push(Sba::MoveToGraveyard(id));
             }
         }
     }

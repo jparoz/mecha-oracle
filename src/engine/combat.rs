@@ -86,10 +86,10 @@ pub fn declare_blockers(
             .get(&attacker_id)
             .map(|a| a.has_keyword(StaticAbility::Flying))
             .unwrap_or(false)
+            && !obj.has_keyword(StaticAbility::Flying)
+            && !obj.has_keyword(StaticAbility::Reach)
         {
-            if !obj.has_keyword(StaticAbility::Flying) && !obj.has_keyword(StaticAbility::Reach) {
-                return Err(EngineError::InvalidBlocker);
-            }
+            return Err(EngineError::InvalidBlocker);
         }
     }
 
