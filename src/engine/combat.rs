@@ -1,5 +1,5 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
-use crate::types::{GameState, ObjectId, Phase, PlayerId, Step};
+use crate::types::{GameState, ObjectId, PlayerId, Step};
 use std::collections::HashMap;
 
 /// Declare attackers: tap them and record in CombatState (CR 508).
@@ -11,7 +11,7 @@ pub fn declare_attackers(
     if state.active_player != player_id {
         return Err(EngineError::CannotCastNow);
     }
-    if state.phase != Phase::Combat || state.step != Step::DeclareAttackers {
+    if state.step != Step::DeclareAttackers {
         return Err(EngineError::CannotCastNow);
     }
 
@@ -51,7 +51,7 @@ pub fn declare_blockers(
     if player_id != defending_player {
         return Err(EngineError::CannotCastNow);
     }
-    if state.phase != Phase::Combat || state.step != Step::DeclareBlockers {
+    if state.step != Step::DeclareBlockers {
         return Err(EngineError::CannotCastNow);
     }
 
@@ -176,7 +176,6 @@ mod tests {
             Player::new(PlayerId(0), "Alice"),
             Player::new(PlayerId(1), "Bob"),
         ]);
-        gs.phase = Phase::Combat;
         gs.step = Step::DeclareAttackers;
         gs
     }

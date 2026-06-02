@@ -55,7 +55,7 @@ fn make_game() -> (GameState, Vec<ObjectId>, Vec<ObjectId>) {
 }
 
 fn run_beginning(gs: GameState) -> GameState {
-    assert_eq!(gs.step, Step::Untap);
+    assert_eq!(gs.step(), Step::Untap);
     let gs = apply_step_start(gs); // untap + clear sickness
     let gs = advance_step(gs); // → Upkeep
     let gs = apply_step_start(gs);
@@ -82,7 +82,7 @@ fn tap_all_lands_for_player(mut gs: GameState, player_id: PlayerId) -> GameState
 }
 
 fn pass_combat_no_attackers(mut gs: GameState) -> GameState {
-    assert_eq!(gs.phase, Phase::Combat);
+    assert_eq!(gs.phase(), Phase::Combat);
     gs = apply_step_start(gs);
     gs = advance_step(gs); // → DeclareAttackers
     gs = apply_step_start(gs);
@@ -98,7 +98,7 @@ fn pass_combat_no_attackers(mut gs: GameState) -> GameState {
 }
 
 fn run_ending(mut gs: GameState) -> GameState {
-    assert_eq!(gs.phase, Phase::PostCombatMain);
+    assert_eq!(gs.phase(), Phase::PostCombatMain);
     gs = advance_step(gs); // → Ending/End
     gs = apply_step_start(gs);
     gs = advance_step(gs); // → Ending/Cleanup
@@ -113,7 +113,7 @@ fn scripted_game_runs_to_completion() {
 
     // === Turn 1: Alice — draws Forest, plays it ===
     let gs = run_beginning(gs);
-    assert_eq!(gs.phase, Phase::PreCombatMain);
+    assert_eq!(gs.phase(), Phase::PreCombatMain);
 
     let forest_in_hand = gs.hands[&PlayerId(0)]
         .iter()
@@ -216,8 +216,8 @@ fn scripted_game_runs_to_completion() {
 
     let gs = if bear_can_attack {
         let bear_id = alice_bear.unwrap();
-        let mut gs = declare_attackers(gs, PlayerId(0), &[bear_id]).unwrap();
-        gs.step = Step::DeclareBlockers;
+        let gs = declare_attackers(gs, PlayerId(0), &[bear_id]).unwrap();
+        let gs = advance_step(gs); // DeclareAttackers → DeclareBlockers
         let gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
         let mut gs = advance_step(gs); // DeclareBlockers → CombatDamage
         gs = deal_combat_damage(gs);
@@ -256,8 +256,6 @@ fn player_dies_at_zero_life_ends_game() {
         Player::new(PlayerId(1), "Bob"),
     ]);
     gs.get_player_mut(PlayerId(1)).unwrap().life = 2;
-    gs.phase = Phase::Combat;
-    gs.step = Step::CombatDamage;
 
     // Set up a 3/3 attacker
     let id = gs.alloc_id();

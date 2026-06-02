@@ -3,7 +3,7 @@ use super::ids::{ObjectId, PlayerId};
 use super::player::Player;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     Beginning,
     PreCombatMain,
@@ -12,19 +12,42 @@ pub enum Phase {
     Ending,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// A single position in the turn sequence. Each variant maps to exactly one valid
+/// (phase, step) combination, so invalid combinations are unrepresentable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
+    // Beginning phase
     Untap,
     Upkeep,
     Draw,
-    Main,
+    // Main phases — two separate steps instead of a shared `Main`
+    PreCombatMain,
+    PostCombatMain,
+    // Combat phase
     BeginningOfCombat,
     DeclareAttackers,
     DeclareBlockers,
     CombatDamage,
     EndOfCombat,
+    // Ending phase
     End,
     Cleanup,
+}
+
+impl Step {
+    pub fn phase(self) -> Phase {
+        match self {
+            Step::Untap | Step::Upkeep | Step::Draw => Phase::Beginning,
+            Step::PreCombatMain => Phase::PreCombatMain,
+            Step::BeginningOfCombat
+            | Step::DeclareAttackers
+            | Step::DeclareBlockers
+            | Step::CombatDamage
+            | Step::EndOfCombat => Phase::Combat,
+            Step::PostCombatMain => Phase::PostCombatMain,
+            Step::End | Step::Cleanup => Phase::Ending,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -57,8 +80,7 @@ pub struct GameState {
     pub exile: Vec<ObjectId>,
     pub active_player: PlayerId,
     pub priority_player: PlayerId,
-    pub phase: Phase,
-    pub step: Step,
+    pub(crate) step: Step,
     pub turn_number: u32,
     pub lands_played_this_turn: u32,
     pub combat: CombatState,
@@ -89,7 +111,6 @@ impl GameState {
             exile: vec![],
             active_player: active,
             priority_player: active,
-            phase: Phase::Beginning,
             step: Step::Untap,
             turn_number: 1,
             lands_played_this_turn: 0,
@@ -97,6 +118,14 @@ impl GameState {
             next_object_id: 1,
             game_over: false,
         }
+    }
+
+    pub fn step(&self) -> Step {
+        self.step
+    }
+
+    pub fn phase(&self) -> Phase {
+        self.step.phase()
     }
 
     pub fn alloc_id(&mut self) -> ObjectId {
@@ -153,8 +182,8 @@ mod tests {
     fn new_game_starts_at_turn_1_untap() {
         let gs = two_player_state();
         assert_eq!(gs.turn_number, 1);
-        assert_eq!(gs.phase, Phase::Beginning);
-        assert_eq!(gs.step, Step::Untap);
+        assert_eq!(gs.phase(), Phase::Beginning);
+        assert_eq!(gs.step(), Step::Untap);
         assert_eq!(gs.active_player, PlayerId(0));
     }
 

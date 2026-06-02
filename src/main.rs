@@ -8,7 +8,7 @@ fn main() {
     let mut step_count = 0;
 
     while !gs.is_game_over() && step_count < 200 {
-        let step = gs.step.clone();
+        let step = gs.step();
         let active = gs.active_player;
         let turn = gs.turn_number;
 
