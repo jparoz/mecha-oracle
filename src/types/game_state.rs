@@ -1,7 +1,7 @@
 use super::card_object::CardObject;
 use super::ids::{ObjectId, PlayerId};
 use super::player::Player;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
@@ -56,6 +56,8 @@ pub struct CombatState {
     pub attackers: Vec<ObjectId>,
     /// attacker_id → list of blockers in damage-assignment order.
     pub blocking_map: HashMap<ObjectId, Vec<ObjectId>>,
+    /// True after the first-strike combat damage round has resolved (CR 510.4).
+    pub first_strike_done: bool,
 }
 
 impl CombatState {
@@ -63,6 +65,7 @@ impl CombatState {
         Self {
             attackers: vec![],
             blocking_map: HashMap::new(),
+            first_strike_done: false,
         }
     }
 }
@@ -84,6 +87,10 @@ pub struct GameState {
     pub turn_number: u32,
     pub lands_played_this_turn: u32,
     pub combat: CombatState,
+    /// Extra steps queued for dynamic insertion (e.g. second combat damage step per CR 510.4,
+    /// or extra combat phases from card effects). `advance_step` pops from this before
+    /// following the static turn sequence.
+    pub(crate) extra_steps: VecDeque<Step>,
     pub next_object_id: u64,
     pub game_over: bool,
 }
@@ -115,6 +122,7 @@ impl GameState {
             turn_number: 1,
             lands_played_this_turn: 0,
             combat: CombatState::empty(),
+            extra_steps: VecDeque::new(),
             next_object_id: 1,
             game_over: false,
         }
@@ -214,5 +222,17 @@ mod tests {
         let mut gs = two_player_state();
         assert_eq!(gs.alloc_id(), ObjectId(1));
         assert_eq!(gs.alloc_id(), ObjectId(2));
+    }
+
+    #[test]
+    fn extra_steps_starts_empty() {
+        let gs = two_player_state();
+        assert!(gs.extra_steps.is_empty());
+    }
+
+    #[test]
+    fn first_strike_done_starts_false() {
+        let gs = two_player_state();
+        assert!(!gs.combat.first_strike_done);
     }
 }
