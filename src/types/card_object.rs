@@ -1,3 +1,4 @@
+use super::ability::{AbilityAST, StaticAbility};
 use super::card::CardDefinition;
 use super::ids::{ObjectId, PlayerId};
 use super::zone::Zone;
@@ -12,6 +13,9 @@ pub struct CardObject {
     pub current_power: Option<i32>,
     pub current_toughness: Option<i32>,
     pub damage_marked: u32,
+    /// True if this creature has been dealt damage by a source with deathtouch
+    /// since the last time state-based actions were checked (CR 704.5h).
+    pub damaged_by_deathtouch: bool,
     pub controller: PlayerId,
     pub owner: PlayerId,
     pub zone: Zone,
@@ -30,6 +34,7 @@ impl CardObject {
             current_power: power,
             current_toughness: toughness,
             damage_marked: 0,
+            damaged_by_deathtouch: false,
             controller: owner,
             owner,
             zone,
@@ -52,15 +57,19 @@ impl CardObject {
         self.current_toughness
     }
 
-    /// Engine checks abilities from the AST before applying base rules.
-    /// Phase 1: always returns false — no abilities parsed yet.
-    /// Phase 2+: match ability nodes in self.definition.abilities.
-    pub fn has_ability(&self, _query: &str) -> bool {
-        false
+    /// Returns true if this object has the given static keyword ability in its parsed AST.
+    pub fn has_keyword(&self, kw: StaticAbility) -> bool {
+        self.definition
+            .abilities
+            .iter()
+            .any(|a| matches!(a, AbilityAST::Static(k) if *k == kw))
     }
 
     pub fn can_attack(&self) -> bool {
-        self.is_creature() && self.zone == Zone::Battlefield && !self.tapped && !self.summoning_sick
+        self.is_creature()
+            && self.zone == Zone::Battlefield
+            && !self.tapped
+            && (!self.summoning_sick || self.has_keyword(StaticAbility::Haste))
     }
 
     pub fn can_block(&self) -> bool {
@@ -101,8 +110,28 @@ mod tests {
     }
 
     #[test]
-    fn has_ability_always_false_in_phase_1() {
+    fn has_keyword_returns_true_for_matching_ability() {
+        use crate::types::{AbilityAST, ability::StaticAbility};
+        let mut def = grizzly_bears();
+        def.abilities = vec![AbilityAST::Static(StaticAbility::Flying)];
+        let obj = CardObject::new(ObjectId(1), def, PlayerId(0), Zone::Battlefield);
+        assert!(obj.has_keyword(StaticAbility::Flying));
+        assert!(!obj.has_keyword(StaticAbility::Trample));
+    }
+
+    #[test]
+    fn summoning_sick_creature_with_haste_can_attack() {
+        use crate::types::{AbilityAST, ability::StaticAbility};
+        let mut def = grizzly_bears();
+        def.abilities = vec![AbilityAST::Static(StaticAbility::Haste)];
+        let mut obj = CardObject::new(ObjectId(1), def, PlayerId(0), Zone::Battlefield);
+        obj.summoning_sick = true;
+        assert!(obj.can_attack()); // haste bypasses summoning sickness
+    }
+
+    #[test]
+    fn damaged_by_deathtouch_initialises_false() {
         let obj = CardObject::new(ObjectId(1), grizzly_bears(), PlayerId(0), Zone::Battlefield);
-        assert!(!obj.has_ability("flying"));
+        assert!(!obj.damaged_by_deathtouch);
     }
 }
