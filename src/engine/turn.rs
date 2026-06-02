@@ -116,7 +116,8 @@ fn start_next_turn(mut state: GameState) -> GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CardDefinition, CardObject, Phase, Player, Zone};
+    use crate::cards::test_helpers::test_db;
+    use crate::types::{CardObject, Phase, Player, Zone};
 
     fn make_state() -> GameState {
         GameState::new(vec![
@@ -126,8 +127,14 @@ mod tests {
     }
 
     fn add_land_to_battlefield(state: &mut GameState, owner: PlayerId) -> ObjectId {
+        let db = test_db();
         let id = state.alloc_id();
-        let mut obj = CardObject::new(id, CardDefinition::forest(), owner, Zone::Battlefield);
+        let mut obj = CardObject::new(
+            id,
+            db.get("Forest").unwrap().clone(),
+            owner,
+            Zone::Battlefield,
+        );
         obj.tapped = true;
         obj.summoning_sick = false;
         state.battlefield.push(id);
@@ -135,7 +142,11 @@ mod tests {
         id
     }
 
-    fn put_in_library(state: &mut GameState, owner: PlayerId, def: CardDefinition) -> ObjectId {
+    fn put_in_library(
+        state: &mut GameState,
+        owner: PlayerId,
+        def: crate::types::CardDefinition,
+    ) -> ObjectId {
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Library);
         state.libraries.get_mut(&owner).unwrap().push(id);
@@ -167,11 +178,12 @@ mod tests {
 
     #[test]
     fn untap_step_clears_summoning_sickness() {
+        let db = test_db();
         let mut gs = make_state();
         let id = gs.alloc_id();
         let mut obj = CardObject::new(
             id,
-            CardDefinition::grizzly_bears(),
+            db.get("Grizzly Bears").unwrap().clone(),
             PlayerId(0),
             Zone::Battlefield,
         );
@@ -186,9 +198,14 @@ mod tests {
 
     #[test]
     fn draw_step_moves_top_card_to_hand() {
+        let db = test_db();
         let mut gs = make_state();
         gs.step = Step::Draw;
-        let card_id = put_in_library(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let card_id = put_in_library(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
 
         let gs = apply_step_start(gs);
 
@@ -211,12 +228,13 @@ mod tests {
 
     #[test]
     fn cleanup_step_removes_damage_from_creatures() {
+        let db = test_db();
         let mut gs = make_state();
         gs.step = Step::Cleanup;
         let id = gs.alloc_id();
         let mut obj = CardObject::new(
             id,
-            CardDefinition::grizzly_bears(),
+            db.get("Grizzly Bears").unwrap().clone(),
             PlayerId(0),
             Zone::Battlefield,
         );
@@ -261,8 +279,13 @@ mod tests {
 
     #[test]
     fn draw_card_function_works_directly() {
+        let db = test_db();
         let mut gs = make_state();
-        let card_id = put_in_library(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let card_id = put_in_library(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
 
         let gs = draw_card(gs, PlayerId(0));
 

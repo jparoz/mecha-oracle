@@ -1,10 +1,24 @@
+use directories::ProjectDirs;
+use mecha_oracle::cards::{CardDatabase, update_cards};
 use mecha_oracle::engine::turn::{advance_step, apply_step_start};
-use mecha_oracle::types::{CardDefinition, CardObject, GameState, Player, PlayerId, Step, Zone};
+use mecha_oracle::types::{CardObject, GameState, Player, PlayerId, Step, Zone};
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(|s| s.as_str()) == Some("--update-cards") {
+        let dirs = ProjectDirs::from("", "", "mecha-oracle")
+            .expect("Cannot determine user data directory");
+        std::fs::create_dir_all(dirs.data_dir()).expect("Cannot create data directory");
+        update_cards(dirs.data_dir()).expect("Card update failed");
+        return;
+    }
+
+    let db = CardDatabase::open()
+        .expect("Card database not found — run `mecha-oracle --update-cards` first");
+
     println!("=== mecha-oracle: MTG Rules Engine — Phase 1 Demo ===\n");
 
-    let mut gs = build_game();
+    let mut gs = build_game(&db);
     let mut step_count = 0;
 
     while !gs.is_game_over() && step_count < 200 {
@@ -30,7 +44,14 @@ fn main() {
     }
 }
 
-fn build_game() -> GameState {
+fn build_game(db: &CardDatabase) -> GameState {
+    let forest = || db.get("Forest").expect("Forest not in database").clone();
+    let bears = || {
+        db.get("Grizzly Bears")
+            .expect("Grizzly Bears not in database")
+            .clone()
+    };
+
     let mut gs = GameState::new(vec![
         Player::new(PlayerId(0), "Alice"),
         Player::new(PlayerId(1), "Bob"),
@@ -39,13 +60,13 @@ fn build_game() -> GameState {
     for &owner in &[PlayerId(0), PlayerId(1)] {
         for _ in 0..5 {
             let id = gs.alloc_id();
-            let obj = CardObject::new(id, CardDefinition::forest(), owner, Zone::Library);
+            let obj = CardObject::new(id, forest(), owner, Zone::Library);
             gs.libraries.get_mut(&owner).unwrap().push(id);
             gs.add_object(obj);
         }
         for _ in 0..2 {
             let id = gs.alloc_id();
-            let obj = CardObject::new(id, CardDefinition::grizzly_bears(), owner, Zone::Library);
+            let obj = CardObject::new(id, bears(), owner, Zone::Library);
             gs.libraries.get_mut(&owner).unwrap().push(id);
             gs.add_object(obj);
         }

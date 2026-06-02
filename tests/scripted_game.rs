@@ -1,14 +1,22 @@
+use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::{
     casting::{cast_creature, play_land},
     combat::{deal_combat_damage, declare_attackers, declare_blockers},
     mana::tap_land_for_mana,
     turn::{advance_step, apply_step_start, draw_card},
 };
-use mecha_oracle::types::{
-    CardDefinition, CardObject, GameState, ObjectId, Phase, Player, PlayerId, Step, Zone,
-};
+use mecha_oracle::types::{CardObject, GameState, ObjectId, Phase, Player, PlayerId, Step, Zone};
+use std::path::Path;
+
+fn card_db() -> CardDatabase {
+    CardDatabase::from_path(Path::new("tests/fixtures/oracle_cards_test.json")).unwrap()
+}
 
 fn make_game() -> (GameState, Vec<ObjectId>, Vec<ObjectId>) {
+    let db = card_db();
+    let forest = || db.get("Forest").unwrap().clone();
+    let bears = || db.get("Grizzly Bears").unwrap().clone();
+
     let mut gs = GameState::new(vec![
         Player::new(PlayerId(0), "Alice"),
         Player::new(PlayerId(1), "Bob"),
@@ -18,22 +26,22 @@ fn make_game() -> (GameState, Vec<ObjectId>, Vec<ObjectId>) {
     let mut bob_cards = vec![];
 
     let defs_alice = vec![
-        CardDefinition::forest(),
-        CardDefinition::grizzly_bears(),
-        CardDefinition::forest(),
-        CardDefinition::grizzly_bears(),
-        CardDefinition::forest(),
-        CardDefinition::forest(),
-        CardDefinition::forest(),
+        forest(),
+        bears(),
+        forest(),
+        bears(),
+        forest(),
+        forest(),
+        forest(),
     ];
     let defs_bob = vec![
-        CardDefinition::forest(),
-        CardDefinition::grizzly_bears(),
-        CardDefinition::forest(),
-        CardDefinition::grizzly_bears(),
-        CardDefinition::forest(),
-        CardDefinition::forest(),
-        CardDefinition::forest(),
+        forest(),
+        bears(),
+        forest(),
+        bears(),
+        forest(),
+        forest(),
+        forest(),
     ];
 
     for def in defs_alice {
@@ -258,10 +266,11 @@ fn player_dies_at_zero_life_ends_game() {
     gs.get_player_mut(PlayerId(1)).unwrap().life = 2;
 
     // Set up a 3/3 attacker
+    let db = card_db();
     let id = gs.alloc_id();
     let mut obj = CardObject::new(
         id,
-        CardDefinition::hill_giant(),
+        db.get("Hill Giant").unwrap().clone(),
         PlayerId(0),
         Zone::Battlefield,
     );

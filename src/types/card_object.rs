@@ -71,40 +71,29 @@ impl CardObject {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::card::CardDefinition;
+    use crate::cards::test_helpers::test_db;
+
+    fn grizzly_bears() -> super::super::card::CardDefinition {
+        test_db().get("Grizzly Bears").unwrap().clone()
+    }
 
     #[test]
     fn new_creature_enters_summoning_sick() {
-        let obj = CardObject::new(
-            ObjectId(1),
-            CardDefinition::grizzly_bears(),
-            PlayerId(0),
-            Zone::Battlefield,
-        );
+        let obj = CardObject::new(ObjectId(1), grizzly_bears(), PlayerId(0), Zone::Battlefield);
         assert!(obj.summoning_sick);
         assert!(!obj.can_attack());
     }
 
     #[test]
     fn creature_can_attack_after_sickness_cleared() {
-        let mut obj = CardObject::new(
-            ObjectId(1),
-            CardDefinition::grizzly_bears(),
-            PlayerId(0),
-            Zone::Battlefield,
-        );
+        let mut obj = CardObject::new(ObjectId(1), grizzly_bears(), PlayerId(0), Zone::Battlefield);
         obj.summoning_sick = false;
         assert!(obj.can_attack());
     }
 
     #[test]
     fn tapped_creature_cannot_attack_or_block() {
-        let mut obj = CardObject::new(
-            ObjectId(1),
-            CardDefinition::grizzly_bears(),
-            PlayerId(0),
-            Zone::Battlefield,
-        );
+        let mut obj = CardObject::new(ObjectId(1), grizzly_bears(), PlayerId(0), Zone::Battlefield);
         obj.summoning_sick = false;
         obj.tapped = true;
         assert!(!obj.can_attack());
@@ -113,12 +102,7 @@ mod tests {
 
     #[test]
     fn has_ability_always_false_in_phase_1() {
-        let obj = CardObject::new(
-            ObjectId(1),
-            CardDefinition::grizzly_bears(),
-            PlayerId(0),
-            Zone::Battlefield,
-        );
+        let obj = CardObject::new(ObjectId(1), grizzly_bears(), PlayerId(0), Zone::Battlefield);
         assert!(!obj.has_ability("flying"));
     }
 }

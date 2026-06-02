@@ -169,7 +169,8 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CardDefinition, CardObject, Player, Zone};
+    use crate::cards::test_helpers::test_db;
+    use crate::types::{CardObject, Player, Zone};
 
     fn make_combat_state() -> GameState {
         let mut gs = GameState::new(vec![
@@ -180,7 +181,11 @@ mod tests {
         gs
     }
 
-    fn add_creature(state: &mut GameState, owner: PlayerId, def: CardDefinition) -> ObjectId {
+    fn add_creature(
+        state: &mut GameState,
+        owner: PlayerId,
+        def: crate::types::CardDefinition,
+    ) -> ObjectId {
         let id = state.alloc_id();
         let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
         obj.summoning_sick = false;
@@ -191,8 +196,13 @@ mod tests {
 
     #[test]
     fn unblocked_attacker_deals_damage_to_player() {
+        let db = test_db();
         let mut gs = make_combat_state();
-        let bear_id = add_creature(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear_id = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
         gs = declare_attackers(gs, PlayerId(0), &[bear_id]).unwrap();
         gs.step = Step::DeclareBlockers;
         gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
@@ -205,9 +215,18 @@ mod tests {
 
     #[test]
     fn blocked_creatures_deal_damage_to_each_other() {
+        let db = test_db();
         let mut gs = make_combat_state();
-        let attacker = add_creature(&mut gs, PlayerId(0), CardDefinition::grizzly_bears()); // 2/2
-        let blocker = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears()); // 2/2
+        let attacker = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        ); // 2/2
+        let blocker = add_creature(
+            &mut gs,
+            PlayerId(1),
+            db.get("Grizzly Bears").unwrap().clone(),
+        ); // 2/2
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
         gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
@@ -223,9 +242,14 @@ mod tests {
 
     #[test]
     fn larger_creature_kills_smaller_and_survives() {
+        let db = test_db();
         let mut gs = make_combat_state();
-        let giant = add_creature(&mut gs, PlayerId(0), CardDefinition::hill_giant()); // 3/3
-        let bear = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears()); // 2/2
+        let giant = add_creature(&mut gs, PlayerId(0), db.get("Hill Giant").unwrap().clone()); // 3/3
+        let bear = add_creature(
+            &mut gs,
+            PlayerId(1),
+            db.get("Grizzly Bears").unwrap().clone(),
+        ); // 2/2
         gs = declare_attackers(gs, PlayerId(0), &[giant]).unwrap();
         gs.step = Step::DeclareBlockers;
         gs = declare_blockers(gs, PlayerId(1), &[(bear, giant)]).unwrap();
@@ -240,8 +264,13 @@ mod tests {
 
     #[test]
     fn summoning_sick_creature_cannot_attack() {
+        let db = test_db();
         let mut gs = make_combat_state();
-        let bear_id = add_creature(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear_id = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
         gs.objects.get_mut(&bear_id).unwrap().summoning_sick = true;
 
         assert!(matches!(
@@ -252,9 +281,18 @@ mod tests {
 
     #[test]
     fn tapped_creature_cannot_block() {
+        let db = test_db();
         let mut gs = make_combat_state();
-        let attacker = add_creature(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
-        let blocker = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears());
+        let attacker = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let blocker = add_creature(
+            &mut gs,
+            PlayerId(1),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.objects.get_mut(&blocker).unwrap().tapped = true;
         gs.step = Step::DeclareBlockers;
@@ -267,8 +305,13 @@ mod tests {
 
     #[test]
     fn attacking_taps_the_attacker() {
+        let db = test_db();
         let mut gs = make_combat_state();
-        let bear_id = add_creature(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear_id = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
         let gs = declare_attackers(gs, PlayerId(0), &[bear_id]).unwrap();
         assert!(gs.objects[&bear_id].tapped);
     }
@@ -277,18 +320,27 @@ mod tests {
     fn multiple_blockers_take_damage_in_order() {
         // Attacker: 5/5. Blockers: two 2/2s.
         // Damage assignment: 2 to first (lethal), 3 to second.
+        let db = test_db();
         let mut gs = make_combat_state();
 
-        // Use hill_giant as a base and override P/T for this test
-        let mut giant_def = CardDefinition::hill_giant();
+        // Use Hill Giant as a base and override P/T for this test
+        let mut giant_def = db.get("Hill Giant").unwrap().clone();
         giant_def.power = Some(5);
         giant_def.toughness = Some(5);
         let attacker = add_creature(&mut gs, PlayerId(0), giant_def);
         gs.objects.get_mut(&attacker).unwrap().current_power = Some(5);
         gs.objects.get_mut(&attacker).unwrap().current_toughness = Some(5);
 
-        let block1 = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears());
-        let block2 = add_creature(&mut gs, PlayerId(1), CardDefinition::grizzly_bears());
+        let block1 = add_creature(
+            &mut gs,
+            PlayerId(1),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let block2 = add_creature(
+            &mut gs,
+            PlayerId(1),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
 
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;

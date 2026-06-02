@@ -107,7 +107,8 @@ pub fn pay_mana_cost(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CardDefinition, CardObject, ManaCost, Player};
+    use crate::cards::test_helpers::test_db;
+    use crate::types::{CardObject, ManaCost, Player};
 
     fn make_state() -> GameState {
         GameState::new(vec![
@@ -116,7 +117,11 @@ mod tests {
         ])
     }
 
-    fn add_land(state: &mut GameState, owner: PlayerId, def: CardDefinition) -> ObjectId {
+    fn add_land(
+        state: &mut GameState,
+        owner: PlayerId,
+        def: crate::types::CardDefinition,
+    ) -> ObjectId {
         let id = state.alloc_id();
         let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
         obj.summoning_sick = false;
@@ -127,8 +132,9 @@ mod tests {
 
     #[test]
     fn tap_forest_adds_green_mana() {
+        let db = test_db();
         let mut gs = make_state();
-        let forest_id = add_land(&mut gs, PlayerId(0), CardDefinition::forest());
+        let forest_id = add_land(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
 
         let gs = tap_land_for_mana(gs, forest_id).unwrap();
 
@@ -138,8 +144,9 @@ mod tests {
 
     #[test]
     fn cannot_tap_already_tapped_land() {
+        let db = test_db();
         let mut gs = make_state();
-        let forest_id = add_land(&mut gs, PlayerId(0), CardDefinition::forest());
+        let forest_id = add_land(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
         gs.objects.get_mut(&forest_id).unwrap().tapped = true;
 
         assert!(matches!(

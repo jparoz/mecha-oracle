@@ -80,7 +80,8 @@ pub fn move_to_graveyard(mut state: GameState, object_id: ObjectId) -> GameState
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CardDefinition, CardObject, Player, Zone};
+    use crate::cards::test_helpers::test_db;
+    use crate::types::{CardObject, Player, Zone};
 
     fn make_state() -> GameState {
         GameState::new(vec![
@@ -92,7 +93,7 @@ mod tests {
     fn add_creature_to_battlefield(
         state: &mut GameState,
         owner: PlayerId,
-        def: CardDefinition,
+        def: crate::types::CardDefinition,
     ) -> ObjectId {
         let id = state.alloc_id();
         let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
@@ -104,9 +105,13 @@ mod tests {
 
     #[test]
     fn creature_with_lethal_damage_goes_to_graveyard() {
+        let db = test_db();
         let mut gs = make_state();
-        let bear_id =
-            add_creature_to_battlefield(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear_id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
         gs.objects.get_mut(&bear_id).unwrap().damage_marked = 2; // toughness = 2, lethal
 
         let gs = check_and_apply_sbas(gs);
@@ -118,9 +123,13 @@ mod tests {
 
     #[test]
     fn creature_below_lethal_damage_survives() {
+        let db = test_db();
         let mut gs = make_state();
-        let bear_id =
-            add_creature_to_battlefield(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear_id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
         gs.objects.get_mut(&bear_id).unwrap().damage_marked = 1; // toughness = 2, survives
 
         let gs = check_and_apply_sbas(gs);
@@ -151,11 +160,18 @@ mod tests {
 
     #[test]
     fn multiple_dying_creatures_all_go_to_graveyard() {
+        let db = test_db();
         let mut gs = make_state();
-        let bear1 =
-            add_creature_to_battlefield(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
-        let bear2 =
-            add_creature_to_battlefield(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear1 = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let bear2 = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
         gs.objects.get_mut(&bear1).unwrap().damage_marked = 5;
         gs.objects.get_mut(&bear2).unwrap().damage_marked = 5;
 

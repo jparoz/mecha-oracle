@@ -108,7 +108,8 @@ pub fn cast_creature(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CardDefinition, CardObject, Player};
+    use crate::cards::test_helpers::test_db;
+    use crate::types::{CardObject, Player};
 
     fn make_state() -> GameState {
         let mut gs = GameState::new(vec![
@@ -119,7 +120,11 @@ mod tests {
         gs
     }
 
-    fn put_in_hand(state: &mut GameState, owner: PlayerId, def: CardDefinition) -> ObjectId {
+    fn put_in_hand(
+        state: &mut GameState,
+        owner: PlayerId,
+        def: crate::types::CardDefinition,
+    ) -> ObjectId {
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Hand);
         state.hands.get_mut(&owner).unwrap().push(id);
@@ -129,8 +134,9 @@ mod tests {
 
     #[test]
     fn play_land_moves_from_hand_to_battlefield() {
+        let db = test_db();
         let mut gs = make_state();
-        let forest_id = put_in_hand(&mut gs, PlayerId(0), CardDefinition::forest());
+        let forest_id = put_in_hand(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
 
         let gs = play_land(gs, PlayerId(0), forest_id).unwrap();
 
@@ -142,9 +148,10 @@ mod tests {
 
     #[test]
     fn cannot_play_second_land_in_same_turn() {
+        let db = test_db();
         let mut gs = make_state();
         gs.lands_played_this_turn = 1;
-        let forest_id = put_in_hand(&mut gs, PlayerId(0), CardDefinition::forest());
+        let forest_id = put_in_hand(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
 
         assert!(matches!(
             play_land(gs, PlayerId(0), forest_id),
@@ -154,9 +161,14 @@ mod tests {
 
     #[test]
     fn cast_creature_spends_mana_and_enters_battlefield() {
+        let db = test_db();
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
-        let bear_id = put_in_hand(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear_id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
 
         let gs = cast_creature(gs, PlayerId(0), bear_id).unwrap();
 
@@ -168,8 +180,13 @@ mod tests {
 
     #[test]
     fn cannot_cast_creature_without_mana() {
+        let db = test_db();
         let mut gs = make_state();
-        let bear_id = put_in_hand(&mut gs, PlayerId(0), CardDefinition::grizzly_bears());
+        let bear_id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
 
         assert!(matches!(
             cast_creature(gs, PlayerId(0), bear_id),
@@ -179,9 +196,10 @@ mod tests {
 
     #[test]
     fn cannot_play_land_outside_main_phase() {
+        let db = test_db();
         let mut gs = make_state();
         gs.step = Step::BeginningOfCombat;
-        let forest_id = put_in_hand(&mut gs, PlayerId(0), CardDefinition::forest());
+        let forest_id = put_in_hand(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
 
         assert!(matches!(
             play_land(gs, PlayerId(0), forest_id),
