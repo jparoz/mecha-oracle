@@ -245,7 +245,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             .collect(),
         lands: bf_objects
             .iter()
-            .filter(|obj| obj.is_land())
+            .filter(|obj| obj.is_land() && !obj.is_creature())
             .map(|obj| to_card_view(obj))
             .collect(),
         creatures: bf_objects
@@ -417,5 +417,14 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(format_mana_cost(&cost), "3G");
+    }
+
+    #[test]
+    fn format_type_line_with_subtype() {
+        // Forest has supertype Basic, card type Land, subtype Forest
+        let db = test_db();
+        let forest = db.get("Forest").unwrap();
+        let result = format_type_line(&forest.type_line);
+        assert_eq!(result, "Basic Land — Forest");
     }
 }
