@@ -1,7 +1,10 @@
 use mecha_oracle::cards::CardDatabase;
-use mecha_oracle::engine::turn::{apply_step_start, draw_card};
+use mecha_oracle::engine::casting::{cast_creature, play_land};
+use mecha_oracle::engine::combat::{deal_combat_damage, declare_attackers, declare_blockers};
+use mecha_oracle::engine::mana::tap_land_for_mana;
+use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card};
 use mecha_oracle::types::{CardObject, GameState, Player, PlayerId, Step, Zone};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -281,6 +284,73 @@ fn build_game_view(state: &GameState) -> GameView {
     }
 }
 
+// ── Actions ──────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ActionRequest {
+    TapLand { object_id: u64 },
+    PlayLand { object_id: u64 },
+    CastCreature { object_id: u64 },
+    DeclareAttackers { attacker_ids: Vec<u64> },
+    DeclareBlockers { blocks: Vec<[u64; 2]> },
+    DealCombatDamage,
+    AdvanceStep,
+}
+
+#[derive(Serialize)]
+struct ActionResponse {
+    ok: bool,
+    state: GameView,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState, String> {
+    match action {
+        ActionRequest::TapLand { object_id } => {
+            tap_land_for_mana(state, mecha_oracle::types::ObjectId(object_id))
+                .map_err(|e| format!("{e:?}"))
+        }
+        ActionRequest::PlayLand { object_id } => {
+            let active = state.active_player;
+            play_land(state, active, mecha_oracle::types::ObjectId(object_id))
+                .map_err(|e| format!("{e:?}"))
+        }
+        ActionRequest::CastCreature { object_id } => {
+            let active = state.active_player;
+            cast_creature(state, active, mecha_oracle::types::ObjectId(object_id))
+                .map_err(|e| format!("{e:?}"))
+        }
+        ActionRequest::DeclareAttackers { attacker_ids } => {
+            let ids: Vec<mecha_oracle::types::ObjectId> = attacker_ids
+                .iter()
+                .map(|&id| mecha_oracle::types::ObjectId(id))
+                .collect();
+            let active = state.active_player;
+            declare_attackers(state, active, &ids).map_err(|e| format!("{e:?}"))
+        }
+        ActionRequest::DeclareBlockers { blocks } => {
+            let pairs: Vec<(mecha_oracle::types::ObjectId, mecha_oracle::types::ObjectId)> = blocks
+                .iter()
+                .map(|[b, a]| {
+                    (
+                        mecha_oracle::types::ObjectId(*b),
+                        mecha_oracle::types::ObjectId(*a),
+                    )
+                })
+                .collect();
+            let defender = state.opponent_of(state.active_player);
+            declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
+        }
+        ActionRequest::DealCombatDamage => Ok(deal_combat_damage(state)),
+        ActionRequest::AdvanceStep => {
+            let s = advance_step(state);
+            Ok(apply_step_start(s))
+        }
+    }
+}
+
 // ── Game init ────────────────────────────────────────────────────────────────
 
 fn init_game(path: &str, shuffle: bool) -> Result<GameState, String> {
@@ -426,5 +496,64 @@ mod tests {
         let forest = db.get("Forest").unwrap();
         let result = format_type_line(&forest.type_line);
         assert_eq!(result, "Basic Land — Forest");
+    }
+
+    #[test]
+    fn dispatch_advance_step_moves_to_upkeep() {
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let gs = build_game_state(config, &db, false).unwrap();
+        assert_eq!(gs.step(), Step::Untap);
+        let gs2 = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        assert_eq!(gs2.step(), Step::Upkeep);
+    }
+
+    #[test]
+    fn dispatch_tap_land_adds_mana_to_pool() {
+        use mecha_oracle::engine::casting::play_land;
+        let config = vec![
+            vec![
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Grizzly Bears".into(),
+                "Grizzly Bears".into(),
+                "Grizzly Bears".into(),
+                "Grizzly Bears".into(),
+                "Forest".into(),
+                "Forest".into(),
+            ],
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        // Advance through Untap → Upkeep → Draw → Main 1
+        gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap(); // → Upkeep
+        gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap(); // → Draw
+        gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap(); // → PreCombatMain
+
+        // Play a land from P1's hand
+        let land_id = gs.hands[&PlayerId(0)]
+            .iter()
+            .find(|id| gs.objects[*id].is_land())
+            .copied()
+            .unwrap();
+        gs = play_land(gs, PlayerId(0), land_id).unwrap();
+
+        // Tap it for mana
+        let tap_result = dispatch_action(
+            gs,
+            ActionRequest::TapLand {
+                object_id: land_id.0,
+            },
+        );
+        assert!(tap_result.is_ok());
+        let gs2 = tap_result.unwrap();
+        assert_eq!(gs2.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
     }
 }
