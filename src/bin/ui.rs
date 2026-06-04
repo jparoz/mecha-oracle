@@ -1,6 +1,6 @@
 use mecha_oracle::cards::CardDatabase;
-use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card};
-use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
+use mecha_oracle::engine::turn::{apply_step_start, draw_card};
+use mecha_oracle::types::{CardObject, GameState, Player, PlayerId, Step, Zone};
 use std::path::Path;
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -30,6 +30,15 @@ fn build_game_state(
     ];
     let mut gs = GameState::new(players);
 
+    let base_seed = if shuffle {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos() as u64
+    } else {
+        0
+    };
+
     for (player_idx, names) in config.iter().enumerate() {
         let pid = PlayerId(player_idx as u8);
 
@@ -45,13 +54,9 @@ fn build_game_state(
         }
 
         if shuffle {
-            let seed = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos() as u64;
             let lib = gs.libraries.get_mut(&pid).unwrap();
             let n = lib.len();
-            let mut rng = seed.wrapping_add(player_idx as u64 * 6364136223846793005);
+            let mut rng = base_seed.wrapping_add(player_idx as u64 * 6364136223846793005);
             for i in (1..n).rev() {
                 rng = rng
                     .wrapping_mul(6364136223846793005)
