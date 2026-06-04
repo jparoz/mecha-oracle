@@ -28,17 +28,22 @@ impl CardDatabase {
             .map_err(|e| format!("Invalid JSON in {}: {e}", path.display()))?;
 
         let mut inner = HashMap::new();
+        let mut loaded = 0usize;
+        let mut skipped = 0usize;
         for v in &cards {
             match scryfall::parse_card(v) {
                 Ok(def) => {
                     inner.insert(def.name.to_lowercase(), def);
+                    loaded += 1;
                 }
                 Err(e) => {
                     let name = v["name"].as_str().unwrap_or("<unknown>");
-                    eprintln!("Warning: skipping card {name:?}: {e}");
+                    tracing::debug!(card = name, error = %e, "skipped card");
+                    skipped += 1;
                 }
             }
         }
+        tracing::info!(loaded, skipped, "card database loaded");
 
         Ok(Self { inner })
     }
