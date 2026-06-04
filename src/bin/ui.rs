@@ -3,9 +3,8 @@ use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{deal_combat_damage, declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::tap_land_for_mana;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card};
-use mecha_oracle::types::{CardObject, GameState, Player, PlayerId, Step, Zone};
+use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Zone};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -309,36 +308,25 @@ struct ActionResponse {
 fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState, String> {
     match action {
         ActionRequest::TapLand { object_id } => {
-            tap_land_for_mana(state, mecha_oracle::types::ObjectId(object_id))
-                .map_err(|e| format!("{e:?}"))
+            tap_land_for_mana(state, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::PlayLand { object_id } => {
             let active = state.active_player;
-            play_land(state, active, mecha_oracle::types::ObjectId(object_id))
-                .map_err(|e| format!("{e:?}"))
+            play_land(state, active, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::CastCreature { object_id } => {
             let active = state.active_player;
-            cast_creature(state, active, mecha_oracle::types::ObjectId(object_id))
-                .map_err(|e| format!("{e:?}"))
+            cast_creature(state, active, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::DeclareAttackers { attacker_ids } => {
-            let ids: Vec<mecha_oracle::types::ObjectId> = attacker_ids
-                .iter()
-                .map(|&id| mecha_oracle::types::ObjectId(id))
-                .collect();
+            let ids: Vec<ObjectId> = attacker_ids.iter().map(|&id| ObjectId(id)).collect();
             let active = state.active_player;
             declare_attackers(state, active, &ids).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::DeclareBlockers { blocks } => {
-            let pairs: Vec<(mecha_oracle::types::ObjectId, mecha_oracle::types::ObjectId)> = blocks
+            let pairs: Vec<(ObjectId, ObjectId)> = blocks
                 .iter()
-                .map(|[b, a]| {
-                    (
-                        mecha_oracle::types::ObjectId(*b),
-                        mecha_oracle::types::ObjectId(*a),
-                    )
-                })
+                .map(|[b, a]| (ObjectId(*b), ObjectId(*a)))
                 .collect();
             let defender = state.opponent_of(state.active_player);
             declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
@@ -368,6 +356,8 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mecha_oracle::types::Step;
+    use std::path::Path;
 
     fn test_db() -> CardDatabase {
         CardDatabase::from_path(Path::new("tests/fixtures/oracle_cards_test.json")).unwrap()
