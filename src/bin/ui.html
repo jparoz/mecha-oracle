@@ -1,1 +1,535 @@
-<!DOCTYPE html><html><body>Loading...</body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mecha-Oracle</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; height: 100vh; overflow: hidden; }
+#root { display: flex; height: 100vh; }
+#board { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+#sidebar { width: 240px; background: #161b22; border-left: 1px solid #30363d; display: flex; flex-direction: column; flex-shrink: 0; }
+
+/* Hand rows */
+.hand-row { display: flex; justify-content: center; align-items: center; gap: 6px; padding: 8px 12px; flex-shrink: 0; flex-wrap: wrap; }
+.hand-row.p2 { background: #120909; border-bottom: 1px solid #2a1a1a; }
+.hand-row.p1 { background: #091209; border-top: 1px solid #1a2a1a; }
+
+/* Player sections */
+.player-section { flex: 1; display: flex; flex-direction: column; padding: 6px 10px; gap: 5px; min-height: 0; overflow: hidden; }
+.player-section.p2 { background: #160d0d; border-bottom: 2px solid #30363d; justify-content: flex-end; }
+.player-section.p1 { background: #0d1610; border-top: 2px solid #30363d; }
+.player-header { display: flex; align-items: center; gap: 10px; padding: 2px 0; flex-shrink: 0; }
+.player-name { font-weight: bold; font-size: 13px; }
+.p2 .player-name { color: #ff7b7b; }
+.p1 .player-name { color: #7bff9a; }
+.life { font-size: 18px; font-weight: bold; }
+.p2 .life { color: #ff6b6b; }
+.p1 .life { color: #51cf66; }
+.mana-pool { display: flex; gap: 3px; align-items: center; }
+.pip { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #555; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; }
+.pip-W { background: #4d4a1a; border-color: #9a932d; color: #e8e06f; }
+.pip-U { background: #1a2a4d; border-color: #2d4a9a; color: #6f8ee8; }
+.pip-B { background: #2a1a2a; border-color: #6a3a6a; color: #c06fc0; }
+.pip-R { background: #4d1a1a; border-color: #9a2d2d; color: #e86f6f; }
+.pip-G { background: #1a4d1a; border-color: #2d7a2d; color: #6fd86f; }
+.pip-C { background: #2a2a2a; border-color: #666; color: #ccc; }
+.zone-info { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 11px; color: #666; }
+
+/* Zone rows */
+.zone-row { display: flex; align-items: center; gap: 6px; min-height: 72px; flex-shrink: 0; }
+.zone-label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; width: 18px; writing-mode: vertical-rl; transform: rotate(180deg); flex-shrink: 0; align-self: center; }
+
+/* Cards */
+.card-wrap { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; }
+.card-wrap.tapped-wrap { width: 86px; height: 62px; }
+.card {
+  width: 56px; height: 78px; border-radius: 4px; border: 1px solid #444;
+  background: #1c2a1c; display: flex; flex-direction: column; padding: 4px;
+  cursor: pointer; position: relative;
+  transition: transform 0.15s ease, box-shadow 0.15s;
+  transform-origin: center center;
+  user-select: none;
+}
+.card:hover { box-shadow: 0 0 10px rgba(100,200,100,0.5); border-color: #6a9a6a; transform: none !important; }
+.card.land { background: #2a1e10; border-color: #6b4c1e; }
+.card.land:hover { box-shadow: 0 0 10px rgba(180,140,60,0.5) !important; border-color: #c49a3a !important; }
+.card.tapped { transform: rotate(90deg); }
+.card.attacking { border-color: #ff6b6b; box-shadow: 0 0 8px rgba(255,100,100,0.5); }
+.card.blocking { border-color: #88bbff; box-shadow: 0 0 8px rgba(100,150,255,0.4); }
+.card.selected { border-color: #ffdd57 !important; box-shadow: 0 0 10px rgba(255,220,80,0.7) !important; }
+.card-name { font-size: 7.5px; font-weight: bold; color: #ddd; line-height: 1.2; flex: 1; }
+.card-cost { font-size: 8px; color: #aaa; text-align: right; }
+.card-type { font-size: 7px; color: #888; margin-top: 2px; }
+.card-pt { font-size: 9px; font-weight: bold; color: #ccc; text-align: right; margin-top: auto; padding-top: 2px; border-top: 1px solid #333; }
+.card-pt.damaged { color: #ff9966; }
+
+/* Tooltip */
+.tooltip {
+  display: none; position: absolute; left: 64px; top: 0;
+  width: 200px; background: #1e2430; border: 1px solid #4a6a9a;
+  border-radius: 6px; padding: 10px; z-index: 100;
+  font-size: 11px; color: #ccc; pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6); line-height: 1.5;
+  transform: none !important;
+}
+.card:hover .tooltip { display: block; }
+.tooltip-name { font-size: 13px; font-weight: bold; color: #fff; margin-bottom: 2px; }
+.tooltip-cost { font-size: 11px; color: #aaa; margin-bottom: 4px; }
+.tooltip-type { font-size: 10px; color: #888; border-bottom: 1px solid #2a3a4a; padding-bottom: 4px; margin-bottom: 6px; }
+.tooltip-text { color: #bbb; font-style: italic; margin-bottom: 6px; }
+.tooltip-pt { font-weight: bold; color: #ddd; margin-bottom: 6px; }
+.tooltip-tags { display: flex; flex-wrap: wrap; gap: 3px; }
+.tag { display: inline-block; border-radius: 3px; padding: 1px 6px; font-size: 10px; font-style: normal; }
+.tag-sick     { background: #3a2010; border: 1px solid #7a4010; color: #e08040; }
+.tag-tapped   { background: #1a2a3a; border: 1px solid #3a5a7a; color: #6aaada; }
+.tag-damage   { background: #3a1a1a; border: 1px solid #7a3030; color: #ee7070; }
+.tag-attack   { background: #3a1010; border: 1px solid #8a2020; color: #ee6060; }
+.tag-block    { background: #1a1a3a; border: 1px solid #3a3a8a; color: #8080ee; }
+
+/* Library / Graveyard */
+.library-pile { width: 52px; height: 72px; background: #1a1a2e; border: 1px dashed #3a3a5a; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.library-pile .pile-count { font-size: 16px; color: #444; font-weight: bold; }
+.library-pile .pile-label { font-size: 9px; color: #555; }
+.gy-wrap { position: relative; width: 56px; height: 72px; flex-shrink: 0; cursor: pointer; }
+.gy-card { position: absolute; width: 50px; height: 68px; border-radius: 4px; border: 1px solid #5a2a2a; background: #1a1010; }
+.gy-card:nth-child(1) { left: 6px; top: 4px; }
+.gy-card:nth-child(2) { left: 3px; top: 2px; background: #1e1212; border-color: #6a3030; }
+.gy-card:nth-child(3) { left: 0; top: 0; background: #221414; border-color: #7a3535; display: flex; flex-direction: column; padding: 4px; transition: transform 0.15s; }
+.gy-wrap:hover .gy-card:nth-child(3) { transform: translateY(-4px); }
+.gy-card-name { font-size: 7.5px; font-weight: bold; color: #aa6666; line-height: 1.2; flex: 1; }
+.gy-card-type { font-size: 7px; color: #664444; }
+.gy-card-pt   { font-size: 9px; color: #885555; text-align: right; margin-top: auto; padding-top: 2px; border-top: 1px solid #442222; }
+.gy-label { position: absolute; bottom: -14px; left: 0; right: 0; text-align: center; font-size: 9px; color: #555; text-transform: uppercase; }
+
+/* Turn tracker */
+#turn-tracker { background: #161b22; border-top: 1px solid #30363d; border-bottom: 1px solid #30363d; padding: 5px 12px; display: flex; align-items: center; gap: 4px; font-size: 11px; flex-shrink: 0; flex-wrap: wrap; }
+.step-chip { padding: 2px 6px; border-radius: 3px; color: #555; }
+.step-chip.done { color: #555; }
+.step-chip.active { color: #ffd700; background: #2a2500; border: 1px solid #5a4a00; font-weight: bold; }
+.step-chip.upcoming { color: #444; }
+.step-sep { color: #333; }
+.active-label { margin-left: auto; font-size: 11px; color: #6a9a6a; }
+
+/* Sidebar */
+#sidebar-header { padding: 10px 12px; border-bottom: 1px solid #30363d; }
+#sidebar-header h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888; }
+#actions { padding: 8px; flex: 1; overflow-y: auto; }
+.action-group { margin-bottom: 10px; }
+.action-group-label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; padding-left: 2px; }
+.action-btn { display: block; width: 100%; background: #1c2a3a; border: 1px solid #2a4a6a; border-radius: 4px; padding: 6px 10px; color: #7ab8e8; font-size: 12px; cursor: pointer; text-align: left; margin-bottom: 3px; transition: background 0.1s; }
+.action-btn:hover { background: #243650; border-color: #4a7aaa; }
+.action-btn.pass { background: #1a2a1a; border-color: #2a5a2a; color: #7aaa7a; }
+.action-btn.pass:hover { background: #243524; }
+.action-btn.selected { border-color: #ffdd57; color: #ffdd57; background: #2a2500; }
+.action-btn .cost { float: right; font-size: 10px; color: #888; }
+
+/* Game log */
+#log { border-top: 1px solid #30363d; padding: 8px; max-height: 200px; overflow-y: auto; }
+#log h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #555; margin-bottom: 6px; }
+.log-entry { font-size: 11px; color: #666; padding: 2px 0; border-bottom: 1px solid #1e2530; line-height: 1.4; }
+.log-p1 .who { color: #51cf66; font-weight: bold; }
+.log-p2 .who { color: #ff7b7b; font-weight: bold; }
+.log-engine { color: #8888aa; font-style: italic; }
+.log-error  { color: #ff6b6b; }
+
+/* GY modal */
+#gy-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
+#gy-modal.open { display: flex; }
+.gy-modal-box { background: #1e2430; border: 1px solid #4a6a9a; border-radius: 8px; padding: 16px; min-width: 300px; max-width: 480px; }
+.gy-modal-box h3 { font-size: 13px; color: #aaa; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+.gy-modal-card { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #2a3a4a; font-size: 12px; color: #ccc; }
+.gy-modal-card:last-child { border-bottom: none; }
+.gy-modal-card .gy-name { flex: 1; }
+.gy-modal-card .gy-type { font-size: 10px; color: #666; }
+.gy-modal-card .gy-pt { font-size: 11px; color: #888; }
+.gy-modal-close { margin-top: 12px; display: block; width: 100%; background: #2a3a4a; border: 1px solid #4a6a8a; border-radius: 4px; padding: 6px; color: #aac; font-size: 12px; cursor: pointer; text-align: center; }
+.gy-empty { font-size: 12px; color: #555; text-align: center; padding: 12px 0; }
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="board">
+    <div class="hand-row p2" id="p2-hand"></div>
+    <div class="player-section p2" id="p2-section">
+      <div class="zone-row"><span class="zone-label">Creatures</span><div id="p2-creatures" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+      <div class="zone-row"><span class="zone-label">Lands</span><div id="p2-lands" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+      <div class="player-header">
+        <span class="player-name p2">Player 2</span>
+        <span class="life p2" id="p2-life">♥ 20</span>
+        <div class="mana-pool" id="p2-mana"></div>
+        <div class="zone-info">
+          <div class="library-pile" id="p2-lib"><span class="pile-count">0</span><span class="pile-label">Library</span></div>
+          <div class="gy-wrap" id="p2-gy-wrap" onclick="openGY(2)">
+            <div class="gy-card"></div><div class="gy-card"></div>
+            <div class="gy-card" id="p2-gy-top"></div>
+            <span class="gy-label" id="p2-gy-label">GY (0)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="turn-tracker"></div>
+    <div class="player-section p1" id="p1-section">
+      <div class="player-header">
+        <span class="player-name p1">Player 1</span>
+        <span class="life p1" id="p1-life">♥ 20</span>
+        <div class="mana-pool" id="p1-mana"></div>
+        <div class="zone-info">
+          <div class="library-pile" id="p1-lib"><span class="pile-count">0</span><span class="pile-label">Library</span></div>
+          <div class="gy-wrap" id="p1-gy-wrap" onclick="openGY(1)">
+            <div class="gy-card"></div><div class="gy-card"></div>
+            <div class="gy-card" id="p1-gy-top"></div>
+            <span class="gy-label" id="p1-gy-label">GY (0)</span>
+          </div>
+        </div>
+      </div>
+      <div class="zone-row"><span class="zone-label">Lands</span><div id="p1-lands" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+      <div class="zone-row"><span class="zone-label">Creatures</span><div id="p1-creatures" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+    </div>
+    <div class="hand-row p1" id="p1-hand"></div>
+  </div>
+  <div id="sidebar">
+    <div id="sidebar-header"><h3>Actions</h3></div>
+    <div id="actions"></div>
+    <div id="log"><h4>Game Log</h4></div>
+  </div>
+</div>
+
+<!-- GY Modal -->
+<div id="gy-modal">
+  <div class="gy-modal-box">
+    <h3 id="gy-modal-title">Graveyard</h3>
+    <div id="gy-modal-cards"></div>
+    <button class="gy-modal-close" onclick="closeGY()">Close</button>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+
+let currentState = null;
+let attackersSelected = [];
+let blockersAssignment = {}; // blocker_id (number) -> attacker_id (number)
+let gyData = { 1: [], 2: [] };
+
+// ── Fetch / send ─────────────────────────────────────────────────────────────
+
+async function fetchState() {
+  const res = await fetch('/state');
+  currentState = await res.json();
+  render(currentState);
+}
+
+async function sendAction(action) {
+  const res = await fetch('/action', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(action),
+  });
+  const data = await res.json();
+  currentState = data.state;
+  if (data.ok) {
+    appendLog(describeAction(action), actionLogClass(action, currentState));
+    attackersSelected = [];
+    blockersAssignment = {};
+  } else {
+    appendLog('Engine: ' + data.error, 'log-error');
+  }
+  render(currentState);
+}
+
+function describeAction(action) {
+  const ap = currentState.active_player;
+  switch (action.type) {
+    case 'tap_land':       return `<span class="who">P${ap}</span> tapped a land for mana`;
+    case 'play_land':      return `<span class="who">P${ap}</span> played a land`;
+    case 'cast_creature':  return `<span class="who">P${ap}</span> cast a creature`;
+    case 'declare_attackers': return `<span class="who">P${ap}</span> declared attackers`;
+    case 'declare_blockers':  {
+      const def = ap === 1 ? 2 : 1;
+      return `<span class="who">P${def}</span> declared blockers`;
+    }
+    case 'deal_combat_damage': return '<span class="log-engine">— Combat damage resolved —</span>';
+    case 'advance_step':   return `<span class="log-engine">— Advanced to ${currentState.step} —</span>`;
+    default: return JSON.stringify(action);
+  }
+}
+
+function actionLogClass(action) {
+  if (action.type === 'advance_step' || action.type === 'deal_combat_damage') return 'log-engine';
+  if (action.type === 'declare_blockers') {
+    return currentState.active_player === 1 ? 'log-p2' : 'log-p1';
+  }
+  return currentState.active_player === 1 ? 'log-p1' : 'log-p2';
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+
+const STEP_ORDER = [
+  'Untap','Upkeep','Draw','PreCombatMain',
+  'BeginningOfCombat','DeclareAttackers','DeclareBlockers','CombatDamage','EndOfCombat',
+  'PostCombatMain','End','Cleanup'
+];
+const STEP_LABELS = {
+  Untap:'Untap', Upkeep:'Upkeep', Draw:'Draw', PreCombatMain:'Main 1',
+  BeginningOfCombat:'Begin Combat', DeclareAttackers:'Attackers',
+  DeclareBlockers:'Blockers', CombatDamage:'Damage', EndOfCombat:'End Combat',
+  PostCombatMain:'Main 2', End:'End', Cleanup:'Cleanup'
+};
+
+function render(s) {
+  gyData = { 1: s.p1.graveyard, 2: s.p2.graveyard };
+
+  document.getElementById('p1-life').textContent = '♥ ' + s.p1.life;
+  document.getElementById('p2-life').textContent = '♥ ' + s.p2.life;
+
+  renderMana('p1-mana', s.p1.mana_pool);
+  renderMana('p2-mana', s.p2.mana_pool);
+
+  document.querySelector('#p1-lib .pile-count').textContent = s.p1.library_count;
+  document.querySelector('#p2-lib .pile-count').textContent = s.p2.library_count;
+
+  renderGYPile('p1', s.p1.graveyard);
+  renderGYPile('p2', s.p2.graveyard);
+
+  document.getElementById('p1-hand').innerHTML     = s.p1.hand.map(c => cardHTML(c)).join('');
+  document.getElementById('p2-hand').innerHTML     = s.p2.hand.map(c => cardHTML(c)).join('');
+  document.getElementById('p1-lands').innerHTML    = s.p1.lands.map(c => cardHTML(c)).join('');
+  document.getElementById('p2-lands').innerHTML    = s.p2.lands.map(c => cardHTML(c)).join('');
+  document.getElementById('p1-creatures').innerHTML = s.p1.creatures.map(c => cardHTML(c)).join('');
+  document.getElementById('p2-creatures').innerHTML = s.p2.creatures.map(c => cardHTML(c)).join('');
+
+  renderTurnTracker(s);
+  renderActions(s);
+}
+
+function renderMana(elId, pool) {
+  const colors = [
+    ['W', pool.w], ['U', pool.u], ['B', pool.b],
+    ['R', pool.r], ['G', pool.g], ['C', pool.c],
+  ];
+  document.getElementById(elId).innerHTML = colors
+    .filter(([, n]) => n > 0)
+    .flatMap(([c, n]) => Array(n).fill(`<span class="pip pip-${c}">${c}</span>`))
+    .join('');
+}
+
+function renderGYPile(prefix, graveyard) {
+  const top = graveyard[graveyard.length - 1];
+  const label = document.getElementById(prefix + '-gy-label');
+  const topEl = document.getElementById(prefix + '-gy-top');
+  label.textContent = `GY (${graveyard.length})`;
+  if (top) {
+    topEl.innerHTML = `<span class="gy-card-name">${top.name}</span><span class="gy-card-type">${top.type_line}</span>` +
+      (top.power != null ? `<span class="gy-card-pt">${top.power}/${top.toughness}</span>` : '');
+  } else {
+    topEl.innerHTML = '<span style="font-size:10px;color:#442222;text-align:center;width:100%">empty</span>';
+  }
+  document.getElementById(prefix + '-gy-wrap').style.cursor = graveyard.length > 0 ? 'pointer' : 'default';
+}
+
+function cardHTML(card) {
+  const isLand = card.type_line.includes('Land');
+  const isSelected = attackersSelected.includes(card.id) ||
+    Object.keys(blockersAssignment).map(Number).includes(card.id);
+
+  let classes = 'card';
+  if (isLand) classes += ' land';
+  if (card.tapped) classes += ' tapped';
+  if (card.is_attacking) classes += ' attacking';
+  if (card.is_blocking) classes += ' blocking';
+  if (isSelected) classes += ' selected';
+
+  const wrap = card.tapped ? 'card-wrap tapped-wrap' : 'card-wrap';
+
+  const tags = [];
+  if (card.tapped)         tags.push('<span class="tag tag-tapped">Tapped</span>');
+  if (card.summoning_sick) tags.push('<span class="tag tag-sick">Summoning sickness</span>');
+  if (card.damage_marked > 0) tags.push(`<span class="tag tag-damage">${card.damage_marked} damage</span>`);
+  if (card.is_attacking)   tags.push('<span class="tag tag-attack">Attacking</span>');
+  if (card.is_blocking)    tags.push('<span class="tag tag-block">Blocking</span>');
+
+  const tooltip = `
+    <div class="tooltip">
+      <div class="tooltip-name">${esc(card.name)}</div>
+      ${card.mana_cost ? `<div class="tooltip-cost">${esc(card.mana_cost)}</div>` : ''}
+      <div class="tooltip-type">${esc(card.type_line)}</div>
+      ${card.oracle_text ? `<div class="tooltip-text">${esc(card.oracle_text)}</div>` : ''}
+      ${card.power != null ? `<div class="tooltip-pt">${card.power} / ${card.toughness}</div>` : ''}
+      ${tags.length ? `<div class="tooltip-tags">${tags.join('')}</div>` : ''}
+    </div>`;
+
+  const pt = card.power != null
+    ? `<span class="card-pt${card.damage_marked > 0 ? ' damaged' : ''}">${card.power}/${card.toughness}</span>`
+    : '';
+
+  return `<div class="${wrap}"><div class="${classes}" data-id="${card.id}">
+    <span class="card-name">${esc(card.name)}</span>
+    ${card.mana_cost ? `<span class="card-cost">${esc(card.mana_cost)}</span>` : ''}
+    <span class="card-type">${esc(card.type_line)}</span>
+    ${pt}
+    ${tooltip}
+  </div></div>`;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderTurnTracker(s) {
+  const cur = STEP_ORDER.indexOf(s.step);
+  const chips = STEP_ORDER.map((step, i) => {
+    const cls = i < cur ? 'done' : i === cur ? 'active' : 'upcoming';
+    return `<span class="step-chip ${cls}">${STEP_LABELS[step]}</span>`;
+  }).join('<span class="step-sep">·</span>');
+  const ap = s.active_player === 1 ? 'Player 1' : 'Player 2';
+  document.getElementById('turn-tracker').innerHTML =
+    `<span style="color:#888;margin-right:4px">Turn ${s.turn}</span>${chips}<span class="active-label">Active: ${ap}</span>`;
+}
+
+// ── Actions panel ─────────────────────────────────────────────────────────────
+
+function renderActions(s) {
+  if (s.game_over) {
+    const winner = s.winner ? `Player ${s.winner} wins!` : 'Draw!';
+    document.getElementById('actions').innerHTML =
+      `<div style="background:#2a1a00;border:1px solid #8a5a00;border-radius:4px;padding:8px 10px;font-size:12px;color:#ffcc44;text-align:center">Game Over — ${winner}</div>`;
+    return;
+  }
+
+  const ap  = s.active_player === 1 ? s.p1 : s.p2;
+  const def = s.active_player === 1 ? s.p2 : s.p1;
+  let html = '';
+
+  if (s.step === 'PreCombatMain' || s.step === 'PostCombatMain') {
+    const untapped = ap.lands.filter(c => !c.tapped);
+    if (untapped.length > 0) {
+      html += group('Tap for mana', untapped.map(c =>
+        btn(c.name, `sendAction({type:'tap_land',object_id:${c.id}})`)));
+    }
+    if (s.lands_played_this_turn === 0) {
+      const lands = ap.hand.filter(c => c.type_line.includes('Land'));
+      if (lands.length > 0) {
+        html += group('Play land', lands.map(c =>
+          btn('Play ' + esc(c.name), `sendAction({type:'play_land',object_id:${c.id}})`)));
+      }
+    }
+    const castable = ap.hand.filter(c => c.type_line.includes('Creature'));
+    if (castable.length > 0) {
+      html += group('Cast creature', castable.map(c =>
+        btn(esc(c.name), `sendAction({type:'cast_creature',object_id:${c.id}})`, c.mana_cost || '')));
+    }
+
+  } else if (s.step === 'DeclareAttackers') {
+    const eligible = ap.creatures.filter(c => c.can_attack);
+    if (eligible.length > 0) {
+      const btns = eligible.map(c => {
+        const sel = attackersSelected.includes(c.id);
+        return `<button class="action-btn${sel ? ' selected' : ''}" onclick="toggleAttacker(${c.id})">${esc(c.name)}${sel ? ' ✓' : ''}</button>`;
+      });
+      btns.push(btn('Confirm Attackers', 'confirmAttackers()'));
+      html += group('Select attackers', btns);
+    } else {
+      html += '<p style="font-size:11px;color:#666;padding:4px">No eligible attackers.</p>';
+    }
+
+  } else if (s.step === 'DeclareBlockers') {
+    const attackers = ap.creatures.filter(c => c.is_attacking);
+    const blockers  = def.creatures.filter(c => c.can_block);
+    if (attackers.length > 0 && blockers.length > 0) {
+      let inner = '';
+      for (const attacker of attackers) {
+        inner += `<div style="margin-bottom:6px"><div class="action-group-label">Block ${esc(attacker.name)}</div>`;
+        for (const blocker of blockers) {
+          const assigned = blockersAssignment[blocker.id] === attacker.id;
+          inner += `<button class="action-btn${assigned ? ' selected' : ''}" onclick="toggleBlocker(${blocker.id},${attacker.id})">${esc(blocker.name)}${assigned ? ' ✓' : ''}</button>`;
+        }
+        inner += '</div>';
+      }
+      inner += btn('Confirm Blockers', 'confirmBlockers()');
+      html += group('Assign blockers', [inner]);
+    } else if (attackers.length === 0) {
+      html += '<p style="font-size:11px;color:#666;padding:4px">No attackers.</p>';
+    }
+
+  } else if (s.step === 'CombatDamage') {
+    html += group('Combat', [btn('Resolve Damage', "sendAction({type:'deal_combat_damage'})")]);
+  }
+
+  html += group('Priority', [`<button class="action-btn pass" onclick="sendAction({type:'advance_step'})">Pass priority →</button>`]);
+  document.getElementById('actions').innerHTML = html;
+}
+
+function group(label, btns) {
+  return `<div class="action-group"><div class="action-group-label">${label}</div>${btns.join('')}</div>`;
+}
+function btn(label, onclick, cost) {
+  const costHtml = cost ? `<span class="cost">${esc(cost)}</span>` : '';
+  return `<button class="action-btn" onclick="${onclick}">${label}${costHtml}</button>`;
+}
+
+// ── Attacker / Blocker selection ──────────────────────────────────────────────
+
+function toggleAttacker(id) {
+  const idx = attackersSelected.indexOf(id);
+  if (idx >= 0) attackersSelected.splice(idx, 1);
+  else attackersSelected.push(id);
+  render(currentState);
+}
+
+function toggleBlocker(blockerId, attackerId) {
+  if (blockersAssignment[blockerId] === attackerId) {
+    delete blockersAssignment[blockerId];
+  } else {
+    blockersAssignment[blockerId] = attackerId;
+  }
+  render(currentState);
+}
+
+function confirmAttackers() {
+  sendAction({ type: 'declare_attackers', attacker_ids: attackersSelected });
+  attackersSelected = [];
+}
+
+function confirmBlockers() {
+  const blocks = Object.entries(blockersAssignment)
+    .map(([b, a]) => [parseInt(b), parseInt(a)]);
+  sendAction({ type: 'declare_blockers', blocks });
+  blockersAssignment = {};
+}
+
+// ── Graveyard modal ───────────────────────────────────────────────────────────
+
+function openGY(player) {
+  const cards = gyData[player];
+  if (cards.length === 0) return;
+  document.getElementById('gy-modal-title').textContent = `Player ${player} — Graveyard`;
+  document.getElementById('gy-modal-cards').innerHTML = cards.map(c =>
+    `<div class="gy-modal-card">
+      <span class="gy-name">${esc(c.name)}</span>
+      <span class="gy-type">${esc(c.type_line)}</span>
+      ${c.power != null ? `<span class="gy-pt">${c.power}/${c.toughness}</span>` : ''}
+    </div>`
+  ).join('');
+  document.getElementById('gy-modal').classList.add('open');
+}
+function closeGY() { document.getElementById('gy-modal').classList.remove('open'); }
+document.getElementById('gy-modal').addEventListener('click', e => { if (e.target === e.currentTarget) closeGY(); });
+
+// ── Log ───────────────────────────────────────────────────────────────────────
+
+function appendLog(html, cls) {
+  const log = document.getElementById('log');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry ' + (cls || '');
+  entry.innerHTML = html;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+fetchState();
+</script>
+</body>
+</html>
