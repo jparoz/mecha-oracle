@@ -1,3 +1,9 @@
+use axum::{
+    Json, Router,
+    extract::State,
+    response::{Html, IntoResponse},
+    routing::{get, post},
+};
 use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{deal_combat_damage, declare_attackers, declare_blockers};
@@ -5,6 +11,7 @@ use mecha_oracle::engine::mana::tap_land_for_mana;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card};
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Zone};
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -347,8 +354,92 @@ fn init_game(path: &str, shuffle: bool) -> Result<GameState, String> {
     build_game_state(config, &db, shuffle)
 }
 
-fn main() {
-    println!("todo");
+const INDEX_HTML: &str = include_str!("ui.html");
+
+// ── App state ────────────────────────────────────────────────────────────────
+
+#[derive(Clone)]
+struct AppState {
+    game: Arc<Mutex<GameState>>,
+}
+
+// ── Handlers ─────────────────────────────────────────────────────────────────
+
+async fn index_handler() -> impl IntoResponse {
+    Html(INDEX_HTML)
+}
+
+async fn state_handler(State(app): State<AppState>) -> Json<GameView> {
+    let gs = app.game.lock().unwrap();
+    Json(build_game_view(&gs))
+}
+
+async fn action_handler(
+    State(app): State<AppState>,
+    Json(req): Json<ActionRequest>,
+) -> Json<ActionResponse> {
+    let mut gs = app.game.lock().unwrap();
+    let current = gs.clone();
+    match dispatch_action(current, req) {
+        Ok(new_state) => {
+            *gs = new_state;
+            Json(ActionResponse {
+                ok: true,
+                state: build_game_view(&gs),
+                error: None,
+            })
+        }
+        Err(e) => Json(ActionResponse {
+            ok: false,
+            state: build_game_view(&gs),
+            error: Some(e),
+        }),
+    }
+}
+
+// ── CLI args ─────────────────────────────────────────────────────────────────
+
+fn parse_args() -> Result<(bool, String), String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.is_empty() {
+        return Err("Usage: ui [--shuffle] <deck.json>".into());
+    }
+    let shuffle = args.contains(&"--shuffle".to_string());
+    let path = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .cloned()
+        .ok_or("Usage: ui [--shuffle] <deck.json>")?;
+    Ok((shuffle, path))
+}
+
+// ── Entry point ───────────────────────────────────────────────────────────────
+
+#[tokio::main]
+async fn main() {
+    let (shuffle, path) = parse_args().unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(1);
+    });
+
+    let gs = init_game(&path, shuffle).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    });
+
+    let app_state = AppState {
+        game: Arc::new(Mutex::new(gs)),
+    };
+
+    let router = Router::new()
+        .route("/", get(index_handler))
+        .route("/state", get(state_handler))
+        .route("/action", post(action_handler))
+        .with_state(app_state);
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    println!("Mecha-Oracle UI running at http://localhost:3000");
+    axum::serve(listener, router).await.unwrap();
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
