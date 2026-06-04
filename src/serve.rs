@@ -413,7 +413,12 @@ pub async fn run(shuffle: bool, deck_path: &str) {
         .route("/action", post(action_handler))
         .with_state(app_state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+        .await
+        .unwrap_or_else(|e| {
+            eprintln!("Cannot bind to port 3000: {e}");
+            std::process::exit(1);
+        });
     println!("Mecha-Oracle UI running at http://localhost:3000");
     axum::serve(listener, router).await.unwrap();
 }
