@@ -17,8 +17,8 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 
 /* Player sections */
 .player-section { flex: 1; display: flex; flex-direction: column; padding: 6px 10px; gap: 5px; min-height: 0; overflow: hidden; }
-.player-section.p2 { background: #160d0d; border-bottom: 2px solid #30363d; justify-content: flex-end; }
-.player-section.p1 { background: #0d1610; border-top: 2px solid #30363d; }
+.player-section.p2 { background: #160d0d; border-bottom: 2px solid #30363d; }
+.player-section.p1 { background: #0d1610; border-top: 2px solid #30363d; justify-content: flex-end; }
 .player-header { display: flex; align-items: center; gap: 10px; padding: 2px 0; flex-shrink: 0; }
 .player-name { font-weight: bold; font-size: 13px; }
 .p2 .player-name { color: #ff7b7b; }
@@ -152,8 +152,6 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
   <div id="board">
     <div class="hand-row p2" id="p2-hand"></div>
     <div class="player-section p2" id="p2-section">
-      <div class="zone-row"><span class="zone-label">Creatures</span><div id="p2-creatures" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
-      <div class="zone-row"><span class="zone-label">Lands</span><div id="p2-lands" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
       <div class="player-header">
         <span class="player-name p2">Player 2</span>
         <span class="life p2" id="p2-life">♥ 20</span>
@@ -167,9 +165,13 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
           </div>
         </div>
       </div>
+      <div class="zone-row"><span class="zone-label">Lands</span><div id="p2-lands" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+      <div class="zone-row"><span class="zone-label">Creatures</span><div id="p2-creatures" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
     </div>
     <div id="turn-tracker"></div>
     <div class="player-section p1" id="p1-section">
+      <div class="zone-row"><span class="zone-label">Creatures</span><div id="p1-creatures" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
+      <div class="zone-row"><span class="zone-label">Lands</span><div id="p1-lands" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
       <div class="player-header">
         <span class="player-name p1">Player 1</span>
         <span class="life p1" id="p1-life">♥ 20</span>
@@ -183,8 +185,6 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
           </div>
         </div>
       </div>
-      <div class="zone-row"><span class="zone-label">Lands</span><div id="p1-lands" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
-      <div class="zone-row"><span class="zone-label">Creatures</span><div id="p1-creatures" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
     </div>
     <div class="hand-row p1" id="p1-hand"></div>
   </div>
@@ -488,14 +488,12 @@ function toggleBlocker(blockerId, attackerId) {
 
 function confirmAttackers() {
   sendAction({ type: 'declare_attackers', attacker_ids: attackersSelected });
-  attackersSelected = [];
 }
 
 function confirmBlockers() {
   const blocks = Object.entries(blockersAssignment)
     .map(([b, a]) => [parseInt(b), parseInt(a)]);
   sendAction({ type: 'declare_blockers', blocks });
-  blockersAssignment = {};
 }
 
 // ── Graveyard modal ───────────────────────────────────────────────────────────
