@@ -12,9 +12,6 @@ pub fn declare_attackers(
     if state.active_player != player_id {
         return Err(EngineError::CannotCastNow);
     }
-    if state.step != Step::DeclareAttackers {
-        return Err(EngineError::CannotCastNow);
-    }
 
     for &id in attacker_ids {
         let obj = state.objects.get(&id).ok_or(EngineError::CardNotFound)?;
@@ -45,6 +42,7 @@ pub fn declare_attackers(
     }
     state.combat.attackers = attacker_ids.to_vec();
     state.combat.blocking_map = attacker_ids.iter().map(|&id| (id, vec![])).collect();
+    state.combat.attackers_declared = true;
 
     Ok(state)
 }
@@ -58,9 +56,6 @@ pub fn declare_blockers(
 ) -> Result<GameState, EngineError> {
     let defending_player = state.opponent_of(state.active_player);
     if player_id != defending_player {
-        return Err(EngineError::CannotCastNow);
-    }
-    if state.step != Step::DeclareBlockers {
         return Err(EngineError::CannotCastNow);
     }
 
@@ -128,6 +123,7 @@ pub fn declare_blockers(
     }
 
     state.mana_checkpoint = None;
+    state.combat.blockers_declared = true;
     Ok(state)
 }
 
@@ -137,10 +133,7 @@ pub fn declare_blockers(
 /// In the second round, double strikers and vanilla creatures deal damage (not first-strike-only).
 /// If no first/double strikers are present, all creatures deal damage in a single round.
 /// Also handles Trample (CR 702.19), Deathtouch (CR 702.2c), and Lifelink (CR 702.15).
-pub fn deal_combat_damage(mut state: GameState) -> Result<GameState, EngineError> {
-    if state.step != Step::CombatDamage {
-        return Err(EngineError::CannotCastNow);
-    }
+pub fn deal_combat_damage(mut state: GameState) -> GameState {
     state.mana_checkpoint = None;
     use std::collections::HashSet;
 
@@ -318,7 +311,7 @@ pub fn deal_combat_damage(mut state: GameState) -> Result<GameState, EngineError
         }
     }
 
-    Ok(check_and_apply_sbas(state))
+    check_and_apply_sbas(state)
 }
 
 #[cfg(test)]
@@ -385,14 +378,19 @@ mod tests {
     }
 
     #[test]
-    fn deal_combat_damage_requires_combat_damage_step() {
+    fn declare_attackers_sets_declared_flag() {
         let mut gs = make_combat_state();
-        gs.step = Step::DeclareAttackers;
+        assert!(!gs.combat.attackers_declared);
+        let gs = declare_attackers(gs, PlayerId(0), &[]).unwrap();
+        assert!(gs.combat.attackers_declared);
+    }
 
-        assert!(matches!(
-            deal_combat_damage(gs),
-            Err(EngineError::CannotCastNow)
-        ));
+    #[test]
+    fn declare_blockers_sets_declared_flag() {
+        let mut gs = make_combat_state();
+        assert!(!gs.combat.blockers_declared);
+        let gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
+        assert!(gs.combat.blockers_declared);
     }
 
     #[test]
@@ -429,7 +427,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 18); // 20 - 2
     }
@@ -453,7 +451,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         // Both take lethal damage and go to graveyard.
         assert!(!gs.battlefield.contains(&attacker));
@@ -476,7 +474,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[(bear, giant)]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         assert!(gs.battlefield.contains(&giant)); // 3/3 survives 2 damage
         assert!(!gs.battlefield.contains(&bear)); // 2/2 dies to 3 damage
@@ -635,7 +633,7 @@ mod tests {
         gs.step = Step::CombatDamage;
 
         // Round 1
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         // Blocker should be dead; attacker should be undamaged
         assert!(!gs.battlefield.contains(&blocker));
@@ -645,7 +643,7 @@ mod tests {
 
         // Advance to second round
         let gs = advance_step(gs); // pops extra_steps → CombatDamage
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         // No blockers left — attacker still undamaged; player untouched (attacker was blocked)
         assert_eq!(gs.objects[&attacker].damage_marked, 0);
@@ -674,14 +672,14 @@ mod tests {
         gs.step = Step::CombatDamage;
 
         // Round 1: only double striker deals damage
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
         assert_eq!(gs.objects[&blocker].damage_marked, 2);
         assert_eq!(gs.objects[&attacker].damage_marked, 0); // blocker hasn't dealt yet
 
         // Round 2: double striker AND non-first-strikers (none; blocker is vanilla) deal damage
         let gs = advance_step(gs);
         assert_eq!(gs.step(), Step::CombatDamage);
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         // Both die
         assert!(!gs.battlefield.contains(&blocker));
@@ -708,7 +706,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         // Both die; no extra step queued
         assert!(!gs.battlefield.contains(&attacker));
@@ -728,7 +726,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         assert!(!gs.battlefield.contains(&blocker));
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 17); // 20 - 3
@@ -753,7 +751,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         assert!(!gs.battlefield.contains(&blocker)); // 1 deathtouch damage kills 4/4
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 16); // 20 - 4 trample
@@ -770,7 +768,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, 23); // 20 + 3
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 17); // 20 - 3
@@ -789,7 +787,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         // 4/4 received deathtouch damage → SBAs already ran → it should be dead
         assert!(!gs.battlefield.contains(&blocker));
@@ -873,7 +871,7 @@ mod tests {
         gs = declare_blockers(gs, PlayerId(1), &[(block1, attacker), (block2, attacker)]).unwrap();
         gs.step = Step::CombatDamage;
 
-        let gs = deal_combat_damage(gs).unwrap();
+        let gs = deal_combat_damage(gs);
 
         // Both blockers should die. Attacker takes 2+2=4 damage, survives (5/5 with 4 damage).
         assert!(!gs.battlefield.contains(&block1));
