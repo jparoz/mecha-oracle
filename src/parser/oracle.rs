@@ -2,7 +2,7 @@ use super::ParseError;
 use crate::types::{AbilityAST, ability::StaticAbility};
 
 /// Strip all parenthetical reminder text from oracle text before tokenising.
-/// CR 305.6: parenthetical text on basic lands is reminder text, not rules text.
+/// CR 207.2b: parenthetical text on basic lands is reminder text, not rules text.
 fn strip_reminder_text(text: &str) -> String {
     let mut result = String::new();
     let mut depth: usize = 0;
