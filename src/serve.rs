@@ -327,7 +327,7 @@ fn advance_with_auto_steps(mut state: GameState) -> GameState {
     state
 }
 
-fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState, String> {
+fn dispatch_action(mut state: GameState, action: ActionRequest) -> Result<GameState, String> {
     match action {
         ActionRequest::TapLand { object_id } => {
             tap_land_for_mana(state, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
@@ -353,7 +353,15 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             let defender = state.opponent_of(state.active_player);
             declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
         }
-        ActionRequest::AdvanceStep => Ok(advance_with_auto_steps(state)),
+        ActionRequest::AdvanceStep => {
+            let nap = state.opponent_of(state.active_player);
+            if state.priority_player == state.active_player {
+                state.priority_player = nap;
+                Ok(state)
+            } else {
+                Ok(advance_with_auto_steps(state))
+            }
+        }
         ActionRequest::ResetMana => reset_mana(state).map_err(|e| format!("{e:?}")),
     }
 }
@@ -540,9 +548,8 @@ mod tests {
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        // Navigate to DeclareAttackers: 2 AdvanceStep calls
-        // PreCombatMain → BeginningOfCombat → DeclareAttackers
-        for _ in 0..2 {
+        // Navigate to DeclareAttackers: 4 passes (2 per step × 2 steps)
+        for _ in 0..4 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
         assert!(!build_game_view(&gs).attackers_declared);
@@ -602,7 +609,7 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_advance_step_from_pre_combat_main_to_beginning_of_combat() {
+    fn ap_passing_priority_shifts_to_nap_without_advancing_step() {
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
             (0..10).map(|_| "Forest".to_string()).collect(),
@@ -610,8 +617,28 @@ mod tests {
         let db = test_db();
         let gs = build_game_state(config, &db, false).unwrap();
         assert_eq!(gs.step(), Step::PreCombatMain);
-        let gs2 = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-        assert_eq!(gs2.step(), Step::BeginningOfCombat);
+        assert_eq!(gs.priority_player, PlayerId(0));
+
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+
+        assert_eq!(gs.step(), Step::PreCombatMain); // step did NOT advance
+        assert_eq!(gs.priority_player, PlayerId(1)); // priority shifted to NAP
+    }
+
+    #[test]
+    fn nap_passing_priority_advances_step() {
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let gs = build_game_state(config, &db, false).unwrap();
+
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap(); // AP passes
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap(); // NAP passes → advances
+
+        assert_eq!(gs.step(), Step::BeginningOfCombat);
+        assert_eq!(gs.priority_player, PlayerId(0)); // resets to AP
     }
 
     #[test]
@@ -623,16 +650,17 @@ mod tests {
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        // Advance from PreCombatMain through all steps to End (7 steps).
-        for _ in 0..7 {
+        // Two passes per step × 7 steps (PC→BOC→DA→DB→CD→EOC→PC2→End)
+        for _ in 0..14 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
         assert_eq!(gs.step(), Step::End);
         assert_eq!(gs.active_player, PlayerId(0));
 
-        // One more advance should skip Cleanup and the new turn's Untap, landing at Upkeep.
+        // Two more passes → Cleanup (auto) → Untap (auto) → Upkeep for P1
         let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-
+        assert_eq!(gs.step(), Step::End); // still End after first pass
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         assert_eq!(gs.step(), Step::Upkeep);
         assert_eq!(gs.active_player, PlayerId(1));
     }
@@ -770,9 +798,10 @@ mod tests {
             id.0
         };
 
-        // PreCombatMain → BeginningOfCombat → DeclareAttackers (2 advances).
-        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        // 4 passes to reach DeclareAttackers (2 per step × 2 steps)
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
         assert_eq!(gs.step(), Step::DeclareAttackers);
 
         let view = build_game_view(&gs);
@@ -841,11 +870,11 @@ mod tests {
             id.0
         };
 
-        // PreCombatMain → BeginningOfCombat → DeclareAttackers.
-        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-
-        // Declare P1's bear as attacker, then advance to DeclareBlockers.
+        // 4 passes to reach DeclareAttackers
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        // Declare P1's bear as attacker
         let gs = dispatch_action(
             gs,
             ActionRequest::DeclareAttackers {
@@ -853,6 +882,8 @@ mod tests {
             },
         )
         .unwrap();
+        // 2 passes to advance DeclareAttackers → DeclareBlockers
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         assert_eq!(gs.step(), Step::DeclareBlockers);
 
