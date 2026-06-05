@@ -8,7 +8,7 @@ use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{deal_combat_damage, declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::tap_land_for_mana;
-use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card};
+use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Zone};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -85,7 +85,7 @@ fn build_game_state(
         }
     }
 
-    gs = apply_step_start(gs);
+    gs = skip_to_first_main(gs);
 
     Ok(gs)
 }
@@ -489,14 +489,14 @@ mod tests {
     }
 
     #[test]
-    fn build_game_state_starts_at_untap() {
+    fn build_game_state_starts_at_pre_combat_main() {
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
             (0..10).map(|_| "Forest".to_string()).collect(),
         ];
         let db = test_db();
         let gs = build_game_state(config, &db, false).unwrap();
-        assert_eq!(gs.step(), Step::Untap);
+        assert_eq!(gs.step(), Step::PreCombatMain);
     }
 
     #[test]
@@ -511,7 +511,7 @@ mod tests {
         assert_eq!(view.p1.life, 20);
         assert_eq!(view.p2.life, 20);
         assert_eq!(view.active_player, 1);
-        assert_eq!(view.step, "Untap");
+        assert_eq!(view.step, "PreCombatMain");
         assert_eq!(view.turn, 1);
     }
 
@@ -560,16 +560,16 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_advance_step_moves_to_upkeep() {
+    fn dispatch_advance_step_from_pre_combat_main_to_beginning_of_combat() {
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
             (0..10).map(|_| "Forest".to_string()).collect(),
         ];
         let db = test_db();
         let gs = build_game_state(config, &db, false).unwrap();
-        assert_eq!(gs.step(), Step::Untap);
+        assert_eq!(gs.step(), Step::PreCombatMain);
         let gs2 = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-        assert_eq!(gs2.step(), Step::Upkeep);
+        assert_eq!(gs2.step(), Step::BeginningOfCombat);
     }
 
     #[test]
@@ -592,10 +592,6 @@ mod tests {
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-
-        gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-        gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-        gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
 
         let land_id = gs.hands[&PlayerId(0)]
             .iter()

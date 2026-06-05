@@ -104,6 +104,14 @@ pub fn draw_card(mut state: GameState, player_id: PlayerId) -> GameState {
     state
 }
 
+/// Advance the initial game state to the first main phase of the starting player's
+/// first turn. Skips Untap (nothing to untap at game start), Upkeep (no Phase 1
+/// triggers), and Draw (CR 103.8a: the starting player draws no cards).
+pub fn skip_to_first_main(mut state: GameState) -> GameState {
+    state.step = Step::PreCombatMain;
+    state
+}
+
 fn cleanup_step(mut state: GameState) -> GameState {
     // CR 514.2: remove damage from all permanents and clear deathtouch flag.
     for obj in state.objects.values_mut() {
