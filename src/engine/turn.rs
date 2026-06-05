@@ -12,8 +12,11 @@ pub fn apply_step_start(state: GameState) -> GameState {
 
 /// Advance to the next step/phase. Checks `extra_steps` queue first (for dynamically
 /// inserted steps such as the second combat damage round per CR 510.4).
-pub fn advance_step(state: GameState) -> GameState {
-    let mut state = state;
+pub fn advance_step(mut state: GameState) -> GameState {
+    // CR 106.4: mana pools empty at end of each step and phase.
+    for player in state.players.iter_mut() {
+        player.mana_pool = Default::default();
+    }
     if let Some(next) = state.extra_steps.pop_front() {
         state.step = next;
         return state;
@@ -27,7 +30,11 @@ pub fn advance_step(state: GameState) -> GameState {
         Step::DeclareAttackers => set(state, Step::DeclareBlockers),
         Step::DeclareBlockers => set(state, Step::CombatDamage),
         Step::CombatDamage => set(state, Step::EndOfCombat),
-        Step::EndOfCombat => set(state, Step::PostCombatMain),
+        Step::EndOfCombat => {
+            let mut s = set(state, Step::PostCombatMain);
+            s.combat = CombatState::empty();
+            s
+        }
         Step::PostCombatMain => set(state, Step::End),
         Step::End => set(state, Step::Cleanup),
         Step::Cleanup => start_next_turn(state),
@@ -310,5 +317,31 @@ mod tests {
         // Should have consumed the queued step, not gone to EndOfCombat
         assert_eq!(gs.step(), Step::CombatDamage);
         assert!(gs.extra_steps.is_empty());
+    }
+
+    #[test]
+    fn advance_step_drains_all_mana_pools() {
+        let mut gs = make_state();
+        gs.step = Step::PreCombatMain;
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
+        gs.get_player_mut(PlayerId(1)).unwrap().mana_pool.red += 1;
+
+        let gs = advance_step(gs);
+
+        assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
+        assert!(gs.get_player(PlayerId(1)).unwrap().mana_pool.is_empty());
+    }
+
+    #[test]
+    fn advance_from_end_of_combat_clears_combat_state() {
+        let mut gs = make_state();
+        gs.step = Step::EndOfCombat;
+        gs.combat.attackers.push(ObjectId(99));
+
+        let gs = advance_step(gs);
+
+        assert_eq!(gs.step(), Step::PostCombatMain);
+        assert!(gs.combat.attackers.is_empty());
+        assert!(gs.combat.blocking_map.is_empty());
     }
 }
