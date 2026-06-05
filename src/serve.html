@@ -239,29 +239,33 @@ async function sendAction(action) {
 }
 
 function describeAction(action) {
-  const ap = currentState.active_player;
+  const ap = currentState.active_player; // 0 or 1
+  const apLabel = ap + 1;               // display: 1 or 2
   switch (action.type) {
-    case 'tap_land':       return `<span class="who">P${ap}</span> tapped a land for mana`;
-    case 'play_land':      return `<span class="who">P${ap}</span> played a land`;
-    case 'cast_creature':  return `<span class="who">P${ap}</span> cast a creature`;
-    case 'declare_attackers': return `<span class="who">P${ap}</span> declared attackers`;
-    case 'declare_blockers':  {
-      const def = ap === 1 ? 2 : 1;
-      return `<span class="who">P${def}</span> declared blockers`;
+    case 'tap_land':       return `<span class="who">P${apLabel}</span> tapped a land for mana`;
+    case 'play_land':      return `<span class="who">P${apLabel}</span> played a land`;
+    case 'cast_creature':  return `<span class="who">P${apLabel}</span> cast a creature`;
+    case 'declare_attackers': return `<span class="who">P${apLabel}</span> declared attackers`;
+    case 'declare_blockers': {
+      const defLabel = ap === 0 ? 2 : 1;
+      return `<span class="who">P${defLabel}</span> declared blockers`;
     }
-    case 'deal_combat_damage': return '<span class="log-engine">— Combat damage resolved —</span>';
-    case 'advance_step':   return `<span class="log-engine">— Advanced to ${currentState.step} —</span>`;
-    case 'reset_mana':     return `<span class="who">P${ap}</span> reset mana`;
+    case 'advance_step': {
+      // priority_player is now whoever RECEIVED priority — the passer was the other one
+      const passerLabel = currentState.priority_player === 0 ? 2 : 1;
+      return `<span class="log-engine">— P${passerLabel} passed priority —</span>`;
+    }
+    case 'reset_mana': return `<span class="who">P${apLabel}</span> reset mana`;
     default: return JSON.stringify(action);
   }
 }
 
 function actionLogClass(action) {
-  if (action.type === 'advance_step' || action.type === 'deal_combat_damage') return 'log-engine';
+  if (action.type === 'advance_step') return 'log-engine';
   if (action.type === 'declare_blockers') {
-    return currentState.active_player === 1 ? 'log-p2' : 'log-p1';
+    return currentState.active_player === 0 ? 'log-p2' : 'log-p1';
   }
-  return currentState.active_player === 1 ? 'log-p1' : 'log-p2';
+  return currentState.active_player === 0 ? 'log-p1' : 'log-p2';
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -383,7 +387,7 @@ function renderTurnTracker(s) {
     const cls = i < cur ? 'done' : i === cur ? 'active' : 'upcoming';
     return `<span class="step-chip ${cls}">${STEP_LABELS[step]}</span>`;
   }).join('<span class="step-sep">·</span>');
-  const ap = s.active_player === 1 ? 'Player 1' : 'Player 2';
+  const ap = s.active_player === 0 ? 'Player 1' : 'Player 2';
   document.getElementById('turn-tracker').innerHTML =
     `<span style="color:#888;margin-right:4px">Turn ${s.turn}</span>${chips}<span class="active-label">Active: ${ap}</span>`;
 }
@@ -392,14 +396,14 @@ function renderTurnTracker(s) {
 
 function renderActions(s) {
   if (s.game_over) {
-    const winner = s.winner ? `Player ${s.winner} wins!` : 'Draw!';
+    const winner = s.winner != null ? `Player ${s.winner + 1} wins!` : 'Draw!';
     document.getElementById('actions').innerHTML =
       `<div style="background:#2a1a00;border:1px solid #8a5a00;border-radius:4px;padding:8px 10px;font-size:12px;color:#ffcc44;text-align:center">Game Over — ${winner}</div>`;
     return;
   }
 
-  const ap  = s.active_player === 1 ? s.p1 : s.p2;
-  const def = s.active_player === 1 ? s.p2 : s.p1;
+  const ap  = s.active_player === 0 ? s.p1 : s.p2;
+  const def = s.active_player === 0 ? s.p2 : s.p1;
   let html = '';
 
   if (s.step === 'PreCombatMain' || s.step === 'PostCombatMain') {
@@ -453,8 +457,6 @@ function renderActions(s) {
       html += '<p style="font-size:11px;color:#666;padding:4px">No attackers.</p>';
     }
 
-  } else if (s.step === 'CombatDamage') {
-    html += group('Combat', [btn('Resolve Damage', "sendAction({type:'deal_combat_damage'})")]);
   }
 
   if (s.can_reset_mana) {
