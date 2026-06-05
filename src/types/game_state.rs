@@ -67,6 +67,10 @@ pub struct CombatState {
     pub blocking_map: HashMap<ObjectId, Vec<ObjectId>>,
     /// True after the first-strike combat damage round has resolved (CR 510.4).
     pub first_strike_done: bool,
+    /// True if attackers have been declared (even if empty).
+    pub attackers_declared: bool,
+    /// True if blockers have been declared (even if empty).
+    pub blockers_declared: bool,
 }
 
 impl CombatState {
@@ -75,6 +79,8 @@ impl CombatState {
             attackers: vec![],
             blocking_map: HashMap::new(),
             first_strike_done: false,
+            attackers_declared: false,
+            blockers_declared: false,
         }
     }
 }
@@ -245,5 +251,12 @@ mod tests {
     fn first_strike_done_starts_false() {
         let gs = two_player_state();
         assert!(!gs.combat.first_strike_done);
+    }
+
+    #[test]
+    fn combat_state_empty_has_declared_flags_false() {
+        let cs = CombatState::empty();
+        assert!(!cs.attackers_declared);
+        assert!(!cs.blockers_declared);
     }
 }
