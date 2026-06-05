@@ -630,6 +630,13 @@ function appendLog(html, cls) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.target.closest('input, textarea, button')) {
+    e.preventDefault();
+    sendAction({ type: 'advance_step' });
+  }
+});
+
 fetchState();
 </script>
 </body>
