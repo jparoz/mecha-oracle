@@ -339,7 +339,7 @@ function render(s) {
   document.getElementById('p2-creatures').innerHTML = s.p2.creatures.map(c => cardHTML(c)).join('');
 
   renderTurnTracker(s);
-  renderActions(s);
+  renderPanes(s);
 }
 
 function renderMana(elId, pool) {
@@ -434,96 +434,113 @@ function toggleLog() {
 
 // ── Actions panel ─────────────────────────────────────────────────────────────
 
-function renderActions(s) {
-  // Determine which player has priority (0 = p1, 1 = p2)
-  const pp = s.priority_player; // 0 or 1
-  const ppKey = pp === 0 ? 'p1' : 'p2';
-  const otherKey = pp === 0 ? 'p2' : 'p1';
-
-  // Update priority badges
-  document.getElementById('badge-p1').className = 'priority-badge ' + (pp === 0 ? 'active' : 'waiting');
-  document.getElementById('badge-p1').textContent = pp === 0 ? 'priority' : 'waiting';
-  document.getElementById('badge-p2').className = 'priority-badge ' + (pp === 1 ? 'active' : 'waiting');
-  document.getElementById('badge-p2').textContent = pp === 1 ? 'priority' : 'waiting';
-
-  // Enable pass button only for the player with priority
-  document.getElementById('pass-p1').disabled = pp !== 0;
-  document.getElementById('pass-p2').disabled = pp !== 1;
-
-  // Clear both panes' action areas
-  document.getElementById('actions-p1').innerHTML = '';
-  document.getElementById('actions-p2').innerHTML = '';
-
+function renderPanes(s) {
   if (s.game_over) {
     const winner = s.winner != null ? `Player ${s.winner + 1} wins!` : 'Draw!';
-    const gameOverHtml = `<div style="background:#2a1a00;border:1px solid #8a5a00;border-radius:4px;padding:8px 10px;font-size:12px;color:#ffcc44;text-align:center">Game Over — ${winner}</div>`;
-    document.getElementById('actions-p1').innerHTML = gameOverHtml;
+    const msg = `<div style="background:#2a1a00;border:1px solid #8a5a00;border-radius:4px;padding:8px 10px;font-size:12px;color:#ffcc44;text-align:center">Game Over — ${winner}</div>`;
+    document.getElementById('actions-p1').innerHTML = msg;
+    document.getElementById('actions-p2').innerHTML = '';
+    document.getElementById('pass-p1').disabled = true;
+    document.getElementById('pass-p2').disabled = true;
     return;
   }
 
-  const ap  = s.active_player === 0 ? s.p1 : s.p2;
-  const def = s.active_player === 0 ? s.p2 : s.p1;
-  let html = '';
+  const passBlocked =
+    (s.step === 'DeclareAttackers' && !s.attackers_declared) ||
+    (s.step === 'DeclareBlockers'  && !s.blockers_declared);
 
-  if (s.step === 'PreCombatMain' || s.step === 'PostCombatMain') {
-    const untapped = ap.lands.filter(c => !c.tapped);
-    if (untapped.length > 0) {
-      html += group('Tap for mana', untapped.map(c =>
-        btn(c.name, `sendAction({type:'tap_land',object_id:${c.id}})`)));
-    }
-    if (s.lands_played_this_turn === 0) {
-      const lands = ap.hand.filter(c => c.type_line.includes('Land'));
-      if (lands.length > 0) {
-        html += group('Play land', lands.map(c =>
-          btn('Play ' + esc(c.name), `sendAction({type:'play_land',object_id:${c.id}})`)));
+  [0, 1].forEach(pid => {
+    const suffix    = pid === 0 ? 'p1' : 'p2';
+    const myData    = pid === 0 ? s.p1 : s.p2;
+    const oppData   = pid === 0 ? s.p2 : s.p1;
+    const iAmAP     = pid === s.active_player;
+    const iAmNAP    = !iAmAP;
+    const hasPriority = pid === s.priority_player && !passBlocked;
+    const canPass   = hasPriority;
+
+    // Priority badge
+    const badge = document.getElementById(`badge-${suffix}`);
+    badge.textContent = hasPriority ? 'has priority' : 'waiting';
+    badge.className   = 'priority-badge ' + (hasPriority ? 'active' : 'waiting');
+
+    // Pass button
+    const passBtn = document.getElementById(`pass-${suffix}`);
+    passBtn.disabled      = !canPass;
+    passBtn.style.opacity = canPass ? '1' : '0.35';
+
+    let html = '';
+
+    // Main phase: land/creature actions for AP
+    if (iAmAP && (s.step === 'PreCombatMain' || s.step === 'PostCombatMain')) {
+      const untapped = myData.lands.filter(c => !c.tapped);
+      if (untapped.length > 0) {
+        html += group('Tap for mana', untapped.map(c =>
+          btn(c.name, `sendAction({type:'tap_land',object_id:${c.id}})`)));
+      }
+      if (s.lands_played_this_turn === 0) {
+        const lands = myData.hand.filter(c => c.type_line.includes('Land'));
+        if (lands.length > 0) {
+          html += group('Play land', lands.map(c =>
+            btn('Play ' + esc(c.name), `sendAction({type:'play_land',object_id:${c.id}})`)));
+        }
+      }
+      const castable = myData.hand.filter(c => c.type_line.includes('Creature'));
+      if (castable.length > 0) {
+        html += group('Cast creature', castable.map(c =>
+          btn(esc(c.name), `sendAction({type:'cast_creature',object_id:${c.id}})`, c.mana_cost || '')));
       }
     }
-    const castable = ap.hand.filter(c => c.type_line.includes('Creature'));
-    if (castable.length > 0) {
-      html += group('Cast creature', castable.map(c =>
-        btn(esc(c.name), `sendAction({type:'cast_creature',object_id:${c.id}})`, c.mana_cost || '')));
-    }
 
-  } else if (s.step === 'DeclareAttackers') {
-    const eligible = ap.creatures.filter(c => c.can_attack);
-    if (eligible.length > 0) {
+    // Declare attackers: selection UI (AP, before confirmation)
+    if (iAmAP && s.step === 'DeclareAttackers' && !s.attackers_declared) {
+      const eligible = myData.creatures.filter(c => c.can_attack);
       const btns = eligible.map(c => {
         const sel = attackersSelected.includes(c.id);
         return `<button class="action-btn${sel ? ' selected' : ''}" onclick="toggleAttacker(${c.id})">${esc(c.name)}${sel ? ' ✓' : ''}</button>`;
       });
       btns.push(btn('Confirm Attackers', 'confirmAttackers()'));
-      html += group('Select attackers', btns);
-    } else {
-      html += '<p style="font-size:11px;color:#666;padding:4px">No eligible attackers.</p>';
+      html += group('Select attackers', btns.length > 1 ? btns : [btn('Confirm Attackers (no attackers)', 'confirmAttackers()')]);
     }
 
-  } else if (s.step === 'DeclareBlockers') {
-    const attackers = ap.creatures.filter(c => c.is_attacking);
-    const blockers  = def.creatures.filter(c => c.can_block);
-    if (attackers.length > 0 && blockers.length > 0) {
-      let inner = '';
-      for (const attacker of attackers) {
-        inner += `<div style="margin-bottom:6px"><div class="action-group-label">Block ${esc(attacker.name)}</div>`;
-        for (const blocker of blockers) {
-          const assigned = blockersAssignment[blocker.id] === attacker.id;
-          inner += `<button class="action-btn${assigned ? ' selected' : ''}" onclick="toggleBlocker(${blocker.id},${attacker.id})">${esc(blocker.name)}${assigned ? ' ✓' : ''}</button>`;
+    // Declare attackers: summary after confirmation
+    if (iAmAP && s.step === 'DeclareAttackers' && s.attackers_declared) {
+      const n = myData.creatures.filter(c => c.is_attacking).length;
+      html += `<p style="font-size:11px;color:#666;padding:4px">${n} attacker${n === 1 ? '' : 's'} declared</p>`;
+    }
+
+    // Declare blockers: assignment UI (NAP, before confirmation)
+    if (iAmNAP && s.step === 'DeclareBlockers' && !s.blockers_declared) {
+      const attackers = oppData.creatures.filter(c => c.is_attacking);
+      const blockers  = myData.creatures.filter(c => c.can_block);
+      if (attackers.length > 0 && blockers.length > 0) {
+        let inner = '';
+        for (const atk of attackers) {
+          inner += `<div style="margin-bottom:6px"><div class="action-group-label">Block ${esc(atk.name)}</div>`;
+          for (const blk of blockers) {
+            const assigned = blockersAssignment[blk.id] === atk.id;
+            inner += `<button class="action-btn${assigned ? ' selected' : ''}" onclick="toggleBlocker(${blk.id},${atk.id})">${esc(blk.name)}${assigned ? ' ✓' : ''}</button>`;
+          }
+          inner += '</div>';
         }
-        inner += '</div>';
+        inner += btn('Confirm Blockers', 'confirmBlockers()');
+        html += group('Assign blockers', [inner]);
+      } else {
+        html += group('Assign blockers', [btn('Confirm Blockers (none)', 'confirmBlockers()')]);
       }
-      inner += btn('Confirm Blockers', 'confirmBlockers()');
-      html += group('Assign blockers', [inner]);
-    } else if (attackers.length === 0) {
-      html += '<p style="font-size:11px;color:#666;padding:4px">No attackers.</p>';
     }
 
-  }
+    // Declare blockers: summary after confirmation
+    if (iAmNAP && s.step === 'DeclareBlockers' && s.blockers_declared) {
+      html += `<p style="font-size:11px;color:#666;padding:4px">Blockers declared</p>`;
+    }
 
-  if (s.can_reset_mana) {
-    html += group('Mana', [`<button class="action-btn" onclick="sendAction({type:'reset_mana'})">↩ Reset mana</button>`]);
-  }
+    // Reset mana (AP only, when checkpoint exists)
+    if (iAmAP && s.can_reset_mana) {
+      html += group('Mana', [`<button class="action-btn" onclick="sendAction({type:'reset_mana'})">↩ Reset mana</button>`]);
+    }
 
-  // Write actions to the priority holder's pane
-  document.getElementById('actions-' + ppKey).innerHTML = html;
+    document.getElementById(`actions-${suffix}`).innerHTML = html;
+  });
 }
 
 function group(label, btns) {
