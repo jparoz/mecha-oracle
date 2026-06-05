@@ -32,6 +32,7 @@ pub fn declare_attackers(
         }
     }
 
+    state.mana_checkpoint = None;
     for &id in attacker_ids {
         if !state
             .objects
@@ -126,6 +127,7 @@ pub fn declare_blockers(
         }
     }
 
+    state.mana_checkpoint = None;
     Ok(state)
 }
 
@@ -139,6 +141,7 @@ pub fn deal_combat_damage(mut state: GameState) -> Result<GameState, EngineError
     if state.step != Step::CombatDamage {
         return Err(EngineError::CannotCastNow);
     }
+    state.mana_checkpoint = None;
     use std::collections::HashSet;
 
     let defending_player = state.opponent_of(state.active_player);
@@ -792,6 +795,51 @@ mod tests {
         assert!(!gs.battlefield.contains(&blocker));
         // 1/1 received 4 damage (lethal) → also dead
         assert!(!gs.battlefield.contains(&attacker));
+    }
+
+    #[test]
+    fn declare_blockers_clears_mana_checkpoint() {
+        let db = test_db();
+        let mut gs = make_combat_state();
+        let attacker = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let blocker = add_creature(
+            &mut gs,
+            PlayerId(1),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs.mana_checkpoint = Some(crate::types::ManaCheckpoint {
+            pools: std::collections::HashMap::new(),
+            tapped_lands: vec![],
+        });
+
+        let gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
+
+        assert!(gs.mana_checkpoint.is_none());
+    }
+
+    #[test]
+    fn declare_attackers_clears_mana_checkpoint() {
+        let db = test_db();
+        let mut gs = make_combat_state();
+        let bear_id = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        gs.mana_checkpoint = Some(crate::types::ManaCheckpoint {
+            pools: std::collections::HashMap::new(),
+            tapped_lands: vec![],
+        });
+
+        let gs = declare_attackers(gs, PlayerId(0), &[bear_id]).unwrap();
+
+        assert!(gs.mana_checkpoint.is_none());
     }
 
     #[test]

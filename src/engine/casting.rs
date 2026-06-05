@@ -34,6 +34,7 @@ pub fn play_land(
         }
     }
 
+    state.mana_checkpoint = None;
     state
         .hands
         .get_mut(&player_id)
@@ -89,7 +90,7 @@ pub fn cast_creature(
     };
 
     state = pay_mana_cost(state, player_id, &cost)?;
-
+    state.mana_checkpoint = None;
     state
         .hands
         .get_mut(&player_id)
@@ -205,5 +206,42 @@ mod tests {
             play_land(gs, PlayerId(0), forest_id),
             Err(EngineError::CannotCastNow)
         ));
+    }
+
+    #[test]
+    fn cast_creature_clears_mana_checkpoint() {
+        let db = test_db();
+        let mut gs = make_state();
+        // Give player enough mana and a checkpoint.
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
+        // Create a minimal checkpoint manually to simulate a prior tap.
+        gs.mana_checkpoint = Some(crate::types::ManaCheckpoint {
+            pools: std::collections::HashMap::new(),
+            tapped_lands: vec![],
+        });
+        let bear_id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+
+        let gs = cast_creature(gs, PlayerId(0), bear_id).unwrap();
+
+        assert!(gs.mana_checkpoint.is_none());
+    }
+
+    #[test]
+    fn play_land_clears_mana_checkpoint() {
+        let db = test_db();
+        let mut gs = make_state();
+        gs.mana_checkpoint = Some(crate::types::ManaCheckpoint {
+            pools: std::collections::HashMap::new(),
+            tapped_lands: vec![],
+        });
+        let forest_id = put_in_hand(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
+
+        let gs = play_land(gs, PlayerId(0), forest_id).unwrap();
+
+        assert!(gs.mana_checkpoint.is_none());
     }
 }

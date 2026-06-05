@@ -17,6 +17,8 @@ pub fn advance_step(mut state: GameState) -> GameState {
     for player in state.players.iter_mut() {
         player.mana_pool = Default::default();
     }
+    // Passing priority commits mana choices.
+    state.mana_checkpoint = None;
     if let Some(next) = state.extra_steps.pop_front() {
         state.step = next;
         return state;
@@ -351,5 +353,23 @@ mod tests {
         assert_eq!(gs.step(), Step::PostCombatMain);
         assert!(gs.combat.attackers.is_empty());
         assert!(gs.combat.blocking_map.is_empty());
+    }
+
+    #[test]
+    fn advance_step_clears_mana_checkpoint() {
+        use crate::engine::mana::tap_land_for_mana;
+        let _db = test_db();
+        let mut gs = make_state();
+        gs.step = Step::PreCombatMain;
+        // add_land_to_battlefield creates a tapped land; untap it.
+        let forest_id = add_land_to_battlefield(&mut gs, PlayerId(0));
+        gs.objects.get_mut(&forest_id).unwrap().tapped = false;
+
+        let gs = tap_land_for_mana(gs, forest_id).unwrap();
+        assert!(gs.mana_checkpoint.is_some());
+
+        let gs = advance_step(gs);
+
+        assert!(gs.mana_checkpoint.is_none());
     }
 }
