@@ -6,7 +6,7 @@ use axum::{
 };
 use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::casting::{cast_creature, play_land};
-use mecha_oracle::engine::combat::{deal_combat_damage, declare_attackers, declare_blockers};
+use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
@@ -104,7 +104,7 @@ struct ManaPoolView {
 
 #[derive(Serialize)]
 struct CardView {
-    id: u64,
+    id: ObjectId,
     name: String,
     type_line: String,
     oracle_text: String,
@@ -135,13 +135,16 @@ struct PlayerView {
 struct GameView {
     turn: u32,
     step: String,
-    active_player: u8,
+    active_player: PlayerId,
+    priority_player: PlayerId,
     lands_played_this_turn: u32,
     game_over: bool,
-    winner: Option<u8>,
+    winner: Option<PlayerId>,
     p1: PlayerView,
     p2: PlayerView,
     can_reset_mana: bool,
+    attackers_declared: bool,
+    blockers_declared: bool,
 }
 
 fn format_mana_cost(cost: &mecha_oracle::types::mana::ManaCost) -> String {
@@ -213,7 +216,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
         .collect();
 
     let to_card_view = |obj: &mecha_oracle::types::CardObject| CardView {
-        id: obj.id.0,
+        id: obj.id,
         name: obj.definition.name.clone(),
         type_line: format_type_line(&obj.definition.type_line),
         oracle_text: obj.definition.oracle_text.clone(),
@@ -278,19 +281,16 @@ fn build_game_view(state: &GameState) -> GameView {
     GameView {
         turn: state.turn_number,
         step: format!("{:?}", state.step()),
-        active_player: if state.active_player == PlayerId(0) {
-            1
-        } else {
-            2
-        },
+        active_player: state.active_player,
+        priority_player: state.priority_player,
         lands_played_this_turn: state.lands_played_this_turn,
         game_over: state.is_game_over(),
-        winner: state
-            .winner()
-            .map(|pid| if pid == PlayerId(0) { 1 } else { 2 }),
+        winner: state.winner(),
         p1: build_player_view(state, PlayerId(0)),
         p2: build_player_view(state, PlayerId(1)),
         can_reset_mana: state.mana_checkpoint.is_some(),
+        attackers_declared: state.combat.attackers_declared,
+        blockers_declared: state.combat.blockers_declared,
     }
 }
 
@@ -304,7 +304,6 @@ enum ActionRequest {
     CastCreature { object_id: u64 },
     DeclareAttackers { attacker_ids: Vec<u64> },
     DeclareBlockers { blocks: Vec<[u64; 2]> },
-    DealCombatDamage,
     AdvanceStep,
     ResetMana,
 }
@@ -354,7 +353,6 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             let defender = state.opponent_of(state.active_player);
             declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
         }
-        ActionRequest::DealCombatDamage => Ok(deal_combat_damage(state)),
         ActionRequest::AdvanceStep => Ok(advance_with_auto_steps(state)),
         ActionRequest::ResetMana => reset_mana(state).map_err(|e| format!("{e:?}")),
     }
@@ -526,9 +524,37 @@ mod tests {
         let view = build_game_view(&gs);
         assert_eq!(view.p1.life, 20);
         assert_eq!(view.p2.life, 20);
-        assert_eq!(view.active_player, 1);
+        assert_eq!(view.active_player, PlayerId(0));
+        assert_eq!(view.priority_player, PlayerId(0));
         assert_eq!(view.step, "PreCombatMain");
         assert_eq!(view.turn, 1);
+        assert!(!view.attackers_declared);
+        assert!(!view.blockers_declared);
+    }
+
+    #[test]
+    fn game_view_includes_combat_declared_flags() {
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        // Navigate to DeclareAttackers: 2 AdvanceStep calls
+        // PreCombatMain → BeginningOfCombat → DeclareAttackers
+        for _ in 0..2 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert!(!build_game_view(&gs).attackers_declared);
+
+        gs = dispatch_action(
+            gs,
+            ActionRequest::DeclareAttackers {
+                attacker_ids: vec![],
+            },
+        )
+        .unwrap();
+        assert!(build_game_view(&gs).attackers_declared);
     }
 
     #[test]
@@ -750,8 +776,18 @@ mod tests {
         assert_eq!(gs.step(), Step::DeclareAttackers);
 
         let view = build_game_view(&gs);
-        let p1_c = view.p1.creatures.iter().find(|c| c.id == p1_id).unwrap();
-        let p2_c = view.p2.creatures.iter().find(|c| c.id == p2_id).unwrap();
+        let p1_c = view
+            .p1
+            .creatures
+            .iter()
+            .find(|c| c.id == ObjectId(p1_id))
+            .unwrap();
+        let p2_c = view
+            .p2
+            .creatures
+            .iter()
+            .find(|c| c.id == ObjectId(p2_id))
+            .unwrap();
 
         assert!(p1_c.can_attack, "active player's creature shows can_attack");
         assert!(
@@ -821,8 +857,18 @@ mod tests {
         assert_eq!(gs.step(), Step::DeclareBlockers);
 
         let view = build_game_view(&gs);
-        let p1_c = view.p1.creatures.iter().find(|c| c.id == p1_id).unwrap();
-        let p2_c = view.p2.creatures.iter().find(|c| c.id == p2_id).unwrap();
+        let p1_c = view
+            .p1
+            .creatures
+            .iter()
+            .find(|c| c.id == ObjectId(p1_id))
+            .unwrap();
+        let p2_c = view
+            .p2
+            .creatures
+            .iter()
+            .find(|c| c.id == ObjectId(p2_id))
+            .unwrap();
 
         assert!(
             !p1_c.can_block,
