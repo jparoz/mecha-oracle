@@ -224,8 +224,12 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
         damage_marked: obj.damage_marked,
         is_attacking: state.combat.attackers.contains(&obj.id),
         is_blocking: all_blockers.contains(&obj.id),
-        can_attack: obj.can_attack(),
-        can_block: obj.can_block(),
+        can_attack: state.step() == Step::DeclareAttackers
+            && pid == state.active_player
+            && obj.can_attack(),
+        can_block: state.step() == Step::DeclareBlockers
+            && pid != state.active_player
+            && obj.can_block(),
     };
 
     let bf_objects: Vec<_> = state
@@ -640,5 +644,137 @@ mod tests {
         assert!(tap_result.is_ok());
         let gs2 = tap_result.unwrap();
         assert_eq!(gs2.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
+    }
+
+    #[test]
+    fn can_attack_true_only_for_active_player_at_declare_attackers() {
+        use mecha_oracle::types::{CardObject, Step, Zone};
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        // Place one untapped, non-sick creature for each player.
+        let p1_id = {
+            let id = gs.alloc_id();
+            let mut obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(0),
+                Zone::Battlefield,
+            );
+            obj.summoning_sick = false;
+            gs.battlefield.push(id);
+            gs.add_object(obj);
+            id.0
+        };
+        let p2_id = {
+            let id = gs.alloc_id();
+            let mut obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(1),
+                Zone::Battlefield,
+            );
+            obj.summoning_sick = false;
+            gs.battlefield.push(id);
+            gs.add_object(obj);
+            id.0
+        };
+
+        // PreCombatMain → BeginningOfCombat → DeclareAttackers (2 advances).
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        assert_eq!(gs.step(), Step::DeclareAttackers);
+
+        let view = build_game_view(&gs);
+        let p1_c = view.p1.creatures.iter().find(|c| c.id == p1_id).unwrap();
+        let p2_c = view.p2.creatures.iter().find(|c| c.id == p2_id).unwrap();
+
+        assert!(p1_c.can_attack, "active player's creature shows can_attack");
+        assert!(
+            !p2_c.can_attack,
+            "defending player's creature does not show can_attack"
+        );
+        assert!(
+            !p1_c.can_block,
+            "can_block is false outside DeclareBlockers"
+        );
+        assert!(
+            !p2_c.can_block,
+            "can_block is false outside DeclareBlockers"
+        );
+    }
+
+    #[test]
+    fn can_block_true_only_for_defending_player_at_declare_blockers() {
+        use mecha_oracle::types::{CardObject, Step, Zone};
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let p1_id = {
+            let id = gs.alloc_id();
+            let mut obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(0),
+                Zone::Battlefield,
+            );
+            obj.summoning_sick = false;
+            gs.battlefield.push(id);
+            gs.add_object(obj);
+            id.0
+        };
+        let p2_id = {
+            let id = gs.alloc_id();
+            let mut obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(1),
+                Zone::Battlefield,
+            );
+            obj.summoning_sick = false;
+            gs.battlefield.push(id);
+            gs.add_object(obj);
+            id.0
+        };
+
+        // PreCombatMain → BeginningOfCombat → DeclareAttackers.
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+
+        // Declare P1's bear as attacker, then advance to DeclareBlockers.
+        let gs = dispatch_action(
+            gs,
+            ActionRequest::DeclareAttackers {
+                attacker_ids: vec![p1_id],
+            },
+        )
+        .unwrap();
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        assert_eq!(gs.step(), Step::DeclareBlockers);
+
+        let view = build_game_view(&gs);
+        let p1_c = view.p1.creatures.iter().find(|c| c.id == p1_id).unwrap();
+        let p2_c = view.p2.creatures.iter().find(|c| c.id == p2_id).unwrap();
+
+        assert!(
+            !p1_c.can_block,
+            "active player's creature does not show can_block"
+        );
+        assert!(
+            p2_c.can_block,
+            "defending player's creature shows can_block"
+        );
+        assert!(
+            !p1_c.can_attack,
+            "declared attacker (tapped) does not show can_attack"
+        );
     }
 }
