@@ -9,7 +9,7 @@ use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{deal_combat_damage, declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::tap_land_for_mana;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
-use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Zone};
+use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
@@ -310,6 +310,17 @@ struct ActionResponse {
     error: Option<String>,
 }
 
+fn advance_with_auto_steps(mut state: GameState) -> GameState {
+    loop {
+        state = advance_step(state);
+        state = apply_step_start(state);
+        if !matches!(state.step(), Step::Untap | Step::Cleanup) || state.is_game_over() {
+            break;
+        }
+    }
+    state
+}
+
 fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState, String> {
     match action {
         ActionRequest::TapLand { object_id } => {
@@ -337,10 +348,7 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::DealCombatDamage => deal_combat_damage(state).map_err(|e| format!("{e:?}")),
-        ActionRequest::AdvanceStep => {
-            let s = advance_step(state);
-            Ok(apply_step_start(s))
-        }
+        ActionRequest::AdvanceStep => Ok(advance_with_auto_steps(state)),
     }
 }
 
@@ -570,6 +578,29 @@ mod tests {
         assert_eq!(gs.step(), Step::PreCombatMain);
         let gs2 = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         assert_eq!(gs2.step(), Step::BeginningOfCombat);
+    }
+
+    #[test]
+    fn advancing_from_end_step_auto_advances_to_next_upkeep() {
+        use mecha_oracle::types::Step;
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        // Advance from PreCombatMain through all steps to End (7 steps).
+        for _ in 0..7 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(gs.step(), Step::End);
+        assert_eq!(gs.active_player, PlayerId(0));
+
+        // One more advance should skip Cleanup and the new turn's Untap, landing at Upkeep.
+        let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+
+        assert_eq!(gs.step(), Step::Upkeep);
+        assert_eq!(gs.active_player, PlayerId(1));
     }
 
     #[test]
