@@ -19,6 +19,7 @@ pub fn advance_step(mut state: GameState) -> GameState {
     }
     // Passing priority commits mana choices.
     state.mana_checkpoint = None;
+    state.priority_player = state.active_player;
     if let Some(next) = state.extra_steps.pop_front() {
         state.step = next;
         return state;
@@ -371,5 +372,17 @@ mod tests {
         let gs = advance_step(gs);
 
         assert!(gs.mana_checkpoint.is_none());
+    }
+
+    #[test]
+    fn advance_step_resets_priority_to_active_player() {
+        let mut gs = make_state();
+        gs.step = Step::PreCombatMain;
+        gs.priority_player = PlayerId(1); // manually set to NAP
+
+        let gs = advance_step(gs);
+
+        assert_eq!(gs.priority_player, PlayerId(0)); // reset to AP
+        assert_eq!(gs.step(), Step::BeginningOfCombat);
     }
 }
