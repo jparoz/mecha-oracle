@@ -1,3 +1,4 @@
+use super::combat::deal_combat_damage;
 use crate::types::{CombatState, GameState, ObjectId, PlayerId, Step, Zone};
 
 /// Apply the automatic rules for the start of the current step/phase.
@@ -6,6 +7,7 @@ pub fn apply_step_start(state: GameState) -> GameState {
         Step::Untap => untap_step(state),
         Step::Draw => draw_step(state),
         Step::Cleanup => cleanup_step(state),
+        Step::CombatDamage => deal_combat_damage(state),
         _ => state,
     }
 }
@@ -384,5 +386,31 @@ mod tests {
 
         assert_eq!(gs.priority_player, PlayerId(0)); // reset to AP
         assert_eq!(gs.step(), Step::BeginningOfCombat);
+    }
+
+    #[test]
+    fn apply_step_start_resolves_combat_damage() {
+        let db = test_db();
+        let mut gs = make_state();
+
+        // Put an unblocked 2/2 attacker for P0
+        let id = gs.alloc_id();
+        let mut obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        gs.combat.attackers = vec![id];
+        gs.combat.blocking_map.insert(id, vec![]);
+        gs.step = Step::CombatDamage;
+
+        let gs = apply_step_start(gs);
+
+        // Unblocked 2/2 deals 2 damage to P1
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 18);
     }
 }
