@@ -614,7 +614,6 @@ mod tests {
     #[test]
     fn reset_mana_action_untaps_land_and_restores_pool() {
         use mecha_oracle::engine::casting::play_land;
-        use mecha_oracle::types::{CardObject, Step, Zone};
         let db = test_db();
         let config = vec![
             vec![
