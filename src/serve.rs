@@ -7,7 +7,7 @@ use axum::{
 use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{deal_combat_damage, declare_attackers, declare_blockers};
-use mecha_oracle::engine::mana::tap_land_for_mana;
+use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
@@ -141,6 +141,7 @@ struct GameView {
     winner: Option<u8>,
     p1: PlayerView,
     p2: PlayerView,
+    can_reset_mana: bool,
 }
 
 fn format_mana_cost(cost: &mecha_oracle::types::mana::ManaCost) -> String {
@@ -289,6 +290,7 @@ fn build_game_view(state: &GameState) -> GameView {
             .map(|pid| if pid == PlayerId(0) { 1 } else { 2 }),
         p1: build_player_view(state, PlayerId(0)),
         p2: build_player_view(state, PlayerId(1)),
+        can_reset_mana: state.mana_checkpoint.is_some(),
     }
 }
 
@@ -304,6 +306,7 @@ enum ActionRequest {
     DeclareBlockers { blocks: Vec<[u64; 2]> },
     DealCombatDamage,
     AdvanceStep,
+    ResetMana,
 }
 
 #[derive(Serialize)]
@@ -353,6 +356,7 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
         }
         ActionRequest::DealCombatDamage => deal_combat_damage(state).map_err(|e| format!("{e:?}")),
         ActionRequest::AdvanceStep => Ok(advance_with_auto_steps(state)),
+        ActionRequest::ResetMana => reset_mana(state).map_err(|e| format!("{e:?}")),
     }
 }
 
@@ -605,6 +609,63 @@ mod tests {
 
         assert_eq!(gs.step(), Step::Upkeep);
         assert_eq!(gs.active_player, PlayerId(1));
+    }
+
+    #[test]
+    fn reset_mana_action_untaps_land_and_restores_pool() {
+        use mecha_oracle::engine::casting::play_land;
+        use mecha_oracle::types::{CardObject, Step, Zone};
+        let db = test_db();
+        let config = vec![
+            vec![
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Grizzly Bears".into(),
+                "Grizzly Bears".into(),
+                "Grizzly Bears".into(),
+                "Grizzly Bears".into(),
+                "Forest".into(),
+                "Forest".into(),
+            ],
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        // Play a land from hand so we have one untapped land on the battlefield.
+        let land_id = gs.hands[&PlayerId(0)]
+            .iter()
+            .find(|id| gs.objects[*id].is_land())
+            .copied()
+            .unwrap();
+        gs = play_land(gs, PlayerId(0), land_id).unwrap();
+
+        // Tap it for mana via the action dispatcher.
+        gs = dispatch_action(
+            gs,
+            ActionRequest::TapLand {
+                object_id: land_id.0,
+            },
+        )
+        .unwrap();
+        assert!(gs.objects[&land_id].tapped);
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
+        assert!(gs.mana_checkpoint.is_some());
+        let view = build_game_view(&gs);
+        assert!(view.can_reset_mana);
+
+        // Reset mana.
+        gs = dispatch_action(gs, ActionRequest::ResetMana).unwrap();
+
+        assert!(!gs.objects[&land_id].tapped, "land untapped");
+        assert!(
+            gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty(),
+            "pool empty"
+        );
+        assert!(gs.mana_checkpoint.is_none());
+        let view = build_game_view(&gs);
+        assert!(!view.can_reset_mana);
     }
 
     #[test]

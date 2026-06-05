@@ -251,6 +251,7 @@ function describeAction(action) {
     }
     case 'deal_combat_damage': return '<span class="log-engine">— Combat damage resolved —</span>';
     case 'advance_step':   return `<span class="log-engine">— Advanced to ${currentState.step} —</span>`;
+    case 'reset_mana':     return `<span class="who">P${ap}</span> reset mana`;
     default: return JSON.stringify(action);
   }
 }
@@ -456,6 +457,9 @@ function renderActions(s) {
     html += group('Combat', [btn('Resolve Damage', "sendAction({type:'deal_combat_damage'})")]);
   }
 
+  if (s.can_reset_mana) {
+    html += group('Mana', [`<button class="action-btn" onclick="sendAction({type:'reset_mana'})">↩ Reset mana</button>`]);
+  }
   html += group('Priority', [`<button class="action-btn pass" onclick="sendAction({type:'advance_step'})">Pass priority →</button>`]);
   document.getElementById('actions').innerHTML = html;
 }
