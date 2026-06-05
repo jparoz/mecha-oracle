@@ -336,7 +336,7 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             let defender = state.opponent_of(state.active_player);
             declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
         }
-        ActionRequest::DealCombatDamage => Ok(deal_combat_damage(state)),
+        ActionRequest::DealCombatDamage => deal_combat_damage(state).map_err(|e| format!("{e:?}")),
         ActionRequest::AdvanceStep => {
             let s = advance_step(state);
             Ok(apply_step_start(s))

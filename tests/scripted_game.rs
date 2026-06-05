@@ -228,7 +228,7 @@ fn scripted_game_runs_to_completion() {
         let gs = advance_step(gs); // DeclareAttackers → DeclareBlockers
         let gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
         let mut gs = advance_step(gs); // DeclareBlockers → CombatDamage
-        gs = deal_combat_damage(gs);
+        gs = deal_combat_damage(gs).unwrap();
         // Bob should have taken 2 damage from the bear
         assert_eq!(
             gs.get_player(PlayerId(1)).unwrap().life,
@@ -280,7 +280,8 @@ fn player_dies_at_zero_life_ends_game() {
     gs.combat.attackers = vec![id];
     gs.combat.blocking_map.insert(id, vec![]);
 
-    let gs = deal_combat_damage(gs);
+    let gs = advance_to_combat_damage(gs);
+    let gs = deal_combat_damage(gs).unwrap();
 
     assert!(gs.is_game_over());
     assert_eq!(gs.winner(), Some(PlayerId(0)));
@@ -312,6 +313,18 @@ fn advance_to_declare_attackers(gs: GameState) -> GameState {
     let gs = advance_step(gs); // → BeginningOfCombat
     let gs = advance_step(gs); // → DeclareAttackers
     assert_eq!(gs.step(), Step::DeclareAttackers);
+    gs
+}
+
+fn advance_to_combat_damage(gs: GameState) -> GameState {
+    let gs = advance_step(gs); // Untap → Upkeep
+    let gs = advance_step(gs); // Upkeep → Draw
+    let gs = advance_step(gs); // Draw → PreCombatMain
+    let gs = advance_step(gs); // PreCombatMain → BeginningOfCombat
+    let gs = advance_step(gs); // BeginningOfCombat → DeclareAttackers
+    let gs = advance_step(gs); // DeclareAttackers → DeclareBlockers
+    let gs = advance_step(gs); // DeclareBlockers → CombatDamage
+    assert_eq!(gs.step(), Step::CombatDamage);
     gs
 }
 
@@ -360,7 +373,7 @@ fn first_striker_kills_blocker_and_survives_unscathed() {
     let gs = advance_step(gs); // → CombatDamage
 
     // Round 1: first strike
-    let gs = deal_combat_damage(gs);
+    let gs = deal_combat_damage(gs).unwrap();
     assert!(
         !gs.battlefield.contains(&bears_id),
         "Bears should be dead after round 1"
@@ -373,7 +386,7 @@ fn first_striker_kills_blocker_and_survives_unscathed() {
     // Advance to queued second round
     let gs = advance_step(gs);
     assert_eq!(gs.step(), Step::CombatDamage);
-    let gs = deal_combat_damage(gs);
+    let gs = deal_combat_damage(gs).unwrap();
 
     assert!(gs.battlefield.contains(&bodyguard_id), "Bodyguard survives");
     assert_eq!(
@@ -441,7 +454,7 @@ fn trample_excess_kills_player() {
     let gs = advance_step(gs); // → DeclareBlockers
     let gs = declare_blockers(gs, PlayerId(1), &[(blocker_id, trampler_id)]).unwrap();
     let gs = advance_step(gs); // → CombatDamage
-    let gs = deal_combat_damage(gs);
+    let gs = deal_combat_damage(gs).unwrap();
 
     assert!(!gs.battlefield.contains(&blocker_id), "2/2 blocker dies");
     assert_eq!(
@@ -493,7 +506,7 @@ fn deathtouch_rat_kills_hill_giant() {
     let gs = advance_step(gs); // → DeclareBlockers
     let gs = declare_blockers(gs, PlayerId(1), &[(giant_id, rats_id)]).unwrap();
     let gs = advance_step(gs); // → CombatDamage
-    let gs = deal_combat_damage(gs);
+    let gs = deal_combat_damage(gs).unwrap();
 
     assert!(
         !gs.battlefield.contains(&giant_id),
