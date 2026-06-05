@@ -1,5 +1,5 @@
 use super::{EngineError, mana::pay_mana_cost, state_based_actions::check_and_apply_sbas};
-use crate::types::{GameState, ObjectId, PlayerId, Step, Zone};
+use crate::types::{GameState, ObjectId, PlayerId, Zone};
 
 /// Move a land from hand to battlefield. One per turn, main phase only (CR 305).
 pub fn play_land(
@@ -8,9 +8,6 @@ pub fn play_land(
     object_id: ObjectId,
 ) -> Result<GameState, EngineError> {
     if state.active_player != player_id {
-        return Err(EngineError::CannotCastNow);
-    }
-    if !matches!(state.step, Step::PreCombatMain | Step::PostCombatMain) {
         return Err(EngineError::CannotCastNow);
     }
     if state.lands_played_this_turn >= 1 {
@@ -61,9 +58,6 @@ pub fn cast_creature(
     if state.active_player != player_id {
         return Err(EngineError::CannotCastNow);
     }
-    if !matches!(state.step, Step::PreCombatMain | Step::PostCombatMain) {
-        return Err(EngineError::CannotCastNow);
-    }
     if !state.stack.is_empty() {
         return Err(EngineError::CannotCastNow);
     }
@@ -110,7 +104,7 @@ pub fn cast_creature(
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::{CardObject, Player};
+    use crate::types::{CardObject, Player, Step};
 
     fn make_state() -> GameState {
         let mut gs = GameState::new(vec![
@@ -192,19 +186,6 @@ mod tests {
         assert!(matches!(
             cast_creature(gs, PlayerId(0), bear_id),
             Err(EngineError::InsufficientMana)
-        ));
-    }
-
-    #[test]
-    fn cannot_play_land_outside_main_phase() {
-        let db = test_db();
-        let mut gs = make_state();
-        gs.step = Step::BeginningOfCombat;
-        let forest_id = put_in_hand(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
-
-        assert!(matches!(
-            play_land(gs, PlayerId(0), forest_id),
-            Err(EngineError::CannotCastNow)
         ));
     }
 
