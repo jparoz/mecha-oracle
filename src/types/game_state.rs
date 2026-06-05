@@ -1,5 +1,6 @@
 use super::card_object::CardObject;
 use super::ids::{ObjectId, PlayerId};
+use super::mana::ManaPool;
 use super::player::Player;
 use std::collections::{HashMap, VecDeque};
 
@@ -51,6 +52,14 @@ impl Step {
 }
 
 #[derive(Debug, Clone)]
+pub struct ManaCheckpoint {
+    /// Mana pool state for every player at the moment the first mana tap was made.
+    pub pools: HashMap<PlayerId, ManaPool>,
+    /// Lands tapped for mana since the checkpoint was created, in tap order.
+    pub tapped_lands: Vec<ObjectId>,
+}
+
+#[derive(Debug, Clone)]
 pub struct CombatState {
     /// Creatures declared as attackers this combat.
     pub attackers: Vec<ObjectId>,
@@ -87,6 +96,7 @@ pub struct GameState {
     pub turn_number: u32,
     pub lands_played_this_turn: u32,
     pub combat: CombatState,
+    pub mana_checkpoint: Option<ManaCheckpoint>,
     /// Extra steps queued for dynamic insertion (e.g. second combat damage step per CR 510.4,
     /// or extra combat phases from card effects). `advance_step` pops from this before
     /// following the static turn sequence.
@@ -122,6 +132,7 @@ impl GameState {
             turn_number: 1,
             lands_played_this_turn: 0,
             combat: CombatState::empty(),
+            mana_checkpoint: None,
             extra_steps: VecDeque::new(),
             next_object_id: 1,
             game_over: false,

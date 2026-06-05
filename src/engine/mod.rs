@@ -20,4 +20,5 @@ pub enum EngineError {
     CreatureTapped,
     InvalidBlocker,            // blocker can't legally block this attacker
     MenaceRequiresTwoBlockers, // menace attacker has exactly one blocker
+    NoManaCheckpoint,
 }

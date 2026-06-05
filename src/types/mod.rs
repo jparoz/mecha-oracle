@@ -12,7 +12,7 @@ pub use ability::{AbilityAST, ActivatedAbility, StaticAbility, TriggerEvent, Tri
 pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;
 pub use effect::{Effect, EffectTarget};
-pub use game_state::{CombatState, GameState, Phase, Step};
+pub use game_state::{CombatState, GameState, ManaCheckpoint, Phase, Step};
 pub use ids::{ObjectId, PlayerId};
 pub use mana::{ManaColor, ManaCost, ManaPool};
 pub use player::Player;
