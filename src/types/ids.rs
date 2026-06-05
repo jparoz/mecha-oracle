@@ -1,7 +1,11 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
 pub struct ObjectId(pub u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
 pub struct PlayerId(pub u8);
 
 #[cfg(test)]
@@ -27,5 +31,17 @@ mod tests {
         map.insert(PlayerId(1), "Bob");
         assert_eq!(map[&PlayerId(0)], "Alice");
         assert_eq!(map[&PlayerId(1)], "Bob");
+    }
+
+    #[test]
+    fn player_id_serializes_as_inner_u8() {
+        let id = PlayerId(1);
+        assert_eq!(serde_json::to_string(&id).unwrap(), "1");
+    }
+
+    #[test]
+    fn object_id_serializes_as_inner_u64() {
+        let id = ObjectId(42);
+        assert_eq!(serde_json::to_string(&id).unwrap(), "42");
     }
 }
