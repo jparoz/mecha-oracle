@@ -160,6 +160,18 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 .gy-modal-card .gy-pt { font-size: 11px; color: #888; }
 .gy-modal-close { margin-top: 12px; display: block; width: 100%; background: #2a3a4a; border: 1px solid #4a6a8a; border-radius: 4px; padding: 6px; color: #aac; font-size: 12px; cursor: pointer; text-align: center; }
 .gy-empty { font-size: 12px; color: #555; text-align: center; padding: 12px 0; }
+
+/* Log drawer */
+#log-drawer {
+  display: none; width: 220px; background: #161b22;
+  border-left: 1px solid #30363d; flex-direction: column; flex-shrink: 0;
+}
+#log-drawer.open { display: flex; }
+#log-drawer-header {
+  padding: 6px 10px; border-bottom: 1px solid #30363d;
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+#log-entries { flex: 1; overflow-y: auto; padding: 8px; }
 </style>
 </head>
 <body>
@@ -226,6 +238,13 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
                 onclick="sendAction({type:'advance_step'})">Pass priority →</button>
       </div>
     </div>
+  </div>
+  <div id="log-drawer">
+    <div id="log-drawer-header">
+      <span style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888">Game Log</span>
+      <button onclick="toggleLog()" style="background:none;border:none;color:#555;cursor:pointer;font-size:14px;line-height:1">✕</button>
+    </div>
+    <div id="log-entries"></div>
   </div>
 </div>
 
@@ -429,7 +448,7 @@ function renderTurnTracker(s) {
 }
 
 function toggleLog() {
-  // Stub — will be wired up in Task 12 when the log drawer is added.
+  document.getElementById('log-drawer').classList.toggle('open');
 }
 
 // ── Actions panel ─────────────────────────────────────────────────────────────
@@ -600,7 +619,7 @@ document.getElementById('gy-modal').addEventListener('click', e => { if (e.targe
 // ── Log ───────────────────────────────────────────────────────────────────────
 
 function appendLog(html, cls) {
-  const log = document.getElementById('log') || document.getElementById('log-entries');
+  const log = document.getElementById('log-entries');
   if (!log) return;
   const entry = document.createElement('div');
   entry.className = 'log-entry ' + (cls || '');
