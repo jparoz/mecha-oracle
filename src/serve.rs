@@ -354,6 +354,13 @@ fn dispatch_action(mut state: GameState, action: ActionRequest) -> Result<GameSt
             declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::AdvanceStep => {
+            // Turn-based actions (CR 508/509) must complete before priority opens
+            if state.step() == Step::DeclareAttackers && !state.combat.attackers_declared {
+                return Err("must declare attackers before passing priority".to_string());
+            }
+            if state.step() == Step::DeclareBlockers && !state.combat.blockers_declared {
+                return Err("must declare blockers before passing priority".to_string());
+            }
             let nap = state.opponent_of(state.active_player);
             if state.priority_player == state.active_player {
                 state.priority_player = nap;
@@ -642,6 +649,54 @@ mod tests {
     }
 
     #[test]
+    fn advance_step_blocked_before_attackers_declared() {
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        // Navigate to DeclareAttackers (4 passes: PC×2, BOC×2)
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(gs.step(), Step::DeclareAttackers);
+        assert!(!gs.combat.attackers_declared);
+
+        // AdvanceStep must be rejected before attackers are declared
+        assert!(dispatch_action(gs, ActionRequest::AdvanceStep).is_err());
+    }
+
+    #[test]
+    fn advance_step_blocked_before_blockers_declared() {
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        // Navigate to DeclareAttackers (4 passes), declare, then advance to DeclareBlockers (2 passes)
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        gs = dispatch_action(
+            gs,
+            ActionRequest::DeclareAttackers {
+                attacker_ids: vec![],
+            },
+        )
+        .unwrap();
+        for _ in 0..2 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(gs.step(), Step::DeclareBlockers);
+        assert!(!gs.combat.blockers_declared);
+
+        // AdvanceStep must be rejected before blockers are declared
+        assert!(dispatch_action(gs, ActionRequest::AdvanceStep).is_err());
+    }
+
+    #[test]
     fn advancing_from_end_step_auto_advances_to_next_upkeep() {
         use mecha_oracle::types::Step;
         let config = vec![
@@ -650,8 +705,26 @@ mod tests {
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        // Two passes per step × 7 steps (PC→BOC→DA→DB→CD→EOC→PC2→End)
-        for _ in 0..14 {
+        // PC (2) + BOC (2) → DeclareAttackers
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        // Turn-based action: declare (empty) before priority opens
+        gs = dispatch_action(
+            gs,
+            ActionRequest::DeclareAttackers {
+                attacker_ids: vec![],
+            },
+        )
+        .unwrap();
+        // DA (2) → DeclareBlockers
+        for _ in 0..2 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        // Turn-based action: declare (empty) before priority opens
+        gs = dispatch_action(gs, ActionRequest::DeclareBlockers { blocks: vec![] }).unwrap();
+        // DB (2) → CD (auto-resolves) → CD (2) → EOC (2) → PC2 (2) → End
+        for _ in 0..8 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
         assert_eq!(gs.step(), Step::End);
