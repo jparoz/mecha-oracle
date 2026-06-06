@@ -426,4 +426,14 @@
     "power": "3",
     "toughness": "2"
   }
+  ,
+  {
+    "object": "card",
+    "name": "Grazing Gladehart",
+    "mana_cost": "{2}{G}",
+    "type_line": "Creature — Elk",
+    "oracle_text": "Landfall — Whenever a land you control enters, you gain 2 life.",
+    "power": "2",
+    "toughness": "2"
+  }
 ]

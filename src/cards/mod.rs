@@ -78,10 +78,47 @@ mod tests {
     use test_helpers::test_db;
 
     #[test]
-    fn unparsed_count_zero_for_current_fixtures() {
-        // All current fixture cards have only keywords or empty oracle text.
-        // This will change in Task 8 when a Landfall card is added.
+    fn landfall_card_loads_successfully() {
         let db = test_db();
-        assert_eq!(db.unparsed_count(), 0);
+        assert!(db.get("Grazing Gladehart").is_some());
+    }
+
+    #[test]
+    fn landfall_card_has_unparsed_span() {
+        let db = test_db();
+        let card = db.get("Grazing Gladehart").unwrap();
+        assert!(card.has_unparsed());
+    }
+
+    #[test]
+    fn landfall_card_span_structure() {
+        use crate::types::{IgnoredKind, OracleSpan};
+        let db = test_db();
+        let card = db.get("Grazing Gladehart").unwrap();
+        assert_eq!(card.abilities.len(), 2);
+        assert!(matches!(
+            &card.abilities[0],
+            OracleSpan::Ignored(IgnoredKind::AbilityWord, _)
+        ));
+        assert!(matches!(&card.abilities[1], OracleSpan::Unparsed(_)));
+    }
+
+    #[test]
+    fn keyword_only_card_has_no_unparsed_spans() {
+        use crate::types::OracleSpan;
+        let db = test_db();
+        let card = db.get("Serra Angel").unwrap();
+        assert!(!card.has_unparsed());
+        assert!(
+            card.abilities
+                .iter()
+                .all(|s| matches!(s, OracleSpan::Parsed(_)))
+        );
+    }
+
+    #[test]
+    fn unparsed_count_reflects_landfall_card() {
+        let db = test_db();
+        assert_eq!(db.unparsed_count(), 1);
     }
 }
