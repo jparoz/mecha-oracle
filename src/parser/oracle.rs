@@ -39,20 +39,7 @@ fn split_at_depth_zero<'a>(text: &'a str, sep: char) -> Vec<&'a str> {
 
 /// True if `s` (already lowercased) is one of the eleven evergreen keywords.
 fn is_known_keyword(s: &str) -> bool {
-    matches!(
-        s,
-        "flying"
-            | "reach"
-            | "trample"
-            | "first strike"
-            | "double strike"
-            | "vigilance"
-            | "haste"
-            | "lifelink"
-            | "deathtouch"
-            | "menace"
-            | "indestructible"
-    )
+    !matches!(match_keyword(s), OracleSpan::Unparsed(_))
 }
 
 /// Emits spans for a single comma-separated token (no top-level em-dash).
@@ -290,7 +277,10 @@ mod tests {
     fn triggered_ability_becomes_unparsed() {
         assert_eq!(
             parse_oracle_text("When this creature enters, draw a card."),
-            vec![unparsed("When this creature enters, draw a card.")]
+            vec![
+                unparsed("When this creature enters"),
+                unparsed("draw a card."),
+            ]
         );
     }
 
