@@ -236,7 +236,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
         name: obj.definition.name.clone(),
         type_line: format_type_line(&obj.definition.type_line),
         oracle_text: {
-            use mecha_oracle::types::{AbilityAST, IgnoredKind, OracleSpan};
+            use mecha_oracle::types::{AbilityAST, OracleSpan};
             obj.definition
                 .abilities
                 .iter()

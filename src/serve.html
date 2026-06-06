@@ -412,7 +412,7 @@ function cardHTML(card) {
       <div class="tooltip-name">${esc(card.name)}</div>
       ${card.mana_cost ? `<div class="tooltip-cost">${esc(card.mana_cost)}</div>` : ''}
       <div class="tooltip-type">${esc(card.type_line)}</div>
-      ${card.oracle_text ? `<div class="tooltip-text">${renderOracleText(card.oracle_text)}</div>` : ''}
+      ${card.oracle_text.length > 0 ? `<div class="tooltip-text">${renderOracleText(card.oracle_text)}</div>` : ''}
       ${card.power != null ? `<div class="tooltip-pt">${card.power} / ${card.toughness}</div>` : ''}
       ${tags.length ? `<div class="tooltip-tags">${tags.join('')}</div>` : ''}
     </div>`;
