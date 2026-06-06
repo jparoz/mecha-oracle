@@ -8,7 +8,10 @@ pub mod mana;
 pub mod player;
 pub mod zone;
 
-pub use ability::{AbilityAST, ActivatedAbility, StaticAbility, TriggerEvent, TriggeredAbility};
+pub use ability::{
+    AbilityAST, ActivatedAbility, IgnoredKind, OracleSpan, StaticAbility, TriggerEvent,
+    TriggeredAbility,
+};
 pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;
 pub use effect::{Effect, EffectTarget};
