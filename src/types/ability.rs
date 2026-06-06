@@ -27,6 +27,24 @@ pub struct TriggeredAbility {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivatedAbility;
 
+impl StaticAbility {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Flying => "Flying",
+            Self::Reach => "Reach",
+            Self::Trample => "Trample",
+            Self::FirstStrike => "First strike",
+            Self::DoubleStrike => "Double strike",
+            Self::Vigilance => "Vigilance",
+            Self::Haste => "Haste",
+            Self::Lifelink => "Lifelink",
+            Self::Deathtouch => "Deathtouch",
+            Self::Menace => "Menace",
+            Self::Indestructible => "Indestructible",
+        }
+    }
+}
+
 /// Classifies oracle text that has no rules effect and is rendered in italics.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -73,5 +91,16 @@ mod tests {
 
         let e = OracleSpan::Unparsed("When this enters".into());
         assert_ne!(a, e);
+    }
+
+    #[test]
+    fn display_name_canonical_casing() {
+        assert_eq!(StaticAbility::Flying.display_name(), "Flying");
+        assert_eq!(StaticAbility::FirstStrike.display_name(), "First strike");
+        assert_eq!(StaticAbility::DoubleStrike.display_name(), "Double strike");
+        assert_eq!(
+            StaticAbility::Indestructible.display_name(),
+            "Indestructible"
+        );
     }
 }
