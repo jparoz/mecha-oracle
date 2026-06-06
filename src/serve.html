@@ -412,7 +412,7 @@ function cardHTML(card) {
       <div class="tooltip-name">${esc(card.name)}</div>
       ${card.mana_cost ? `<div class="tooltip-cost">${esc(card.mana_cost)}</div>` : ''}
       <div class="tooltip-type">${esc(card.type_line)}</div>
-      ${card.oracle_text ? `<div class="tooltip-text">${esc(card.oracle_text)}</div>` : ''}
+      ${card.oracle_text ? `<div class="tooltip-text">${renderOracleText(card.oracle_text)}</div>` : ''}
       ${card.power != null ? `<div class="tooltip-pt">${card.power} / ${card.toughness}</div>` : ''}
       ${tags.length ? `<div class="tooltip-tags">${tags.join('')}</div>` : ''}
     </div>`;
@@ -432,6 +432,20 @@ function cardHTML(card) {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderOracleText(spans) {
+  if (!spans || spans.length === 0) return '';
+  return spans.map(span => {
+    const t = String(span.text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    if (span.kind === 'parsed')   return `<span>${t}</span>`;
+    if (span.kind === 'ignored')  return `<span style="font-style:italic">${t}</span>`;
+    if (span.kind === 'unparsed') return `<span style="color:red;text-decoration:underline">${t}</span>`;
+    return t;
+  }).join('<br>');
 }
 
 function renderTurnTracker(s) {
