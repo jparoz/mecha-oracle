@@ -1,4 +1,4 @@
-use super::ability::AbilityAST;
+use super::ability::OracleSpan;
 use super::mana::ManaCost;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,7 +57,15 @@ pub struct CardDefinition {
     pub mana_cost: Option<ManaCost>,
     pub type_line: TypeLine,
     pub oracle_text: String,
-    pub abilities: Vec<AbilityAST>,
+    pub abilities: Vec<OracleSpan>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
+}
+
+impl CardDefinition {
+    pub fn has_unparsed(&self) -> bool {
+        self.abilities
+            .iter()
+            .any(|s| matches!(s, OracleSpan::Unparsed(_)))
+    }
 }

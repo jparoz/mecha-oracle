@@ -402,7 +402,7 @@ fn trample_excess_kills_player() {
     // Use a manually-constructed 5/5 trampler instead.
     use mecha_oracle::types::ability::StaticAbility;
     use mecha_oracle::types::{
-        AbilityAST, CardDefinition,
+        AbilityAST, CardDefinition, OracleSpan,
         card::{CardType, TypeLine},
     };
 
@@ -422,7 +422,9 @@ fn trample_excess_kills_player() {
             subtypes: vec![],
         },
         oracle_text: String::new(),
-        abilities: vec![AbilityAST::Static(StaticAbility::Trample)],
+        abilities: vec![OracleSpan::Parsed(AbilityAST::Static(
+            StaticAbility::Trample,
+        ))],
         power: Some(5),
         toughness: Some(5),
     };

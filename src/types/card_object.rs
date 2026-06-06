@@ -1,4 +1,4 @@
-use super::ability::{AbilityAST, StaticAbility};
+use super::ability::{AbilityAST, OracleSpan, StaticAbility};
 use super::card::CardDefinition;
 use super::ids::{ObjectId, PlayerId};
 use super::zone::Zone;
@@ -62,7 +62,7 @@ impl CardObject {
         self.definition
             .abilities
             .iter()
-            .any(|a| matches!(a, AbilityAST::Static(k) if *k == kw))
+            .any(|span| matches!(span, OracleSpan::Parsed(AbilityAST::Static(k)) if *k == kw))
     }
 
     pub fn can_attack(&self) -> bool {
@@ -111,9 +111,11 @@ mod tests {
 
     #[test]
     fn has_keyword_returns_true_for_matching_ability() {
-        use crate::types::{AbilityAST, ability::StaticAbility};
+        use crate::types::{AbilityAST, OracleSpan, ability::StaticAbility};
         let mut def = grizzly_bears();
-        def.abilities = vec![AbilityAST::Static(StaticAbility::Flying)];
+        def.abilities = vec![OracleSpan::Parsed(AbilityAST::Static(
+            StaticAbility::Flying,
+        ))];
         let obj = CardObject::new(ObjectId(1), def, PlayerId(0), Zone::Battlefield);
         assert!(obj.has_keyword(StaticAbility::Flying));
         assert!(!obj.has_keyword(StaticAbility::Trample));
@@ -121,9 +123,9 @@ mod tests {
 
     #[test]
     fn summoning_sick_creature_with_haste_can_attack() {
-        use crate::types::{AbilityAST, ability::StaticAbility};
+        use crate::types::{AbilityAST, OracleSpan, ability::StaticAbility};
         let mut def = grizzly_bears();
-        def.abilities = vec![AbilityAST::Static(StaticAbility::Haste)];
+        def.abilities = vec![OracleSpan::Parsed(AbilityAST::Static(StaticAbility::Haste))];
         let mut obj = CardObject::new(ObjectId(1), def, PlayerId(0), Zone::Battlefield);
         obj.summoning_sick = true;
         assert!(obj.can_attack()); // haste bypasses summoning sickness
