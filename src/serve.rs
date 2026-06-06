@@ -103,11 +103,27 @@ struct ManaPoolView {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+enum SpanKind {
+    Parsed,
+    Ignored,
+    Unparsed,
+}
+
+#[derive(Serialize)]
+struct OracleSpanView {
+    kind: SpanKind,
+    text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ignored_kind: Option<mecha_oracle::types::IgnoredKind>,
+}
+
+#[derive(Serialize)]
 struct CardView {
     id: ObjectId,
     name: String,
     type_line: String,
-    oracle_text: String,
+    oracle_text: Vec<OracleSpanView>,
     mana_cost: Option<String>,
     power: Option<i32>,
     toughness: Option<i32>,
@@ -219,7 +235,35 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
         id: obj.id,
         name: obj.definition.name.clone(),
         type_line: format_type_line(&obj.definition.type_line),
-        oracle_text: obj.definition.oracle_text.clone(),
+        oracle_text: {
+            use mecha_oracle::types::{AbilityAST, IgnoredKind, OracleSpan};
+            obj.definition
+                .abilities
+                .iter()
+                .map(|span| match span {
+                    OracleSpan::Parsed(AbilityAST::Static(kw)) => OracleSpanView {
+                        kind: SpanKind::Parsed,
+                        text: kw.display_name().to_string(),
+                        ignored_kind: None,
+                    },
+                    OracleSpan::Ignored(kind, t) => OracleSpanView {
+                        kind: SpanKind::Ignored,
+                        text: t.clone(),
+                        ignored_kind: Some(kind.clone()),
+                    },
+                    OracleSpan::Unparsed(t) => OracleSpanView {
+                        kind: SpanKind::Unparsed,
+                        text: t.clone(),
+                        ignored_kind: None,
+                    },
+                    _ => OracleSpanView {
+                        kind: SpanKind::Unparsed,
+                        text: format!("{span:?}"),
+                        ignored_kind: None,
+                    },
+                })
+                .collect()
+        },
         mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
         power: obj.current_power,
         toughness: obj.current_toughness,
