@@ -1,3 +1,4 @@
+pub mod activated;
 pub mod casting;
 pub mod combat;
 pub mod mana;
@@ -21,4 +22,5 @@ pub enum EngineError {
     InvalidBlocker,            // blocker can't legally block this attacker
     MenaceRequiresTwoBlockers, // menace attacker has exactly one blocker
     NoManaCheckpoint,
+    AbilityIndexOutOfRange,
 }
