@@ -615,6 +615,25 @@ function renderPanes(s) {
       html += `<p style="font-size:11px;color:#666;padding:4px">Blockers declared</p>`;
     }
 
+    // Activated abilities: show for priority player during main phases
+    if (pid === s.priority_player && (s.step === 'PreCombatMain' || s.step === 'PostCombatMain')) {
+      const allCards = [...myData.creatures, ...myData.lands];
+      const activatables = [];
+      for (const card of allCards) {
+        if (!card.activated_abilities) continue;
+        for (const ab of card.activated_abilities) {
+          activatables.push({ card, ab });
+        }
+      }
+      if (activatables.length > 0) {
+        const btns = activatables.map(({ card, ab }) => {
+          const disabled = !ab.can_activate ? ' disabled' : '';
+          return `<button class="action-btn"${disabled} onclick="sendAction({type:'activate_ability',object_id:${card.id},ability_index:${ab.index}})">${esc(card.name)} — ${esc(ab.label)}</button>`;
+        });
+        html += group('Activated abilities', btns);
+      }
+    }
+
     // Reset mana (AP only, when checkpoint exists)
     if (iAmAP && s.can_reset_mana) {
       html += group('Mana', [`<button class="action-btn" onclick="sendAction({type:'reset_mana'})">↩ Reset mana</button>`]);
