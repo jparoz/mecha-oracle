@@ -94,7 +94,7 @@ pub fn activate_ability(
     }
 
     // Pay costs
-    for component in ability.cost.clone().iter() {
+    for component in ability.cost.iter() {
         match component {
             CostComponent::Tap => {
                 if produces_mana {
