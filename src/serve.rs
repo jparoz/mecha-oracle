@@ -5,10 +5,14 @@ use axum::{
     routing::{get, post},
 };
 use mecha_oracle::cards::CardDatabase;
+use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
 use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
+use mecha_oracle::types::ability::{
+    AbilityAST, ActivatedAbility, CostComponent, EffectStep, OracleSpan,
+};
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -120,6 +124,13 @@ struct OracleSpanView {
 }
 
 #[derive(Serialize)]
+struct ActivatedAbilityView {
+    index: usize,
+    label: String,
+    can_activate: bool,
+}
+
+#[derive(Serialize)]
 struct CardView {
     id: ObjectId,
     name: String,
@@ -135,6 +146,7 @@ struct CardView {
     is_blocking: bool,
     can_attack: bool,
     can_block: bool,
+    activated_abilities: Vec<ActivatedAbilityView>,
 }
 
 #[derive(Serialize)]
@@ -220,6 +232,86 @@ fn format_type_line(tl: &mecha_oracle::types::card::TypeLine) -> String {
     }
 }
 
+fn format_mana_cost_braced(cost: &mecha_oracle::types::mana::ManaCost) -> String {
+    let mut s = String::new();
+    if cost.generic > 0 {
+        s.push_str(&format!("{{{}}}", cost.generic));
+    }
+    for _ in 0..cost.white {
+        s.push_str("{W}");
+    }
+    for _ in 0..cost.blue {
+        s.push_str("{U}");
+    }
+    for _ in 0..cost.black {
+        s.push_str("{B}");
+    }
+    for _ in 0..cost.red {
+        s.push_str("{R}");
+    }
+    for _ in 0..cost.green {
+        s.push_str("{G}");
+    }
+    for _ in 0..cost.colorless {
+        s.push_str("{C}");
+    }
+    s
+}
+
+fn format_mana_pool(pool: &mecha_oracle::types::mana::ManaPool) -> String {
+    let mut s = String::new();
+    for _ in 0..pool.white {
+        s.push_str("{W}");
+    }
+    for _ in 0..pool.blue {
+        s.push_str("{U}");
+    }
+    for _ in 0..pool.black {
+        s.push_str("{B}");
+    }
+    for _ in 0..pool.red {
+        s.push_str("{R}");
+    }
+    for _ in 0..pool.green {
+        s.push_str("{G}");
+    }
+    for _ in 0..pool.colorless {
+        s.push_str("{C}");
+    }
+    s
+}
+
+fn format_activated_ability(ability: &ActivatedAbility) -> String {
+    let cost_parts: Vec<String> = ability
+        .cost
+        .iter()
+        .map(|c| match c {
+            CostComponent::Tap => "{T}".to_string(),
+            CostComponent::Mana(m) => format_mana_cost_braced(m),
+            CostComponent::PayLife(n) => format!("Pay {n} life"),
+            CostComponent::Sacrifice(n, _) => format!("Sacrifice {n}"),
+            CostComponent::Discard(n, _) => format!("Discard {n}"),
+            CostComponent::Unimplemented(s) => s.clone(),
+        })
+        .collect();
+    let effect_parts: Vec<String> = ability
+        .effect
+        .iter()
+        .map(|e| match e {
+            EffectStep::AddMana(pool) => format!("Add {}", format_mana_pool(pool)),
+            EffectStep::Mill(n) => format!("Mill {n}"),
+            EffectStep::DrawCard(n) => {
+                if *n == 1 {
+                    "Draw a card".to_string()
+                } else {
+                    format!("Draw {n} cards")
+                }
+            }
+        })
+        .collect();
+    format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))
+}
+
 fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
     use mecha_oracle::types::ObjectId;
     use std::collections::HashSet;
@@ -237,7 +329,6 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
         name: obj.definition.name.clone(),
         type_line: format_type_line(&obj.definition.type_line),
         oracle_text: {
-            use mecha_oracle::types::{AbilityAST, OracleSpan};
             obj.definition
                 .abilities
                 .iter()
@@ -245,6 +336,11 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     OracleSpan::Parsed(AbilityAST::Static(kw)) => OracleSpanView {
                         kind: SpanKind::Parsed,
                         text: kw.display_name().to_string(),
+                        ignored_kind: None,
+                    },
+                    OracleSpan::Parsed(AbilityAST::Activated(a)) => OracleSpanView {
+                        kind: SpanKind::Parsed,
+                        text: format_activated_ability(a),
                         ignored_kind: None,
                     },
                     OracleSpan::Ignored(kind, t) => OracleSpanView {
@@ -284,6 +380,21 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
         can_block: state.step() == Step::DeclareBlockers
             && pid != state.active_player
             && obj.can_block(),
+        activated_abilities: obj
+            .definition
+            .abilities
+            .iter()
+            .filter_map(|span| match span {
+                OracleSpan::Parsed(AbilityAST::Activated(a)) => Some(a),
+                _ => None,
+            })
+            .enumerate()
+            .map(|(i, ability)| ActivatedAbilityView {
+                index: i,
+                label: format_activated_ability(ability),
+                can_activate: can_pay_cost(state, obj.id, ability, pid),
+            })
+            .collect(),
     };
 
     let bf_objects: Vec<_> = state
@@ -349,13 +460,27 @@ fn build_game_view(state: &GameState) -> GameView {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ActionRequest {
-    TapLand { object_id: u64 },
-    PlayLand { object_id: u64 },
-    CastCreature { object_id: u64 },
-    DeclareAttackers { attacker_ids: Vec<u64> },
-    DeclareBlockers { blocks: Vec<[u64; 2]> },
+    TapLand {
+        object_id: u64,
+    },
+    PlayLand {
+        object_id: u64,
+    },
+    CastCreature {
+        object_id: u64,
+    },
+    DeclareAttackers {
+        attacker_ids: Vec<u64>,
+    },
+    DeclareBlockers {
+        blocks: Vec<[u64; 2]>,
+    },
     AdvanceStep,
     ResetMana,
+    ActivateAbility {
+        object_id: u64,
+        ability_index: usize,
+    },
 }
 
 #[derive(Serialize)]
@@ -420,6 +545,14 @@ fn dispatch_action(mut state: GameState, action: ActionRequest) -> Result<GameSt
             }
         }
         ActionRequest::ResetMana => reset_mana(state).map_err(|e| format!("{e:?}")),
+        ActionRequest::ActivateAbility {
+            object_id,
+            ability_index,
+        } => {
+            let player = state.priority_player;
+            activate_ability(state, ObjectId(object_id), ability_index, player)
+                .map_err(|e| format!("{e:?}"))
+        }
     }
 }
 
