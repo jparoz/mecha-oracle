@@ -582,6 +582,17 @@ pub fn pay_mana_cost(
 
     // Validate plan satisfies cost (pip-by-pip)
     {
+        // Guard: plan's snow shadow invariant must hold
+        if plan.snow_white > plan.white
+            || plan.snow_blue > plan.blue
+            || plan.snow_black > plan.black
+            || plan.snow_red > plan.red
+            || plan.snow_green > plan.green
+            || plan.snow_colorless > plan.colorless
+        {
+            return Err(EngineError::InvalidPaymentPlan);
+        }
+
         let mut rem = plan.clone();
         let mut blood_left = plan.blood;
 
