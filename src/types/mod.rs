@@ -18,6 +18,6 @@ pub use card_object::CardObject;
 pub use effect::{Effect, EffectTarget};
 pub use game_state::{CombatState, GameState, ManaCheckpoint, Phase, Step};
 pub use ids::{ObjectId, PlayerId};
-pub use mana::{ManaColor, ManaCost, ManaPool};
+pub use mana::{ManaColor, ManaCost, ManaPip, ManaPool, PaymentPlan};
 pub use player::Player;
 pub use zone::Zone;
