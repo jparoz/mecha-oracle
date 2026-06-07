@@ -1,4 +1,6 @@
 use crate::types::OracleSpan::ParsedUnimplemented;
+use crate::types::ability::{AbilityEffect, ActivationCost, CostComponent, EffectStep};
+use crate::types::mana::{ManaCost, ManaPool};
 use crate::types::{AbilityAST, IgnoredKind, OracleSpan, ability::StaticAbility};
 
 // ── Private helpers ──────────────────────────────────────────────────────────
@@ -36,6 +38,150 @@ fn split_at_depth_zero<'a>(text: &'a str, sep: char) -> Vec<&'a str> {
     }
     result.push(&text[start..]);
     result
+}
+
+/// Returns the byte offset of the first `:` at depth 0,
+/// tracking both `{`/`}` and `(`/`)` as nesting delimiters.
+fn find_colon_at_depth_zero(text: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in text.char_indices() {
+        match c {
+            '(' | '{' => depth += 1,
+            ')' | '}' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn try_parse_mana_cost(s: &str) -> Option<ManaCost> {
+    let mut cost = ManaCost::default();
+    let mut chars = s.chars().peekable();
+    let mut saw_symbol = false;
+    while let Some(c) = chars.next() {
+        if c != '{' {
+            return None;
+        }
+        let mut token = String::new();
+        for inner in chars.by_ref() {
+            if inner == '}' {
+                break;
+            }
+            token.push(inner);
+        }
+        match token.as_str() {
+            "W" => cost.white += 1,
+            "U" => cost.blue += 1,
+            "B" => cost.black += 1,
+            "R" => cost.red += 1,
+            "G" => cost.green += 1,
+            "C" => cost.colorless += 1,
+            n => {
+                if let Ok(v) = n.parse::<u32>() {
+                    cost.generic += v;
+                } else {
+                    return None; // unknown symbol (includes {T})
+                }
+            }
+        }
+        saw_symbol = true;
+    }
+    if saw_symbol { Some(cost) } else { None }
+}
+
+fn try_parse_mana_pool(s: &str) -> Option<ManaPool> {
+    let mut pool = ManaPool::default();
+    let mut chars = s.chars().peekable();
+    let mut saw_symbol = false;
+    while let Some(c) = chars.next() {
+        if c != '{' {
+            return None;
+        }
+        let mut token = String::new();
+        for inner in chars.by_ref() {
+            if inner == '}' {
+                break;
+            }
+            token.push(inner);
+        }
+        match token.as_str() {
+            "W" => pool.white += 1,
+            "U" => pool.blue += 1,
+            "B" => pool.black += 1,
+            "R" => pool.red += 1,
+            "G" => pool.green += 1,
+            "C" => pool.colorless += 1,
+            _ => return None, // no generic mana in add effects
+        }
+        saw_symbol = true;
+    }
+    if saw_symbol { Some(pool) } else { None }
+}
+
+fn parse_number_word(s: &str) -> Option<u32> {
+    match s {
+        "one" | "1" => Some(1),
+        "two" | "2" => Some(2),
+        "three" | "3" => Some(3),
+        "four" | "4" => Some(4),
+        "five" | "5" => Some(5),
+        "six" | "6" => Some(6),
+        "seven" | "7" => Some(7),
+        "eight" | "8" => Some(8),
+        "nine" | "9" => Some(9),
+        "ten" | "10" => Some(10),
+        _ => s.parse().ok(),
+    }
+}
+
+fn parse_activation_cost(s: &str) -> ActivationCost {
+    s.split(',')
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .map(|token| {
+            if token == "{T}" {
+                CostComponent::Tap
+            } else if let Some(cost) = try_parse_mana_cost(token) {
+                CostComponent::Mana(cost)
+            } else {
+                CostComponent::Unimplemented(token.to_string())
+            }
+        })
+        .collect()
+}
+
+fn try_parse_effect_step(s: &str) -> Option<EffectStep> {
+    let lower = s.to_lowercase();
+    let lower = lower.as_str();
+    if lower.starts_with("add ") {
+        let mana_str = s["add ".len()..].trim();
+        return try_parse_mana_pool(mana_str).map(EffectStep::AddMana);
+    }
+    if lower == "draw a card" {
+        return Some(EffectStep::DrawCard(1));
+    }
+    if lower.starts_with("draw ") && lower.ends_with(" cards") {
+        let middle = &lower["draw ".len()..lower.len() - " cards".len()];
+        if let Some(n) = parse_number_word(middle) {
+            return Some(EffectStep::DrawCard(n));
+        }
+    }
+    if lower.starts_with("mill ") {
+        let rest = lower["mill ".len()..].trim_end_matches(" cards");
+        if let Some(n) = parse_number_word(rest.trim()) {
+            return Some(EffectStep::Mill(n));
+        }
+    }
+    None
+}
+
+fn parse_ability_effect(s: &str) -> Option<AbilityEffect> {
+    let s = s.trim_end_matches('.');
+    s.split(". ")
+        .filter(|step| !step.is_empty())
+        .map(|step| try_parse_effect_step(step.trim()))
+        .collect()
 }
 
 /// True if `s` (already lowercased) is any recognised CR 702 keyword (implemented or not).
@@ -767,6 +913,191 @@ mod tests {
         assert_eq!(
             parse_oracle_text("Suspend 2\u{2014}{1}{U}"),
             vec![unimplemented("Suspend 2\u{2014}{1}{U}")]
+        );
+    }
+
+    // ── parse_activation_cost / parse_ability_effect ──────────────────────────
+
+    #[test]
+    fn parse_activation_cost_tap_only() {
+        use crate::types::ability::CostComponent;
+        let cost = super::parse_activation_cost("{T}");
+        assert_eq!(cost, vec![CostComponent::Tap]);
+    }
+
+    #[test]
+    fn parse_activation_cost_mana_and_tap() {
+        use crate::types::ability::CostComponent;
+        use crate::types::mana::ManaCost;
+        let cost = super::parse_activation_cost("{2}, {T}");
+        assert_eq!(
+            cost,
+            vec![
+                CostComponent::Mana(ManaCost {
+                    generic: 2,
+                    ..Default::default()
+                }),
+                CostComponent::Tap,
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_activation_cost_unrecognised_becomes_unimplemented() {
+        use crate::types::ability::CostComponent;
+        let cost = super::parse_activation_cost("Sacrifice a creature");
+        assert_eq!(
+            cost,
+            vec![CostComponent::Unimplemented(
+                "Sacrifice a creature".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn parse_ability_effect_add_mana() {
+        use crate::types::ability::EffectStep;
+        use crate::types::mana::ManaPool;
+        let effect = super::parse_ability_effect("Add {G}.").unwrap();
+        assert_eq!(
+            effect,
+            vec![EffectStep::AddMana(ManaPool {
+                green: 1,
+                ..Default::default()
+            })]
+        );
+    }
+
+    #[test]
+    fn parse_ability_effect_draw_a_card() {
+        use crate::types::ability::EffectStep;
+        let effect = super::parse_ability_effect("Draw a card.").unwrap();
+        assert_eq!(effect, vec![EffectStep::DrawCard(1)]);
+    }
+
+    #[test]
+    fn parse_ability_effect_mill_two() {
+        use crate::types::ability::EffectStep;
+        let effect = super::parse_ability_effect("Mill 2.").unwrap();
+        assert_eq!(effect, vec![EffectStep::Mill(2)]);
+    }
+
+    #[test]
+    fn parse_ability_effect_multi_step() {
+        use crate::types::ability::EffectStep;
+        use crate::types::mana::ManaPool;
+        let effect = super::parse_ability_effect("Mill 2. Draw a card.").unwrap();
+        assert_eq!(effect, vec![EffectStep::Mill(2), EffectStep::DrawCard(1),]);
+    }
+
+    #[test]
+    fn parse_ability_effect_unknown_returns_none() {
+        assert!(super::parse_ability_effect("Create a 1/1 token.").is_none());
+    }
+
+    // ── try_parse_mana_cost / try_parse_mana_pool / parse_number_word ─────────
+
+    #[test]
+    fn try_parse_mana_cost_single_color() {
+        use crate::types::mana::ManaCost;
+        let c = super::try_parse_mana_cost("{G}").unwrap();
+        assert_eq!(
+            c,
+            ManaCost {
+                green: 1,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn try_parse_mana_cost_generic_and_color() {
+        use crate::types::mana::ManaCost;
+        let c = super::try_parse_mana_cost("{2}{G}").unwrap();
+        assert_eq!(
+            c,
+            ManaCost {
+                generic: 2,
+                green: 1,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn try_parse_mana_cost_tap_symbol_is_none() {
+        assert!(super::try_parse_mana_cost("{T}").is_none());
+    }
+
+    #[test]
+    fn try_parse_mana_cost_non_symbol_text_is_none() {
+        assert!(super::try_parse_mana_cost("Sacrifice a creature").is_none());
+    }
+
+    #[test]
+    fn try_parse_mana_pool_green() {
+        use crate::types::mana::ManaPool;
+        let p = super::try_parse_mana_pool("{G}").unwrap();
+        assert_eq!(
+            p,
+            ManaPool {
+                green: 1,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn try_parse_mana_pool_two_colors() {
+        use crate::types::mana::ManaPool;
+        let p = super::try_parse_mana_pool("{G}{W}").unwrap();
+        assert_eq!(
+            p,
+            ManaPool {
+                green: 1,
+                white: 1,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn try_parse_mana_pool_generic_is_none() {
+        assert!(super::try_parse_mana_pool("{2}").is_none());
+    }
+
+    #[test]
+    fn parse_number_word_digits_and_words() {
+        assert_eq!(super::parse_number_word("2"), Some(2));
+        assert_eq!(super::parse_number_word("two"), Some(2));
+        assert_eq!(super::parse_number_word("three"), Some(3));
+        assert_eq!(super::parse_number_word("banana"), None);
+    }
+
+    // ── find_colon_at_depth_zero ──────────────────────────────────────────────
+
+    #[test]
+    fn find_colon_none_for_no_colon() {
+        assert_eq!(super::find_colon_at_depth_zero("Flying"), None);
+    }
+
+    #[test]
+    fn find_colon_skips_inside_parens() {
+        assert_eq!(super::find_colon_at_depth_zero("({T}: Add {G}.)"), None);
+    }
+
+    #[test]
+    fn find_colon_skips_inside_braces() {
+        // hypothetical, but verifies brace depth tracking
+        assert_eq!(super::find_colon_at_depth_zero("{T}: Add {G}."), Some(3));
+    }
+
+    #[test]
+    fn find_colon_at_depth_zero_comma_cost() {
+        // "{2}, {T}: Add {G}." — colon is at index 8
+        assert_eq!(
+            super::find_colon_at_depth_zero("{2}, {T}: Add {G}."),
+            Some(8)
         );
     }
 
