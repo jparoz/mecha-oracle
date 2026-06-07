@@ -119,6 +119,20 @@ mod tests {
     #[test]
     fn unparsed_count_reflects_landfall_card() {
         let db = test_db();
-        assert_eq!(db.unparsed_count(), 1);
+        assert_eq!(db.unparsed_count(), 2);
+    }
+
+    #[test]
+    fn llanowar_elves_loads_with_activated_ability() {
+        use crate::types::{AbilityAST, OracleSpan};
+        let db = test_db();
+        let card = db
+            .get("Llanowar Elves")
+            .expect("Llanowar Elves not in fixture");
+        assert!(
+            card.abilities
+                .iter()
+                .any(|s| { matches!(s, OracleSpan::Parsed(AbilityAST::Activated(_))) })
+        );
     }
 }
