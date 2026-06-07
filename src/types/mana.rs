@@ -141,7 +141,7 @@ impl ManaPool {
 
 /// Describes exactly how a player pays a mana cost.
 /// 1 blood = 2 life deducted (Phyrexian mana payment).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize)]
 pub struct PaymentPlan {
     /// Some(n) iff cost contains {X}; None otherwise.
     pub x_value: Option<u32>,

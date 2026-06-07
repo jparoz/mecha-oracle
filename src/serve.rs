@@ -475,6 +475,10 @@ enum ActionRequest {
     ActivateAbility {
         object_id: u64,
         ability_index: usize,
+        #[serde(default)]
+        x_value: Option<u32>,
+        #[serde(default)]
+        payment_plan: Option<mecha_oracle::types::mana::PaymentPlan>,
     },
 }
 
@@ -543,10 +547,19 @@ fn dispatch_action(mut state: GameState, action: ActionRequest) -> Result<GameSt
         ActionRequest::ActivateAbility {
             object_id,
             ability_index,
+            x_value,
+            payment_plan,
         } => {
             let player = state.priority_player;
-            activate_ability(state, ObjectId(object_id), ability_index, player)
-                .map_err(|e| format!("{e:?}"))
+            activate_ability(
+                state,
+                ObjectId(object_id),
+                ability_index,
+                player,
+                x_value,
+                payment_plan,
+            )
+            .map_err(|e| format!("{e:?}"))
         }
     }
 }

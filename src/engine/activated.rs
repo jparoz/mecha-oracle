@@ -3,13 +3,15 @@ use crate::engine::mana::{can_pay_mana, greedy_payment_plan, pay_mana_cost};
 use crate::engine::turn::draw_card;
 use crate::types::ability::StaticAbility;
 use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent, EffectStep, OracleSpan};
-use crate::types::{GameState, ManaCheckpoint, ObjectId, PlayerId, Zone};
+use crate::types::{GameState, ManaCheckpoint, ObjectId, PaymentPlan, PlayerId, Zone};
 
 pub fn activate_ability(
     mut state: GameState,
     object_id: ObjectId,
     ability_index: usize,
     activating_player: PlayerId,
+    x_value: Option<u32>,
+    payment_plan: Option<PaymentPlan>,
 ) -> Result<GameState, EngineError> {
     // Validate object
     {
@@ -97,12 +99,25 @@ pub fn activate_ability(
                 state.objects.get_mut(&object_id).unwrap().tapped = true;
             }
             CostComponent::Mana(cost) => {
-                let plan = {
-                    let player = state
-                        .get_player(activating_player)
-                        .ok_or(EngineError::CardNotFound)?;
-                    greedy_payment_plan(cost, &player.mana_pool, player.life)
-                        .ok_or(EngineError::InsufficientMana)?
+                let plan = match &payment_plan {
+                    Some(p) => {
+                        let mut p = p.clone();
+                        if let Some(xv) = x_value {
+                            p.x_value = Some(xv);
+                        }
+                        p
+                    }
+                    None => {
+                        let player = state
+                            .get_player(activating_player)
+                            .ok_or(EngineError::CardNotFound)?;
+                        let mut p = greedy_payment_plan(cost, &player.mana_pool, player.life)
+                            .ok_or(EngineError::InsufficientMana)?;
+                        if let Some(xv) = x_value {
+                            p.x_value = Some(xv);
+                        }
+                        p
+                    }
                 };
                 state = pay_mana_cost(state, activating_player, cost, &plan)?;
             }
@@ -349,7 +364,7 @@ mod tests {
     fn tap_mana_ability_taps_and_adds_mana() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0)).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
         assert!(gs.objects[&id].tapped);
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
     }
@@ -358,7 +373,7 @@ mod tests {
     fn tap_mana_ability_creates_checkpoint() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0)).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
         assert!(gs.mana_checkpoint.is_some());
         assert_eq!(gs.mana_checkpoint.as_ref().unwrap().tapped_lands, vec![id]);
     }
@@ -369,7 +384,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         gs.objects.get_mut(&id).unwrap().tapped = true;
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0)),
+            activate_ability(gs, id, 0, PlayerId(0), None, None),
             Err(EngineError::AlreadyTapped)
         ));
     }
@@ -380,7 +395,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         gs.objects.get_mut(&id).unwrap().summoning_sick = true;
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0)),
+            activate_ability(gs, id, 0, PlayerId(0), None, None),
             Err(EngineError::SummoningSick)
         ));
     }
@@ -390,7 +405,7 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_draw_def(), PlayerId(0));
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0)),
+            activate_ability(gs, id, 0, PlayerId(0), None, None),
             Err(EngineError::InsufficientMana)
         ));
     }
@@ -401,7 +416,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_draw_def(), PlayerId(0));
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 1;
         put_in_library(&mut gs, PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0)).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
         assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
         assert_eq!(gs.hands[&PlayerId(0)].len(), 1);
     }
@@ -412,7 +427,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_mill_def(), PlayerId(0));
         let card1 = put_in_library(&mut gs, PlayerId(0));
         let card2 = put_in_library(&mut gs, PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0)).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
         assert!(gs.libraries[&PlayerId(0)].is_empty());
         assert!(gs.graveyards[&PlayerId(0)].contains(&card1));
         assert!(gs.graveyards[&PlayerId(0)].contains(&card2));
@@ -423,7 +438,7 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_mill_def(), PlayerId(0));
         let card1 = put_in_library(&mut gs, PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0)).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
         assert!(gs.libraries[&PlayerId(0)].is_empty());
         assert!(gs.graveyards[&PlayerId(0)].contains(&card1));
     }
@@ -433,7 +448,7 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         assert!(matches!(
-            activate_ability(gs, id, 99, PlayerId(0)),
+            activate_ability(gs, id, 99, PlayerId(0), None, None),
             Err(EngineError::AbilityIndexOutOfRange)
         ));
     }
@@ -462,7 +477,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, def, PlayerId(0));
         put_in_library(&mut gs, PlayerId(0));
         put_in_library(&mut gs, PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0)).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
         assert!(gs.libraries[&PlayerId(0)].is_empty());
     }
 
@@ -517,7 +532,7 @@ mod tests {
         };
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, snow_elves_def, PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0)).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
         let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
         assert_eq!(pool.green, 1);
         assert_eq!(pool.snow_green, 1);
