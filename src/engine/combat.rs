@@ -98,6 +98,10 @@ pub fn declare_blockers(
                 return Err(EngineError::InvalidBlocker);
             }
         }
+        // CR 702.147a: a creature with Decayed can't block.
+        if obj.has_keyword(StaticAbility::Decayed) {
+            return Err(EngineError::InvalidBlocker);
+        }
         // CR 702.31b: horsemanship — can only be blocked by creatures with horsemanship.
         if state
             .objects
@@ -107,6 +111,22 @@ pub fn declare_blockers(
             && !obj.has_keyword(StaticAbility::Horsemanship)
         {
             return Err(EngineError::InvalidBlocker);
+        }
+        // CR 702.118b: skulk — can't be blocked by a creature with greater power.
+        if state
+            .objects
+            .get(&attacker_id)
+            .map(|a| a.has_keyword(StaticAbility::Skulk))
+            .unwrap_or(false)
+        {
+            let attacker_power = state
+                .objects
+                .get(&attacker_id)
+                .and_then(|a| a.effective_power())
+                .unwrap_or(0);
+            if obj.effective_power().unwrap_or(0) > attacker_power {
+                return Err(EngineError::InvalidBlocker);
+            }
         }
     }
 
@@ -899,5 +919,45 @@ mod tests {
         assert!(!gs.battlefield.contains(&block2));
         assert!(gs.battlefield.contains(&attacker));
         assert_eq!(gs.objects[&attacker].damage_marked, 4);
+    }
+
+    #[test]
+    fn skulk_cannot_be_blocked_by_greater_power() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 1, 3, vec![StaticAbility::Skulk]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        // 2-power blocker can't block 1-power skulk attacker
+        assert!(matches!(
+            declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]),
+            Err(EngineError::InvalidBlocker)
+        ));
+    }
+
+    #[test]
+    fn skulk_can_be_blocked_by_equal_or_lesser_power() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 3, vec![StaticAbility::Skulk]);
+        let equal_blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        assert!(declare_blockers(gs, PlayerId(1), &[(equal_blocker, attacker)]).is_ok());
+    }
+
+    #[test]
+    fn decayed_creature_cannot_block() {
+        use crate::types::ability::StaticAbility;
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![]);
+        let decayed = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Decayed]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        assert!(matches!(
+            declare_blockers(gs, PlayerId(1), &[(decayed, attacker)]),
+            Err(EngineError::InvalidBlocker)
+        ));
     }
 }

@@ -14,6 +14,8 @@ pub enum StaticAbility {
     Defender,
     Shadow,
     Horsemanship,
+    Skulk,
+    Decayed,
 }
 
 /// The event that fires a triggered ability. Phase 2+ adds condition variants.
@@ -47,6 +49,8 @@ impl StaticAbility {
             Self::Defender => "Defender",
             Self::Shadow => "Shadow",
             Self::Horsemanship => "Horsemanship",
+            Self::Skulk => "Skulk",
+            Self::Decayed => "Decayed",
         }
     }
 }

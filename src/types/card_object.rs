@@ -74,7 +74,10 @@ impl CardObject {
     }
 
     pub fn can_block(&self) -> bool {
-        self.is_creature() && self.zone == Zone::Battlefield && !self.tapped
+        self.is_creature()
+            && self.zone == Zone::Battlefield
+            && !self.tapped
+            && !self.has_keyword(StaticAbility::Decayed)
     }
 }
 

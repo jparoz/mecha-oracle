@@ -123,6 +123,8 @@ fn match_keyword(kw: &str) -> OracleSpan {
         "defender" => return parsed!(Defender),
         "shadow" => return parsed!(Shadow),
         "horsemanship" => return parsed!(Horsemanship),
+        "skulk" => return parsed!(Skulk),
+        "decayed" => return parsed!(Decayed),
         _ => {}
     }
 
@@ -230,8 +232,8 @@ fn is_cr702_keyword(s: &str) -> bool {
         "ingest" |
         // 702.116
         "myriad" |
-        // 702.118
-        "skulk" |
+        // 702.118 skulk — implemented
+        // "skulk" |
         // 702.121
         "melee" |
         // 702.124
@@ -258,8 +260,8 @@ fn is_cr702_keyword(s: &str) -> bool {
         "demonstrate" |
         // 702.145
         "daybound" | "nightbound" |
-        // 702.147
-        "decayed" |
+        // 702.147 decayed — implemented
+        // "decayed" |
         // 702.149
         "training" |
         // 702.150
@@ -702,9 +704,9 @@ mod tests {
 
     #[test]
     fn all_implemented_keywords_parse() {
-        let text = "Flying\nReach\nTrample\nFirst strike\nDouble strike\nVigilance\nHaste\nLifelink\nDeathtouch\nMenace\nIndestructible\nDefender\nShadow\nHorsemanship";
+        let text = "Flying\nReach\nTrample\nFirst strike\nDouble strike\nVigilance\nHaste\nLifelink\nDeathtouch\nMenace\nIndestructible\nDefender\nShadow\nHorsemanship\nSkulk\nDecayed";
         let result = parse_oracle_text(text);
-        assert_eq!(result.len(), 14);
+        assert_eq!(result.len(), 16);
         assert!(result.iter().all(|s| matches!(s, OracleSpan::Parsed(_))));
     }
 

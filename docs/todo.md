@@ -16,7 +16,6 @@ Grouped roughly by complexity of implementation.
 - **Protection from X** (702.16): comprehensive (can't be targeted, blocked, enchanted, damaged by X) — requires targeting + color systems
 - **Shroud** (702.18) / **Hexproof** (702.11): can't be targeted — requires targeting system
 - **Ward** (702.21): targeting tax — requires targeting system
-- **Skulk** (702.118): can't be blocked by greater power — simple combat check, low effort
 
 ## Static creature modifiers (engine, low-to-moderate effort)
 - **Infect** (702.90): deals damage as -1/-1 counters / poison counters — requires counter system

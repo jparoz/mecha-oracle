@@ -1,4 +1,6 @@
 use super::combat::deal_combat_damage;
+use super::state_based_actions::move_to_graveyard;
+use crate::types::ability::StaticAbility;
 use crate::types::{CombatState, GameState, ObjectId, PlayerId, Step, Zone};
 
 /// Apply the automatic rules for the start of the current step/phase.
@@ -8,8 +10,30 @@ pub fn apply_step_start(state: GameState) -> GameState {
         Step::Draw => draw_step(state),
         Step::Cleanup => cleanup_step(state),
         Step::CombatDamage => deal_combat_damage(state),
+        Step::EndOfCombat => end_of_combat_step(state),
         _ => state,
     }
+}
+
+/// CR 702.147a: at the end of combat, sacrifice any attacking creatures with Decayed.
+fn end_of_combat_step(mut state: GameState) -> GameState {
+    let to_sacrifice: Vec<ObjectId> = state
+        .combat
+        .attackers
+        .iter()
+        .filter(|&&id| {
+            state
+                .objects
+                .get(&id)
+                .map(|o| o.has_keyword(StaticAbility::Decayed) && o.zone == Zone::Battlefield)
+                .unwrap_or(false)
+        })
+        .copied()
+        .collect();
+    for id in to_sacrifice {
+        state = move_to_graveyard(state, id);
+    }
+    state
 }
 
 /// Advance to the next step/phase. Checks `extra_steps` queue first (for dynamically
@@ -412,5 +436,61 @@ mod tests {
 
         // Unblocked 2/2 deals 2 damage to P1
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 18);
+    }
+
+    #[test]
+    fn decayed_attacker_sacrificed_at_end_of_combat() {
+        use crate::types::card::{CardType, TypeLine};
+        use crate::types::{AbilityAST, CardDefinition, OracleSpan, ability::StaticAbility};
+        let mut gs = make_state();
+        gs.step = Step::EndOfCombat;
+        let id = gs.alloc_id();
+        let def = CardDefinition {
+            name: "Zombie Token".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(AbilityAST::Static(
+                StaticAbility::Decayed,
+            ))],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let mut obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        gs.combat.attackers = vec![id];
+
+        let gs = apply_step_start(gs);
+
+        assert!(!gs.battlefield.contains(&id));
+        assert!(gs.graveyards[&PlayerId(0)].contains(&id));
+    }
+
+    #[test]
+    fn non_decayed_attacker_not_sacrificed_at_end_of_combat() {
+        let db = test_db();
+        let mut gs = make_state();
+        gs.step = Step::EndOfCombat;
+        let id = gs.alloc_id();
+        let mut obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        obj.summoning_sick = false;
+        gs.battlefield.push(id);
+        gs.add_object(obj);
+        gs.combat.attackers = vec![id];
+
+        let gs = apply_step_start(gs);
+
+        assert!(gs.battlefield.contains(&id));
     }
 }
