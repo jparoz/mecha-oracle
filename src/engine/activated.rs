@@ -1,5 +1,5 @@
 use super::EngineError;
-use crate::engine::mana::pay_mana_cost;
+use crate::engine::mana::{can_pay_mana, pay_mana_cost};
 use crate::engine::turn::draw_card;
 use crate::types::ability::StaticAbility;
 use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent, EffectStep, OracleSpan};
@@ -54,21 +54,10 @@ pub fn activate_ability(
                 }
             }
             CostComponent::Mana(cost) => {
-                let pool = &state
+                let player = state
                     .get_player(activating_player)
-                    .ok_or(EngineError::CardNotFound)?
-                    .mana_pool;
-                if pool.white < cost.white
-                    || pool.blue < cost.blue
-                    || pool.black < cost.black
-                    || pool.red < cost.red
-                    || pool.green < cost.green
-                    || pool.colorless < cost.colorless
-                {
-                    return Err(EngineError::InsufficientMana);
-                }
-                let after_colored = pool.total() - cost.total_colored();
-                if after_colored < cost.generic {
+                    .ok_or(EngineError::CardNotFound)?;
+                if !can_pay_mana(cost, &player.mana_pool, player.life) {
                     return Err(EngineError::InsufficientMana);
                 }
             }
@@ -184,21 +173,11 @@ pub fn can_pay_cost(
                 }
             }
             CostComponent::Mana(cost) => {
-                let pool = match state.get_player(player) {
-                    Some(p) => &p.mana_pool,
+                let p = match state.get_player(player) {
+                    Some(p) => p,
                     None => return false,
                 };
-                if pool.white < cost.white
-                    || pool.blue < cost.blue
-                    || pool.black < cost.black
-                    || pool.red < cost.red
-                    || pool.green < cost.green
-                    || pool.colorless < cost.colorless
-                {
-                    return false;
-                }
-                let after_colored = pool.total() - cost.total_colored();
-                if after_colored < cost.generic {
+                if !can_pay_mana(cost, &p.mana_pool, p.life) {
                     return false;
                 }
             }
@@ -213,7 +192,7 @@ mod tests {
     use super::*;
     use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent, EffectStep};
     use crate::types::card::{CardDefinition, CardType, TypeLine};
-    use crate::types::mana::{ManaCost, ManaPool};
+    use crate::types::mana::{ManaCost, ManaPip, ManaPool};
     use crate::types::{CardObject, Player};
 
     fn two_player_state() -> GameState {
@@ -227,8 +206,7 @@ mod tests {
         CardDefinition {
             name: "Llanowar Elves".into(),
             mana_cost: Some(ManaCost {
-                green: 1,
-                ..Default::default()
+                pips: vec![ManaPip::Green],
             }),
             type_line: TypeLine {
                 supertypes: vec![],
@@ -284,8 +262,7 @@ mod tests {
             abilities: vec![OracleSpan::Parsed(AbilityAST::Activated(
                 ActivatedAbility {
                     cost: vec![CostComponent::Mana(ManaCost {
-                        generic: 1,
-                        ..Default::default()
+                        pips: vec![ManaPip::Generic(1)],
                     })],
                     effect: vec![EffectStep::DrawCard(1)],
                 },

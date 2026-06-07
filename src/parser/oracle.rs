@@ -1,6 +1,6 @@
 use crate::types::OracleSpan::ParsedUnimplemented;
 use crate::types::ability::{AbilityEffect, ActivationCost, CostComponent, EffectStep};
-use crate::types::mana::{ManaCost, ManaPool};
+use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use crate::types::{
     AbilityAST, IgnoredKind, OracleSpan,
     ability::{ActivatedAbility, StaticAbility},
@@ -58,10 +58,24 @@ fn find_colon_at_depth_zero(text: &str) -> Option<usize> {
     None
 }
 
+fn oracle_color_from_str(s: &str) -> Option<ManaColor> {
+    match s {
+        "W" => Some(ManaColor::White),
+        "U" => Some(ManaColor::Blue),
+        "B" => Some(ManaColor::Black),
+        "R" => Some(ManaColor::Red),
+        "G" => Some(ManaColor::Green),
+        "C" => Some(ManaColor::Colorless),
+        _ => None,
+    }
+}
+
+/// CR 107.4: parse every mana symbol in an activation cost.
+/// Returns None for unknown tokens (falls back to ParsedUnimplemented).
 fn try_parse_mana_cost(s: &str) -> Option<ManaCost> {
-    let mut cost = ManaCost::default();
+    let mut pips = Vec::new();
     let mut chars = s.chars().peekable();
-    let mut saw_symbol = false;
+    let mut saw = false;
     while let Some(c) = chars.next() {
         if c != '{' {
             return None;
@@ -73,24 +87,41 @@ fn try_parse_mana_cost(s: &str) -> Option<ManaCost> {
             }
             token.push(inner);
         }
-        match token.as_str() {
-            "W" => cost.white += 1,
-            "U" => cost.blue += 1,
-            "B" => cost.black += 1,
-            "R" => cost.red += 1,
-            "G" => cost.green += 1,
-            "C" => cost.colorless += 1,
-            n => {
-                if let Ok(v) = n.parse::<u32>() {
-                    cost.generic += v;
-                } else {
-                    return None; // unknown symbol (includes {T})
+        let parts: Vec<&str> = token.split('/').collect();
+        let pip: Option<ManaPip> = match parts.as_slice() {
+            ["W"] => Some(ManaPip::White),
+            ["U"] => Some(ManaPip::Blue),
+            ["B"] => Some(ManaPip::Black),
+            ["R"] => Some(ManaPip::Red),
+            ["G"] => Some(ManaPip::Green),
+            ["C"] => Some(ManaPip::Colorless),
+            ["X"] => Some(ManaPip::X),
+            ["S"] => Some(ManaPip::Snow),
+            [n] => n.parse::<u32>().ok().map(ManaPip::Generic),
+            [a, "P"] => oracle_color_from_str(a).map(ManaPip::Phyrexian),
+            [a, b] => {
+                let ca = oracle_color_from_str(a);
+                let cb = oracle_color_from_str(b);
+                match (ca, cb) {
+                    (Some(_), Some(c2)) if *a == "C" => Some(ManaPip::ColorlessHybrid(c2)),
+                    (Some(c1), Some(c2)) => Some(ManaPip::Hybrid(c1, c2)),
+                    (None, Some(c2)) => {
+                        a.parse::<u32>().ok().map(|n| ManaPip::GenericHybrid(n, c2))
+                    }
+                    _ => None,
                 }
             }
-        }
-        saw_symbol = true;
+            [a, b, "P"] => match (oracle_color_from_str(a), oracle_color_from_str(b)) {
+                (Some(c1), Some(c2)) => Some(ManaPip::HybridPhyrexian(c1, c2)),
+                _ => None,
+            },
+            _ => None,
+        };
+        pip?; // unknown token → return None (activation cost not recognized)
+        pips.push(pip.unwrap());
+        saw = true;
     }
-    if saw_symbol { Some(cost) } else { None }
+    if saw { Some(ManaCost { pips }) } else { None }
 }
 
 fn try_parse_mana_pool(s: &str) -> Option<ManaPool> {
@@ -948,14 +979,13 @@ mod tests {
     #[test]
     fn parse_activation_cost_mana_and_tap() {
         use crate::types::ability::CostComponent;
-        use crate::types::mana::ManaCost;
+        use crate::types::mana::{ManaCost, ManaPip};
         let cost = super::parse_activation_cost("{2}, {T}");
         assert_eq!(
             cost,
             vec![
                 CostComponent::Mana(ManaCost {
-                    generic: 2,
-                    ..Default::default()
+                    pips: vec![ManaPip::Generic(2)],
                 }),
                 CostComponent::Tap,
             ]
@@ -1019,27 +1049,24 @@ mod tests {
 
     #[test]
     fn try_parse_mana_cost_single_color() {
-        use crate::types::mana::ManaCost;
+        use crate::types::mana::{ManaCost, ManaPip};
         let c = super::try_parse_mana_cost("{G}").unwrap();
         assert_eq!(
             c,
             ManaCost {
-                green: 1,
-                ..Default::default()
+                pips: vec![ManaPip::Green]
             }
         );
     }
 
     #[test]
     fn try_parse_mana_cost_generic_and_color() {
-        use crate::types::mana::ManaCost;
+        use crate::types::mana::{ManaCost, ManaPip};
         let c = super::try_parse_mana_cost("{2}{G}").unwrap();
         assert_eq!(
             c,
             ManaCost {
-                generic: 2,
-                green: 1,
-                ..Default::default()
+                pips: vec![ManaPip::Generic(2), ManaPip::Green]
             }
         );
     }
@@ -1051,6 +1078,66 @@ mod tests {
 
     #[test]
     fn try_parse_mana_cost_non_symbol_text_is_none() {
+        assert!(super::try_parse_mana_cost("Sacrifice a creature").is_none());
+    }
+
+    #[test]
+    fn try_parse_mana_cost_hybrid() {
+        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        let cost = super::try_parse_mana_cost("{B/G}").unwrap();
+        assert_eq!(
+            cost.pips,
+            vec![ManaPip::Hybrid(ManaColor::Black, ManaColor::Green)]
+        );
+    }
+
+    #[test]
+    fn try_parse_mana_cost_phyrexian() {
+        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        let cost = super::try_parse_mana_cost("{U/P}").unwrap();
+        assert_eq!(cost.pips, vec![ManaPip::Phyrexian(ManaColor::Blue)]);
+    }
+
+    #[test]
+    fn try_parse_mana_cost_x() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let cost = super::try_parse_mana_cost("{X}{R}").unwrap();
+        assert_eq!(cost.pips, vec![ManaPip::X, ManaPip::Red]);
+    }
+
+    #[test]
+    fn try_parse_mana_cost_snow() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let cost = super::try_parse_mana_cost("{S}").unwrap();
+        assert_eq!(cost.pips, vec![ManaPip::Snow]);
+    }
+
+    #[test]
+    fn try_parse_mana_cost_hybrid_phyrexian() {
+        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        let cost = super::try_parse_mana_cost("{G/U/P}").unwrap();
+        assert_eq!(
+            cost.pips,
+            vec![ManaPip::HybridPhyrexian(ManaColor::Green, ManaColor::Blue)]
+        );
+    }
+
+    #[test]
+    fn try_parse_mana_cost_generic_hybrid() {
+        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        let cost = super::try_parse_mana_cost("{2/R}").unwrap();
+        assert_eq!(cost.pips, vec![ManaPip::GenericHybrid(2, ManaColor::Red)]);
+    }
+
+    #[test]
+    fn try_parse_mana_cost_colorless_hybrid() {
+        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        let cost = super::try_parse_mana_cost("{C/G}").unwrap();
+        assert_eq!(cost.pips, vec![ManaPip::ColorlessHybrid(ManaColor::Green)]);
+    }
+
+    #[test]
+    fn try_parse_mana_cost_plain_text_is_none() {
         assert!(super::try_parse_mana_cost("Sacrifice a creature").is_none());
     }
 
@@ -1156,32 +1243,48 @@ mod tests {
     #[test]
     fn two_tap_add_two_green_parses_as_activated() {
         use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
-        use crate::types::mana::{ManaCost, ManaPool};
+        use crate::types::mana::{ManaCost, ManaPip, ManaPool};
         let result = parse_oracle_text("{2}, {T}: Add {G}{G}.");
         assert_eq!(result.len(), 1);
-        assert!(matches!(
-            &result[0],
-            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { cost, effect }))
-            if cost == &vec![
-                CostComponent::Mana(ManaCost { generic: 2, ..Default::default() }),
-                CostComponent::Tap,
-            ]
-            && effect == &vec![EffectStep::AddMana(ManaPool { green: 2, ..Default::default() })]
-        ));
+        if let OracleSpan::Parsed(AbilityAST::Activated(ability)) = &result[0] {
+            assert_eq!(
+                ability.cost,
+                vec![
+                    CostComponent::Mana(ManaCost {
+                        pips: vec![ManaPip::Generic(2)]
+                    }),
+                    CostComponent::Tap,
+                ]
+            );
+            assert_eq!(
+                ability.effect,
+                vec![EffectStep::AddMana(ManaPool {
+                    green: 2,
+                    ..Default::default()
+                })]
+            );
+        } else {
+            panic!("expected activated ability");
+        }
     }
 
     #[test]
     fn one_draw_a_card_parses_as_activated() {
         use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
-        use crate::types::mana::ManaCost;
+        use crate::types::mana::{ManaCost, ManaPip};
         let result = parse_oracle_text("{1}: Draw a card.");
         assert_eq!(result.len(), 1);
-        assert!(matches!(
-            &result[0],
-            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { cost, effect }))
-            if cost == &vec![CostComponent::Mana(ManaCost { generic: 1, ..Default::default() })]
-            && effect == &vec![EffectStep::DrawCard(1)]
-        ));
+        if let OracleSpan::Parsed(AbilityAST::Activated(ability)) = &result[0] {
+            assert_eq!(
+                ability.cost,
+                vec![CostComponent::Mana(ManaCost {
+                    pips: vec![ManaPip::Generic(1)]
+                })]
+            );
+            assert_eq!(ability.effect, vec![EffectStep::DrawCard(1)]);
+        } else {
+            panic!("expected activated ability");
+        }
     }
 
     #[test]

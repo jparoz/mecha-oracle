@@ -177,29 +177,27 @@ struct GameView {
 }
 
 fn format_mana_cost(cost: &mecha_oracle::types::mana::ManaCost) -> String {
-    let mut s = String::new();
-    if cost.generic > 0 {
-        s.push_str(&cost.generic.to_string());
-    }
-    for _ in 0..cost.white {
-        s.push('W');
-    }
-    for _ in 0..cost.blue {
-        s.push('U');
-    }
-    for _ in 0..cost.black {
-        s.push('B');
-    }
-    for _ in 0..cost.red {
-        s.push('R');
-    }
-    for _ in 0..cost.green {
-        s.push('G');
-    }
-    for _ in 0..cost.colorless {
-        s.push('C');
-    }
-    s
+    use mecha_oracle::types::mana::ManaPip;
+    cost.pips
+        .iter()
+        .map(|pip| match pip {
+            ManaPip::White => "W".to_string(),
+            ManaPip::Blue => "U".to_string(),
+            ManaPip::Black => "B".to_string(),
+            ManaPip::Red => "R".to_string(),
+            ManaPip::Green => "G".to_string(),
+            ManaPip::Colorless => "C".to_string(),
+            ManaPip::Generic(n) => n.to_string(),
+            ManaPip::X => "X".to_string(),
+            ManaPip::Hybrid(c1, c2) => format!("{c1}/{c2}"),
+            ManaPip::GenericHybrid(n, c) => format!("{n}/{c}"),
+            ManaPip::ColorlessHybrid(c) => format!("C/{c}"),
+            ManaPip::Phyrexian(c) => format!("{c}/P"),
+            ManaPip::HybridPhyrexian(c1, c2) => format!("{c1}/{c2}/P"),
+            ManaPip::Snow => "S".to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn format_type_line(tl: &mecha_oracle::types::card::TypeLine) -> String {
@@ -233,29 +231,26 @@ fn format_type_line(tl: &mecha_oracle::types::card::TypeLine) -> String {
 }
 
 fn format_mana_cost_braced(cost: &mecha_oracle::types::mana::ManaCost) -> String {
-    let mut s = String::new();
-    if cost.generic > 0 {
-        s.push_str(&format!("{{{}}}", cost.generic));
-    }
-    for _ in 0..cost.white {
-        s.push_str("{W}");
-    }
-    for _ in 0..cost.blue {
-        s.push_str("{U}");
-    }
-    for _ in 0..cost.black {
-        s.push_str("{B}");
-    }
-    for _ in 0..cost.red {
-        s.push_str("{R}");
-    }
-    for _ in 0..cost.green {
-        s.push_str("{G}");
-    }
-    for _ in 0..cost.colorless {
-        s.push_str("{C}");
-    }
-    s
+    use mecha_oracle::types::mana::ManaPip;
+    cost.pips
+        .iter()
+        .map(|pip| match pip {
+            ManaPip::White => "{W}".to_string(),
+            ManaPip::Blue => "{U}".to_string(),
+            ManaPip::Black => "{B}".to_string(),
+            ManaPip::Red => "{R}".to_string(),
+            ManaPip::Green => "{G}".to_string(),
+            ManaPip::Colorless => "{C}".to_string(),
+            ManaPip::Generic(n) => format!("{{{n}}}"),
+            ManaPip::X => "{X}".to_string(),
+            ManaPip::Hybrid(c1, c2) => format!("{{{c1}/{c2}}}"),
+            ManaPip::GenericHybrid(n, c) => format!("{{{n}/{c}}}"),
+            ManaPip::ColorlessHybrid(c) => format!("{{C/{c}}}"),
+            ManaPip::Phyrexian(c) => format!("{{{c}/P}}"),
+            ManaPip::HybridPhyrexian(c1, c2) => format!("{{{c1}/{c2}/P}}"),
+            ManaPip::Snow => "{S}".to_string(),
+        })
+        .collect::<String>()
 }
 
 fn format_mana_pool(pool: &mecha_oracle::types::mana::ManaPool) -> String {
@@ -771,21 +766,18 @@ mod tests {
 
     #[test]
     fn format_mana_cost_green_green() {
-        use mecha_oracle::types::mana::ManaCost;
+        use mecha_oracle::types::mana::{ManaCost, ManaPip};
         let cost = ManaCost {
-            green: 2,
-            ..Default::default()
+            pips: vec![ManaPip::Green, ManaPip::Green],
         };
         assert_eq!(format_mana_cost(&cost), "GG");
     }
 
     #[test]
     fn format_mana_cost_generic_and_color() {
-        use mecha_oracle::types::mana::ManaCost;
+        use mecha_oracle::types::mana::{ManaCost, ManaPip};
         let cost = ManaCost {
-            generic: 3,
-            green: 1,
-            ..Default::default()
+            pips: vec![ManaPip::Generic(3), ManaPip::Green],
         };
         assert_eq!(format_mana_cost(&cost), "3G");
     }

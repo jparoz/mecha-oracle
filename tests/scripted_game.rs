@@ -174,7 +174,7 @@ fn scripted_game_runs_to_completion() {
         let cost = gs.objects[&bear_id].definition.mana_cost.clone().unwrap();
         let gs = tap_all_lands_for_player(gs, PlayerId(0));
         let available = gs.get_player(PlayerId(0)).unwrap().mana_pool.total();
-        if available >= cost.converted_mana_cost() {
+        if available >= cost.mana_value() {
             cast_creature(gs, PlayerId(0), bear_id).unwrap()
         } else {
             gs

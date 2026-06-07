@@ -1,5 +1,7 @@
 use super::EngineError;
-use crate::types::{GameState, ManaCheckpoint, ManaColor, ManaCost, ObjectId, PlayerId, Zone};
+use crate::types::{
+    GameState, ManaCheckpoint, ManaColor, ManaCost, ManaPip, ManaPool, ObjectId, PlayerId, Zone,
+};
 
 /// Tap a basic land on the battlefield to add one mana to its controller's pool.
 pub fn tap_land_for_mana(
@@ -89,43 +91,87 @@ fn land_produces(subtypes: &[String]) -> ManaColor {
     ManaColor::Colorless
 }
 
-/// Deduct a mana cost from a player's pool. Colored mana is paid first;
-/// the generic portion is satisfied by any remaining mana.
+/// Counts simple pip requirements. Returns Err if cost contains hybrid/phyrexian/snow
+/// (those require the full greedy plan — see greedy_payment_plan).
+fn tally_simple_pips(cost: &ManaCost) -> Result<(u32, u32, u32, u32, u32, u32, u32), ()> {
+    let (mut nw, mut nu, mut nb, mut nr, mut ng, mut nc, mut generic) = (0, 0, 0, 0, 0, 0, 0);
+    for pip in &cost.pips {
+        match pip {
+            ManaPip::White => nw += 1,
+            ManaPip::Blue => nu += 1,
+            ManaPip::Black => nb += 1,
+            ManaPip::Red => nr += 1,
+            ManaPip::Green => ng += 1,
+            ManaPip::Colorless => nc += 1,
+            ManaPip::Generic(n) => generic += n,
+            ManaPip::X => {}
+            _ => return Err(()),
+        }
+    }
+    Ok((nw, nu, nb, nr, ng, nc, generic))
+}
+
+/// Returns true if the pool can pay the cost. Returns false for any
+/// pip type that isn't yet handled (hybrid, Phyrexian, snow).
+pub fn can_pay_mana(cost: &ManaCost, pool: &ManaPool, _life: i32) -> bool {
+    match tally_simple_pips(cost) {
+        Ok((nw, nu, nb, nr, ng, nc, generic)) => {
+            if pool.white < nw
+                || pool.blue < nu
+                || pool.black < nb
+                || pool.red < nr
+                || pool.green < ng
+                || pool.colorless < nc
+            {
+                return false;
+            }
+            let remaining = pool.total() - nw - nu - nb - nr - ng - nc;
+            remaining >= generic
+        }
+        Err(_) => false,
+    }
+}
+
+/// Deduct a mana cost from a player's pool using simple pip tallying.
+/// Colored mana is paid first; the generic portion is satisfied by any remaining mana.
 #[allow(unused_assignments)]
 pub fn pay_mana_cost(
     mut state: GameState,
     player_id: PlayerId,
     cost: &ManaCost,
 ) -> Result<GameState, EngineError> {
-    {
-        let pool = &state
+    let (nw, nu, nb, nr, ng, nc, generic) = {
+        let player = state
             .get_player(player_id)
-            .ok_or(EngineError::CardNotFound)?
-            .mana_pool;
-        if pool.white < cost.white
-            || pool.blue < cost.blue
-            || pool.black < cost.black
-            || pool.red < cost.red
-            || pool.green < cost.green
-            || pool.colorless < cost.colorless
+            .ok_or(EngineError::CardNotFound)?;
+        let pool = &player.mana_pool;
+        let tallied = tally_simple_pips(cost).map_err(|_| EngineError::InsufficientMana)?;
+        let (nw, nu, nb, nr, ng, nc, generic) = tallied;
+        if pool.white < nw
+            || pool.blue < nu
+            || pool.black < nb
+            || pool.red < nr
+            || pool.green < ng
+            || pool.colorless < nc
         {
             return Err(EngineError::InsufficientMana);
         }
-        let after_colored = pool.total() - cost.total_colored();
-        if after_colored < cost.generic {
+        let remaining = pool.total() - nw - nu - nb - nr - ng - nc;
+        if remaining < generic {
             return Err(EngineError::InsufficientMana);
         }
-    }
+        (nw, nu, nb, nr, ng, nc, generic)
+    };
 
     let player = state.get_player_mut(player_id).unwrap();
-    player.mana_pool.white -= cost.white;
-    player.mana_pool.blue -= cost.blue;
-    player.mana_pool.black -= cost.black;
-    player.mana_pool.red -= cost.red;
-    player.mana_pool.green -= cost.green;
-    player.mana_pool.colorless -= cost.colorless;
+    player.mana_pool.white -= nw;
+    player.mana_pool.blue -= nu;
+    player.mana_pool.black -= nb;
+    player.mana_pool.red -= nr;
+    player.mana_pool.green -= ng;
+    player.mana_pool.colorless -= nc;
 
-    let mut remaining = cost.generic;
+    let mut remaining = generic;
     let pool = &mut player.mana_pool;
     macro_rules! spend {
         ($field:ident) => {
@@ -148,7 +194,7 @@ pub fn pay_mana_cost(
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::{CardObject, ManaCost, Player};
+    use crate::types::{CardObject, ManaCost, ManaPip, Player};
 
     fn make_state() -> GameState {
         GameState::new(vec![
@@ -200,9 +246,7 @@ mod tests {
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
         let cost = ManaCost {
-            generic: 1,
-            green: 1,
-            ..Default::default()
+            pips: vec![ManaPip::Generic(1), ManaPip::Green],
         };
 
         let gs = pay_mana_cost(gs, PlayerId(0), &cost).unwrap();
@@ -215,9 +259,7 @@ mod tests {
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 1;
         let cost = ManaCost {
-            generic: 1,
-            green: 1,
-            ..Default::default()
+            pips: vec![ManaPip::Generic(1), ManaPip::Green],
         };
 
         assert!(matches!(
@@ -231,8 +273,7 @@ mod tests {
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 2;
         let cost = ManaCost {
-            green: 1,
-            ..Default::default()
+            pips: vec![ManaPip::Green],
         };
 
         assert!(matches!(
@@ -247,8 +288,7 @@ mod tests {
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 1;
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 1;
         let cost = ManaCost {
-            generic: 2,
-            ..Default::default()
+            pips: vec![ManaPip::Generic(2)],
         };
 
         let gs = pay_mana_cost(gs, PlayerId(0), &cost).unwrap();
