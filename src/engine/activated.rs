@@ -106,14 +106,58 @@ pub fn activate_ability(
     // Apply effects
     for step in &ability.effect {
         match step {
-            EffectStep::AddMana(pool) => {
+            EffectStep::AddMana(pool_add) => {
+                // CR 107.4k: mana from a Snow source is snow-tagged.
+                let is_snow = state
+                    .objects
+                    .get(&object_id)
+                    .map(|obj| {
+                        obj.definition
+                            .type_line
+                            .supertypes
+                            .contains(&crate::types::card::Supertype::Snow)
+                    })
+                    .unwrap_or(false);
                 let player = state.get_player_mut(activating_player).unwrap();
-                player.mana_pool.white += pool.white;
-                player.mana_pool.blue += pool.blue;
-                player.mana_pool.black += pool.black;
-                player.mana_pool.red += pool.red;
-                player.mana_pool.green += pool.green;
-                player.mana_pool.colorless += pool.colorless;
+                if is_snow {
+                    if pool_add.white > 0 {
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::White, pool_add.white);
+                    }
+                    if pool_add.blue > 0 {
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Blue, pool_add.blue);
+                    }
+                    if pool_add.black > 0 {
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Black, pool_add.black);
+                    }
+                    if pool_add.red > 0 {
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Red, pool_add.red);
+                    }
+                    if pool_add.green > 0 {
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Green, pool_add.green);
+                    }
+                    if pool_add.colorless > 0 {
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Colorless, pool_add.colorless);
+                    }
+                } else {
+                    player.mana_pool.white += pool_add.white;
+                    player.mana_pool.blue += pool_add.blue;
+                    player.mana_pool.black += pool_add.black;
+                    player.mana_pool.red += pool_add.red;
+                    player.mana_pool.green += pool_add.green;
+                    player.mana_pool.colorless += pool_add.colorless;
+                }
             }
             EffectStep::Mill(n) => {
                 let to_mill = (*n as usize).min(
@@ -448,5 +492,39 @@ mod tests {
             effect: vec![],
         };
         assert!(!can_pay_cost(&gs, id, &ability, PlayerId(0)));
+    }
+
+    #[test]
+    fn snow_mana_source_adds_snow_tagged_mana() {
+        use crate::types::card::{CardDefinition, CardType, Supertype, TypeLine};
+        let snow_elves_def = CardDefinition {
+            name: "Snow Elves".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Green],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![Supertype::Snow],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Elf".into()],
+            },
+            oracle_text: "{T}: Add {G}.".into(),
+            abilities: vec![OracleSpan::Parsed(AbilityAST::Activated(
+                ActivatedAbility {
+                    cost: vec![CostComponent::Tap],
+                    effect: vec![EffectStep::AddMana(ManaPool {
+                        green: 1,
+                        ..Default::default()
+                    })],
+                },
+            ))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        let mut gs = two_player_state();
+        let id = place_on_battlefield(&mut gs, snow_elves_def, PlayerId(0));
+        let gs = activate_ability(gs, id, 0, PlayerId(0)).unwrap();
+        let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
+        assert_eq!(pool.green, 1);
+        assert_eq!(pool.snow_green, 1);
     }
 }
