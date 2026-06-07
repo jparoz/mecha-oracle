@@ -45,6 +45,7 @@ pub enum CostComponent {
     PayLife(u32),
     Sacrifice(u32, PermanentFilter),
     Discard(u32, CardFilter),
+    Unimplemented(String), // recognised as a cost token but not yet enforced
 }
 
 pub enum EffectStep {
@@ -59,7 +60,7 @@ pub struct CardFilter;       // stub — no fields needed for Phase B
 
 `ManaPool` comes from `src/types/mana.rs` (existing type, holds per-color u32 fields).
 
-The parser emits `OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { … }))` for recognised patterns. Any line with a depth-0 colon that can't be fully parsed becomes `ParsedUnimplemented` (not `Unparsed`) — it's clearly an ability, just not one we handle yet.
+The parser emits `OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { … }))` for all lines with a recognised activated-ability structure, even if some cost components are unimplemented. A line with a depth-0 colon whose **effect** cannot be parsed becomes `ParsedUnimplemented` (not `Unparsed`) — it's clearly an ability, just not one we handle yet. Unrecognised cost components become `CostComponent::Unimplemented(String)` and do not block parsing.
 
 ---
 
@@ -90,7 +91,9 @@ Split the left-of-colon string on `,`, trim each token, match:
 |---|---|
 | `{T}` | `CostComponent::Tap` |
 | Mana symbols (`{2}`, `{G}`, `{W}{U}`, …) | `CostComponent::Mana(…)` |
-| Anything else | parsing fails → `ParsedUnimplemented` |
+| Anything else | `CostComponent::Unimplemented(token)` — ability still parses |
+
+Unimplemented cost components are silently skipped during execution — the ability fires but that part of the cost is not enforced.
 
 ### Effect parsing
 
@@ -116,7 +119,7 @@ Number words ("two", "three") are converted to u32 for Mill and DrawCard.
 | `{T}: Mill 2.` | `Parsed(Activated { cost: [Tap], effect: [Mill(2)] })` |
 | `{T}: Mill 2. Draw a card.` | `Parsed(Activated { cost: [Tap], effect: [Mill(2), DrawCard(1)] })` |
 | `({T}: Add {G}.)` | `Ignored(ReminderText, …)` — unchanged |
-| `Sacrifice a creature: Add {C}{C}.` | `ParsedUnimplemented(…)` — cost unrecognised |
+| `Sacrifice a creature: Add {C}{C}.` | `Parsed(Activated { cost: [Unimplemented("Sacrifice a creature")], effect: [AddMana({C}{C})] })` |
 | `{T}: Create a 1/1 token.` | `ParsedUnimplemented(…)` — effect unrecognised |
 
 ---
@@ -142,7 +145,8 @@ pub fn activate_ability(
 4. Check cost can be paid:
    - `Tap`: object must not be tapped → `AlreadyTapped`; if it's a creature, must not have summoning sickness (unless it has Haste) → `SummoningSick`.
    - `Mana`: controller's pool must cover it → `InsufficientMana`.
-5. Pay cost: tap the object if `Tap` in cost; deduct mana if `Mana` in cost.
+   - `Unimplemented`: skip — not checked.
+5. Pay cost: tap the object if `Tap` in cost; deduct mana if `Mana` in cost; skip `Unimplemented` components.
 6. Apply each `EffectStep` in order:
    - `AddMana(pool)` — add to controller's mana pool; update `mana_checkpoint` (same pattern as `tap_land_for_mana`, so mana reset works uniformly).
    - `Mill(n)` — move top `n` cards of controller's library to their graveyard; if library has fewer than `n`, move all (CR 701.13b, no loss of life).
@@ -212,8 +216,8 @@ Items are greyed out when `can_activate` is false. Clicking sends `POST /activat
 - `{T}: Mill 2.` → `Parsed(Activated { cost: [Tap], effect: [Mill(2)] })`
 - `{T}: Mill 2. Draw a card.` → `Parsed(Activated { cost: [Tap], effect: [Mill(2), DrawCard(1)] })`
 - `({T}: Add {G}.)` → `Ignored(ReminderText, …)` — existing behaviour unchanged
-- Unrecognised cost → `ParsedUnimplemented`
-- Unrecognised effect → `ParsedUnimplemented`
+- Unrecognised cost token → `CostComponent::Unimplemented`; ability still `Parsed(Activated(…))`
+- Unrecognised effect → `ParsedUnimplemented` for the whole ability
 
 ### Engine tests (`src/engine/activated.rs`)
 
@@ -223,6 +227,7 @@ Items are greyed out when `can_activate` is false. Clicking sends `POST /activat
 - Activate `{1}: Draw a card.` with insufficient mana → `InsufficientMana`
 - `{T}: Mill 2.` → top 2 library cards in graveyard
 - `{T}: Mill 2.` with 1-card library → mills 1, no error
+- Ability with `Unimplemented` cost component → component skipped, effect still fires
 - `{1}: Draw a card.` → mana deducted, card in hand
 - `ability_index` out of range → `AbilityIndexOutOfRange`
 
