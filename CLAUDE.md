@@ -1,3 +1,6 @@
+# Comprehensive rules
+We're building a Magic: The Gathering rules enforcement engine, and as such the rules version should be consistent. A copy of the full comprehensive rules is available at docs/CR.txt and should be referenced as the definitive answer on MTG rules. Whenever possible, provide a rules reference number (e.g. 107.4) justifying any rules-related decisions in replies to the user, and in a comment at the top of relevant functions/code sections.
+
 # docs/todo.md
 
 This file (docs/todo.md) is a running scratchpad I'll keep of bugs/issues as I find them. You should be aware of this file; you don't always have to refer to it as the source of what to do, but you should be aware of its contents, and delete items (bulleted list items) as they are completed. If you do delete something from this file, be sure to tell me that you've deleted it and why.
