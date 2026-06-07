@@ -23,4 +23,5 @@ pub enum EngineError {
     MenaceRequiresTwoBlockers, // menace attacker has exactly one blocker
     NoManaCheckpoint,
     AbilityIndexOutOfRange,
+    InvalidPaymentPlan,
 }

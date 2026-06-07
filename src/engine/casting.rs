@@ -1,4 +1,8 @@
-use super::{EngineError, mana::pay_mana_cost, state_based_actions::check_and_apply_sbas};
+use super::{
+    EngineError,
+    mana::{greedy_payment_plan, pay_mana_cost},
+    state_based_actions::check_and_apply_sbas,
+};
 use crate::types::{GameState, ObjectId, PlayerId, Zone};
 
 /// Move a land from hand to battlefield. One per turn, main phase only (CR 305).
@@ -83,7 +87,14 @@ pub fn cast_creature(
             .ok_or(EngineError::CannotCastNow)?
     };
 
-    state = pay_mana_cost(state, player_id, &cost)?;
+    let plan = {
+        let player = state
+            .get_player(player_id)
+            .ok_or(EngineError::CardNotFound)?;
+        greedy_payment_plan(&cost, &player.mana_pool, player.life)
+            .ok_or(EngineError::InsufficientMana)?
+    };
+    state = pay_mana_cost(state, player_id, &cost, &plan)?;
     state.mana_checkpoint = None;
     state
         .hands

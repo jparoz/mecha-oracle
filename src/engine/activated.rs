@@ -1,5 +1,5 @@
 use super::EngineError;
-use crate::engine::mana::{can_pay_mana, pay_mana_cost};
+use crate::engine::mana::{can_pay_mana, greedy_payment_plan, pay_mana_cost};
 use crate::engine::turn::draw_card;
 use crate::types::ability::StaticAbility;
 use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent, EffectStep, OracleSpan};
@@ -97,7 +97,14 @@ pub fn activate_ability(
                 state.objects.get_mut(&object_id).unwrap().tapped = true;
             }
             CostComponent::Mana(cost) => {
-                state = pay_mana_cost(state, activating_player, cost)?;
+                let plan = {
+                    let player = state
+                        .get_player(activating_player)
+                        .ok_or(EngineError::CardNotFound)?;
+                    greedy_payment_plan(cost, &player.mana_pool, player.life)
+                        .ok_or(EngineError::InsufficientMana)?
+                };
+                state = pay_mana_cost(state, activating_player, cost, &plan)?;
             }
             _ => {}
         }

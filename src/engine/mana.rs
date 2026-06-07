@@ -99,26 +99,6 @@ fn land_produces(subtypes: &[String]) -> ManaColor {
     ManaColor::Colorless
 }
 
-/// Counts simple pip requirements. Returns Err if cost contains hybrid/phyrexian/snow
-/// (those require the full greedy plan — see greedy_payment_plan).
-fn tally_simple_pips(cost: &ManaCost) -> Result<(u32, u32, u32, u32, u32, u32, u32), ()> {
-    let (mut nw, mut nu, mut nb, mut nr, mut ng, mut nc, mut generic) = (0, 0, 0, 0, 0, 0, 0);
-    for pip in &cost.pips {
-        match pip {
-            ManaPip::White => nw += 1,
-            ManaPip::Blue => nu += 1,
-            ManaPip::Black => nb += 1,
-            ManaPip::Red => nr += 1,
-            ManaPip::Green => ng += 1,
-            ManaPip::Colorless => nc += 1,
-            ManaPip::Generic(n) => generic += n,
-            ManaPip::X => {}
-            _ => return Err(()),
-        }
-    }
-    Ok((nw, nu, nb, nr, ng, nc, generic))
-}
-
 fn amount_for_color(color: &ManaColor, w: u32, u: u32, b: u32, r: u32, g: u32, c: u32) -> u32 {
     match color {
         ManaColor::White => w,
@@ -194,6 +174,49 @@ fn spend_generic_rem(
     spend!(rr, pr);
     spend!(rg, pg);
     spend!(rc, pc);
+}
+
+fn pip_color_available(color: &ManaColor, plan: &PaymentPlan) -> bool {
+    match color {
+        ManaColor::White => plan.white > 0,
+        ManaColor::Blue => plan.blue > 0,
+        ManaColor::Black => plan.black > 0,
+        ManaColor::Red => plan.red > 0,
+        ManaColor::Green => plan.green > 0,
+        ManaColor::Colorless => plan.colorless > 0,
+    }
+}
+
+fn deduct_pip_color(color: &ManaColor, plan: &mut PaymentPlan) -> Option<()> {
+    let field = match color {
+        ManaColor::White => &mut plan.white,
+        ManaColor::Blue => &mut plan.blue,
+        ManaColor::Black => &mut plan.black,
+        ManaColor::Red => &mut plan.red,
+        ManaColor::Green => &mut plan.green,
+        ManaColor::Colorless => &mut plan.colorless,
+    };
+    if *field == 0 {
+        return None;
+    }
+    *field -= 1;
+    Some(())
+}
+
+fn spend_from_rem(mut n: u32, rem: &mut PaymentPlan) {
+    macro_rules! spend {
+        ($f:ident) => {
+            let s = n.min(rem.$f);
+            rem.$f -= s;
+            n -= s;
+        };
+    }
+    spend!(white);
+    spend!(blue);
+    spend!(black);
+    spend!(red);
+    spend!(green);
+    spend!(colorless);
 }
 
 /// Build a greedy payment plan for `cost` given current `pool` and player `life`.
@@ -519,60 +542,199 @@ pub fn can_pay_mana(cost: &ManaCost, pool: &ManaPool, life: i32) -> bool {
     greedy_payment_plan(cost, pool, life).is_some()
 }
 
-/// Deduct a mana cost from a player's pool using simple pip tallying.
-/// Colored mana is paid first; the generic portion is satisfied by any remaining mana.
-#[allow(unused_assignments)]
+/// Deduct a mana cost from a player's pool using an explicit PaymentPlan.
+/// Validates the plan against both the pool contents and the cost pips before applying.
+/// CR 107.4: handles all pip types including hybrid, Phyrexian, snow.
 pub fn pay_mana_cost(
     mut state: GameState,
     player_id: PlayerId,
     cost: &ManaCost,
+    plan: &PaymentPlan,
 ) -> Result<GameState, EngineError> {
-    let (nw, nu, nb, nr, ng, nc, generic) = {
+    // Validate plan against pool
+    {
         let player = state
             .get_player(player_id)
             .ok_or(EngineError::CardNotFound)?;
         let pool = &player.mana_pool;
-        let tallied = tally_simple_pips(cost).map_err(|_| EngineError::InsufficientMana)?;
-        let (nw, nu, nb, nr, ng, nc, generic) = tallied;
-        if pool.white < nw
-            || pool.blue < nu
-            || pool.black < nb
-            || pool.red < nr
-            || pool.green < ng
-            || pool.colorless < nc
+        if pool.white < plan.white
+            || pool.blue < plan.blue
+            || pool.black < plan.black
+            || pool.red < plan.red
+            || pool.green < plan.green
+            || pool.colorless < plan.colorless
         {
-            return Err(EngineError::InsufficientMana);
+            return Err(EngineError::InvalidPaymentPlan);
         }
-        let remaining = pool.total() - nw - nu - nb - nr - ng - nc;
-        if remaining < generic {
-            return Err(EngineError::InsufficientMana);
+        if pool.snow_white < plan.snow_white
+            || pool.snow_blue < plan.snow_blue
+            || pool.snow_black < plan.snow_black
+            || pool.snow_red < plan.snow_red
+            || pool.snow_green < plan.snow_green
+            || pool.snow_colorless < plan.snow_colorless
+        {
+            return Err(EngineError::InvalidPaymentPlan);
         }
-        (nw, nu, nb, nr, ng, nc, generic)
-    };
-
-    let player = state.get_player_mut(player_id).unwrap();
-    player.mana_pool.white -= nw;
-    player.mana_pool.blue -= nu;
-    player.mana_pool.black -= nb;
-    player.mana_pool.red -= nr;
-    player.mana_pool.green -= ng;
-    player.mana_pool.colorless -= nc;
-
-    let mut remaining = generic;
-    let pool = &mut player.mana_pool;
-    macro_rules! spend {
-        ($field:ident) => {
-            let s = remaining.min(pool.$field);
-            pool.$field -= s;
-            remaining -= s;
-        };
+        if player.life < (plan.blood as i32) * 2 {
+            return Err(EngineError::InvalidPaymentPlan);
+        }
     }
-    spend!(white);
-    spend!(blue);
-    spend!(black);
-    spend!(red);
-    spend!(green);
-    spend!(colorless);
+
+    // Validate plan satisfies cost (pip-by-pip)
+    {
+        let mut rem = plan.clone();
+        let mut blood_left = plan.blood;
+
+        for pip in &cost.pips {
+            match pip {
+                ManaPip::White => {
+                    if rem.white == 0 {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    rem.white -= 1;
+                }
+                ManaPip::Blue => {
+                    if rem.blue == 0 {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    rem.blue -= 1;
+                }
+                ManaPip::Black => {
+                    if rem.black == 0 {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    rem.black -= 1;
+                }
+                ManaPip::Red => {
+                    if rem.red == 0 {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    rem.red -= 1;
+                }
+                ManaPip::Green => {
+                    if rem.green == 0 {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    rem.green -= 1;
+                }
+                ManaPip::Colorless => {
+                    if rem.colorless == 0 {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    rem.colorless -= 1;
+                }
+                ManaPip::Snow => {
+                    let snow_total = rem.snow_white
+                        + rem.snow_blue
+                        + rem.snow_black
+                        + rem.snow_red
+                        + rem.snow_green
+                        + rem.snow_colorless;
+                    if snow_total == 0 {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    if rem.snow_white > 0 {
+                        rem.snow_white -= 1;
+                        rem.white -= 1;
+                    } else if rem.snow_blue > 0 {
+                        rem.snow_blue -= 1;
+                        rem.blue -= 1;
+                    } else if rem.snow_black > 0 {
+                        rem.snow_black -= 1;
+                        rem.black -= 1;
+                    } else if rem.snow_red > 0 {
+                        rem.snow_red -= 1;
+                        rem.red -= 1;
+                    } else if rem.snow_green > 0 {
+                        rem.snow_green -= 1;
+                        rem.green -= 1;
+                    } else {
+                        rem.snow_colorless -= 1;
+                        rem.colorless -= 1;
+                    }
+                }
+                ManaPip::Phyrexian(c) => {
+                    if blood_left > 0 {
+                        blood_left -= 1;
+                    } else {
+                        deduct_pip_color(c, &mut rem).ok_or(EngineError::InvalidPaymentPlan)?;
+                    }
+                }
+                ManaPip::HybridPhyrexian(c1, c2) => {
+                    if blood_left > 0 {
+                        blood_left -= 1;
+                    } else if pip_color_available(c1, &rem) {
+                        deduct_pip_color(c1, &mut rem).unwrap();
+                    } else if pip_color_available(c2, &rem) {
+                        deduct_pip_color(c2, &mut rem).unwrap();
+                    } else {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                }
+                ManaPip::Hybrid(c1, c2) => {
+                    if pip_color_available(c1, &rem) {
+                        deduct_pip_color(c1, &mut rem).unwrap();
+                    } else if pip_color_available(c2, &rem) {
+                        deduct_pip_color(c2, &mut rem).unwrap();
+                    } else {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                }
+                ManaPip::ColorlessHybrid(c) => {
+                    if rem.colorless > 0 {
+                        rem.colorless -= 1;
+                    } else {
+                        deduct_pip_color(c, &mut rem).ok_or(EngineError::InvalidPaymentPlan)?;
+                    }
+                }
+                ManaPip::GenericHybrid(n, c) => {
+                    if pip_color_available(c, &rem) {
+                        deduct_pip_color(c, &mut rem).unwrap();
+                    } else {
+                        let total =
+                            rem.white + rem.blue + rem.black + rem.red + rem.green + rem.colorless;
+                        if total < *n {
+                            return Err(EngineError::InvalidPaymentPlan);
+                        }
+                        spend_from_rem(*n, &mut rem);
+                    }
+                }
+                ManaPip::Generic(n) => {
+                    let total =
+                        rem.white + rem.blue + rem.black + rem.red + rem.green + rem.colorless;
+                    if total < *n {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    spend_from_rem(*n, &mut rem);
+                }
+                ManaPip::X => {
+                    let x_val = plan.x_value.ok_or(EngineError::InvalidPaymentPlan)?;
+                    let total =
+                        rem.white + rem.blue + rem.black + rem.red + rem.green + rem.colorless;
+                    if total < x_val {
+                        return Err(EngineError::InvalidPaymentPlan);
+                    }
+                    spend_from_rem(x_val, &mut rem);
+                }
+            }
+        }
+    }
+
+    // Apply plan atomically
+    let player = state.get_player_mut(player_id).unwrap();
+    player.mana_pool.white -= plan.white;
+    player.mana_pool.blue -= plan.blue;
+    player.mana_pool.black -= plan.black;
+    player.mana_pool.red -= plan.red;
+    player.mana_pool.green -= plan.green;
+    player.mana_pool.colorless -= plan.colorless;
+    player.mana_pool.snow_white -= plan.snow_white;
+    player.mana_pool.snow_blue -= plan.snow_blue;
+    player.mana_pool.snow_black -= plan.snow_black;
+    player.mana_pool.snow_red -= plan.snow_red;
+    player.mana_pool.snow_green -= plan.snow_green;
+    player.mana_pool.snow_colorless -= plan.snow_colorless;
+    player.life -= (plan.blood as i32) * 2;
 
     Ok(state)
 }
@@ -635,8 +797,9 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Generic(1), ManaPip::Green],
         };
-
-        let gs = pay_mana_cost(gs, PlayerId(0), &cost).unwrap();
+        let plan =
+            greedy_payment_plan(&cost, &gs.get_player(PlayerId(0)).unwrap().mana_pool, 20).unwrap();
+        let gs = pay_mana_cost(gs, PlayerId(0), &cost, &plan).unwrap();
 
         assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
     }
@@ -648,11 +811,8 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Generic(1), ManaPip::Green],
         };
-
-        assert!(matches!(
-            pay_mana_cost(gs, PlayerId(0), &cost),
-            Err(EngineError::InsufficientMana)
-        ));
+        let plan = greedy_payment_plan(&cost, &gs.get_player(PlayerId(0)).unwrap().mana_pool, 20);
+        assert!(plan.is_none());
     }
 
     #[test]
@@ -662,11 +822,8 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Green],
         };
-
-        assert!(matches!(
-            pay_mana_cost(gs, PlayerId(0), &cost),
-            Err(EngineError::InsufficientMana)
-        ));
+        let plan = greedy_payment_plan(&cost, &gs.get_player(PlayerId(0)).unwrap().mana_pool, 20);
+        assert!(plan.is_none());
     }
 
     #[test]
@@ -677,10 +834,80 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Generic(2)],
         };
-
-        let gs = pay_mana_cost(gs, PlayerId(0), &cost).unwrap();
+        let plan =
+            greedy_payment_plan(&cost, &gs.get_player(PlayerId(0)).unwrap().mana_pool, 20).unwrap();
+        let gs = pay_mana_cost(gs, PlayerId(0), &cost, &plan).unwrap();
 
         assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
+    }
+
+    #[test]
+    fn pay_with_hybrid_plan() {
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green = 1;
+        let cost = ManaCost {
+            pips: vec![ManaPip::Hybrid(ManaColor::Black, ManaColor::Green)],
+        };
+        let plan = PaymentPlan {
+            green: 1,
+            ..Default::default()
+        };
+        let gs = pay_mana_cost(gs, PlayerId(0), &cost, &plan).unwrap();
+        assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
+    }
+
+    #[test]
+    fn pay_with_phyrexian_blood_plan() {
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().life = 20;
+        let cost = ManaCost {
+            pips: vec![ManaPip::Phyrexian(ManaColor::Blue)],
+        };
+        let plan = PaymentPlan {
+            blood: 1,
+            ..Default::default()
+        };
+        let gs = pay_mana_cost(gs, PlayerId(0), &cost, &plan).unwrap();
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, 18);
+    }
+
+    #[test]
+    fn pay_with_snow_plan() {
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0))
+            .unwrap()
+            .mana_pool
+            .add_snow(ManaColor::Green, 1);
+        let cost = ManaCost {
+            pips: vec![ManaPip::Snow],
+        };
+        let plan = PaymentPlan {
+            green: 1,
+            snow_green: 1,
+            ..Default::default()
+        };
+        let gs = pay_mana_cost(gs, PlayerId(0), &cost, &plan).unwrap();
+        let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
+        assert_eq!(pool.green, 0);
+        assert_eq!(pool.snow_green, 0);
+    }
+
+    #[test]
+    fn invalid_plan_returns_error() {
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red = 1;
+        let cost = ManaCost {
+            pips: vec![ManaPip::Green],
+        };
+        // plan says spend 1 green but pool has 0 green
+        let plan = PaymentPlan {
+            green: 1,
+            ..Default::default()
+        };
+        assert!(matches!(
+            pay_mana_cost(gs, PlayerId(0), &cost, &plan),
+            Err(EngineError::InvalidPaymentPlan)
+        ));
     }
 
     #[test]
