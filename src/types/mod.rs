@@ -9,7 +9,8 @@ pub mod player;
 pub mod zone;
 
 pub use ability::{
-    AbilityAST, ActivatedAbility, IgnoredKind, OracleSpan, StaticAbility, TriggerEvent,
+    AbilityAST, AbilityEffect, ActivatedAbility, ActivationCost, CardFilter, CostComponent,
+    EffectStep, IgnoredKind, OracleSpan, PermanentFilter, StaticAbility, TriggerEvent,
     TriggeredAbility,
 };
 pub use card::{CardDefinition, CardType, Supertype, TypeLine};

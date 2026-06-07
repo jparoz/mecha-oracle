@@ -1,3 +1,5 @@
+use super::mana::{ManaCost, ManaPool};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StaticAbility {
     Flying,
@@ -28,9 +30,37 @@ pub struct TriggeredAbility {
     pub trigger: TriggerEvent,
 }
 
-/// An ability paid for with a cost. Phase 2+ adds cost + effect fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ActivatedAbility;
+pub struct ActivatedAbility {
+    pub cost: ActivationCost,
+    pub effect: AbilityEffect,
+}
+
+pub type ActivationCost = Vec<CostComponent>;
+pub type AbilityEffect = Vec<EffectStep>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CostComponent {
+    Tap,
+    Mana(ManaCost),
+    PayLife(u32),
+    Sacrifice(u32, PermanentFilter),
+    Discard(u32, CardFilter),
+    Unimplemented(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectStep {
+    AddMana(ManaPool),
+    Mill(u32),
+    DrawCard(u32),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PermanentFilter;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardFilter;
 
 impl StaticAbility {
     pub fn display_name(&self) -> &'static str {
@@ -115,5 +145,26 @@ mod tests {
             StaticAbility::Indestructible.display_name(),
             "Indestructible"
         );
+    }
+
+    #[test]
+    fn activated_ability_construction() {
+        use super::super::mana::ManaPool;
+        let ability = ActivatedAbility {
+            cost: vec![CostComponent::Tap],
+            effect: vec![EffectStep::AddMana(ManaPool {
+                green: 1,
+                ..Default::default()
+            })],
+        };
+        assert_eq!(ability.cost.len(), 1);
+        assert_eq!(ability.effect.len(), 1);
+        assert!(matches!(ability.cost[0], CostComponent::Tap));
+    }
+
+    #[test]
+    fn cost_component_unimplemented_round_trips() {
+        let c = CostComponent::Unimplemented("Sacrifice a creature".to_string());
+        assert!(matches!(c, CostComponent::Unimplemented(_)));
     }
 }
