@@ -1,3 +1,7 @@
+# docs/todo.md
+
+This file (docs/todo.md) is a running scratchpad I'll keep of bugs/issues as I find them. You should be aware of this file; you don't always have to refer to it as the source of what to do, but you should be aware of its contents, and delete items (bulleted list items) as they are completed. If you do delete something from this file, be sure to tell me that you've deleted it and why.
+
 # Note on running cargo test
 
 Default to the grep summary pattern when running `cargo test`:
