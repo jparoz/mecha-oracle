@@ -316,32 +316,32 @@ pub fn greedy_payment_plan(cost: &ManaCost, pool: &ManaPool, life: i32) -> Optio
             X => {} // x_value already set to 0
             Snow => {
                 // Pick first available snow-tagged color (CR 107.4k)
-                if rem_sw > 0 {
+                if rem_sw > 0 && rem_w > 0 {
                     rem_w -= 1;
                     rem_sw -= 1;
                     plan.white += 1;
                     plan.snow_white += 1;
-                } else if rem_su > 0 {
+                } else if rem_su > 0 && rem_u > 0 {
                     rem_u -= 1;
                     rem_su -= 1;
                     plan.blue += 1;
                     plan.snow_blue += 1;
-                } else if rem_sb > 0 {
+                } else if rem_sb > 0 && rem_b > 0 {
                     rem_b -= 1;
                     rem_sb -= 1;
                     plan.black += 1;
                     plan.snow_black += 1;
-                } else if rem_sr > 0 {
+                } else if rem_sr > 0 && rem_r > 0 {
                     rem_r -= 1;
                     rem_sr -= 1;
                     plan.red += 1;
                     plan.snow_red += 1;
-                } else if rem_sg > 0 {
+                } else if rem_sg > 0 && rem_g > 0 {
                     rem_g -= 1;
                     rem_sg -= 1;
                     plan.green += 1;
                     plan.snow_green += 1;
-                } else if rem_sc > 0 {
+                } else if rem_sc > 0 && rem_c > 0 {
                     rem_c -= 1;
                     rem_sc -= 1;
                     plan.colorless += 1;

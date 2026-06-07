@@ -120,36 +120,24 @@ pub fn activate_ability(
                     .unwrap_or(false);
                 let player = state.get_player_mut(activating_player).unwrap();
                 if is_snow {
-                    if pool_add.white > 0 {
-                        player
-                            .mana_pool
-                            .add_snow(crate::types::mana::ManaColor::White, pool_add.white);
-                    }
-                    if pool_add.blue > 0 {
-                        player
-                            .mana_pool
-                            .add_snow(crate::types::mana::ManaColor::Blue, pool_add.blue);
-                    }
-                    if pool_add.black > 0 {
-                        player
-                            .mana_pool
-                            .add_snow(crate::types::mana::ManaColor::Black, pool_add.black);
-                    }
-                    if pool_add.red > 0 {
-                        player
-                            .mana_pool
-                            .add_snow(crate::types::mana::ManaColor::Red, pool_add.red);
-                    }
-                    if pool_add.green > 0 {
-                        player
-                            .mana_pool
-                            .add_snow(crate::types::mana::ManaColor::Green, pool_add.green);
-                    }
-                    if pool_add.colorless > 0 {
-                        player
-                            .mana_pool
-                            .add_snow(crate::types::mana::ManaColor::Colorless, pool_add.colorless);
-                    }
+                    player
+                        .mana_pool
+                        .add_snow(crate::types::mana::ManaColor::White, pool_add.white);
+                    player
+                        .mana_pool
+                        .add_snow(crate::types::mana::ManaColor::Blue, pool_add.blue);
+                    player
+                        .mana_pool
+                        .add_snow(crate::types::mana::ManaColor::Black, pool_add.black);
+                    player
+                        .mana_pool
+                        .add_snow(crate::types::mana::ManaColor::Red, pool_add.red);
+                    player
+                        .mana_pool
+                        .add_snow(crate::types::mana::ManaColor::Green, pool_add.green);
+                    player
+                        .mana_pool
+                        .add_snow(crate::types::mana::ManaColor::Colorless, pool_add.colorless);
                 } else {
                     player.mana_pool.white += pool_add.white;
                     player.mana_pool.blue += pool_add.blue;
