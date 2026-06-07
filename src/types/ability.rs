@@ -11,6 +11,9 @@ pub enum StaticAbility {
     Deathtouch,
     Menace,
     Indestructible,
+    Defender,
+    Shadow,
+    Horsemanship,
 }
 
 /// The event that fires a triggered ability. Phase 2+ adds condition variants.
@@ -41,6 +44,9 @@ impl StaticAbility {
             Self::Deathtouch => "Deathtouch",
             Self::Menace => "Menace",
             Self::Indestructible => "Indestructible",
+            Self::Defender => "Defender",
+            Self::Shadow => "Shadow",
+            Self::Horsemanship => "Horsemanship",
         }
     }
 }
@@ -73,6 +79,9 @@ pub enum OracleSpan {
     Ignored(IgnoredKind, String),
     /// Text the parser could not interpret — displayed red+underline in the UI.
     Unparsed(String),
+    /// A CR 702 keyword the parser recognises by name but the engine does not yet enforce.
+    /// Displayed cyan+underline in the UI.
+    ParsedUnimplemented(String),
 }
 
 #[cfg(test)]

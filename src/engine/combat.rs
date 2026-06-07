@@ -87,6 +87,27 @@ pub fn declare_blockers(
         {
             return Err(EngineError::InvalidBlocker);
         }
+        // CR 702.28b: shadow creatures can only be blocked by/block other shadow creatures.
+        {
+            let attacker_has_shadow = state
+                .objects
+                .get(&attacker_id)
+                .map(|a| a.has_keyword(StaticAbility::Shadow))
+                .unwrap_or(false);
+            if attacker_has_shadow != obj.has_keyword(StaticAbility::Shadow) {
+                return Err(EngineError::InvalidBlocker);
+            }
+        }
+        // CR 702.31b: horsemanship — can only be blocked by creatures with horsemanship.
+        if state
+            .objects
+            .get(&attacker_id)
+            .map(|a| a.has_keyword(StaticAbility::Horsemanship))
+            .unwrap_or(false)
+            && !obj.has_keyword(StaticAbility::Horsemanship)
+        {
+            return Err(EngineError::InvalidBlocker);
+        }
     }
 
     // Re-build blocking_map from declarations; declaration order = damage assignment order.

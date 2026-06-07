@@ -69,6 +69,7 @@ impl CardObject {
         self.is_creature()
             && self.zone == Zone::Battlefield
             && !self.tapped
+            && !self.has_keyword(StaticAbility::Defender)
             && (!self.summoning_sick || self.has_keyword(StaticAbility::Haste))
     }
 

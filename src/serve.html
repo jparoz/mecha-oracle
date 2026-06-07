@@ -488,9 +488,10 @@ function renderOracleText(spans) {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    if (span.kind === 'parsed')   return `<span>${t}</span>`;
-    if (span.kind === 'ignored')  return `<span style="font-style:italic">${t}</span>`;
-    if (span.kind === 'unparsed') return `<span style="color:red;text-decoration:underline">${t}</span>`;
+    if (span.kind === 'parsed')               return `<span>${t}</span>`;
+    if (span.kind === 'ignored')              return `<span style="font-style:italic">${t}</span>`;
+    if (span.kind === 'unparsed')             return `<span style="color:red;text-decoration:underline">${t}</span>`;
+    if (span.kind === 'parsed_unimplemented') return `<span style="color:#4dd9d9;text-decoration:underline">${t}</span>`;
     return t;
   }).join('<br>');
 }

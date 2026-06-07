@@ -108,6 +108,7 @@ enum SpanKind {
     Parsed,
     Ignored,
     Unparsed,
+    ParsedUnimplemented,
 }
 
 #[derive(Serialize)]
@@ -253,6 +254,11 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     },
                     OracleSpan::Unparsed(t) => OracleSpanView {
                         kind: SpanKind::Unparsed,
+                        text: t.clone(),
+                        ignored_kind: None,
+                    },
+                    OracleSpan::ParsedUnimplemented(t) => OracleSpanView {
+                        kind: SpanKind::ParsedUnimplemented,
                         text: t.clone(),
                         ignored_kind: None,
                     },
