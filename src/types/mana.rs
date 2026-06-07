@@ -8,7 +8,7 @@ pub enum ManaColor {
     Colorless,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ManaCost {
     pub generic: u32,
     pub white: u32,
@@ -29,7 +29,7 @@ impl ManaCost {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ManaPool {
     pub white: u32,
     pub blue: u32,
