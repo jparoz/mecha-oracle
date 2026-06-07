@@ -1,3 +1,5 @@
 # UI issues
-- Tooltips should always be to the left/right of the related card, not rotating around to follow the tap/untap animation if the card is tapped.
-- Tooltips are often drawn outside the bounds of the viewport; ensure that this never happens, and have the tooltip be moved if necessary.
+
+# Gameplay issues
+- On each main phase of each player's turn, the player is still allowed to play lands/creatures/etc. after they've passed priority. This is both a UI issue (the options shouldn't be visible after passing priority), and a server rules issue (the commands to play a land or cast a spell should be forbidden). The server needs to check who has priority before playing lands/casting spells.
+- I can still use spacebar to advance the steps after the game has finished; this should be forbidden.
