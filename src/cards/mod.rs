@@ -118,8 +118,10 @@ mod tests {
 
     #[test]
     fn unparsed_count_reflects_landfall_card() {
+        // Llanowar Elves' "{T}: Add {G}." is now parsed as Activated,
+        // so only Grazing Gladehart (Landfall card) remains unparsed.
         let db = test_db();
-        assert_eq!(db.unparsed_count(), 2);
+        assert_eq!(db.unparsed_count(), 1);
     }
 
     #[test]

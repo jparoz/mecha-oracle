@@ -1,7 +1,10 @@
 use crate::types::OracleSpan::ParsedUnimplemented;
 use crate::types::ability::{AbilityEffect, ActivationCost, CostComponent, EffectStep};
 use crate::types::mana::{ManaCost, ManaPool};
-use crate::types::{AbilityAST, IgnoredKind, OracleSpan, ability::StaticAbility};
+use crate::types::{
+    AbilityAST, IgnoredKind, OracleSpan,
+    ability::{ActivatedAbility, StaticAbility},
+};
 
 // ── Private helpers ──────────────────────────────────────────────────────────
 
@@ -702,6 +705,23 @@ pub fn parse_oracle_text(text: &str) -> Vec<OracleSpan> {
             }
         }
 
+        // Colon check: activated ability ({cost}: effect).
+        if let Some(colon_pos) = find_colon_at_depth_zero(paragraph) {
+            let cost_str = paragraph[..colon_pos].trim();
+            let effect_str = paragraph[colon_pos + 1..].trim();
+            let cost = parse_activation_cost(cost_str);
+            if !cost.is_empty() {
+                if let Some(effect) = parse_ability_effect(effect_str) {
+                    spans.push(OracleSpan::Parsed(AbilityAST::Activated(
+                        ActivatedAbility { cost, effect },
+                    )));
+                } else {
+                    spans.push(OracleSpan::ParsedUnimplemented(paragraph.to_string()));
+                }
+                continue;
+            }
+        }
+
         // Split on commas at depth 0; classify each token.
         for token in split_at_depth_zero(paragraph, ',') {
             let token = token.trim();
@@ -1113,5 +1133,99 @@ mod tests {
                 unparsed("Whenever a land you control enters, you gain 1 life."),
             ]
         );
+    }
+
+    // ── Activated ability integration tests ──────────────────────────────────
+
+    #[test]
+    fn tap_add_green_parses_as_activated() {
+        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::mana::ManaPool;
+        let result = parse_oracle_text("{T}: Add {G}.");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(
+            &result[0],
+            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility {
+                cost,
+                effect,
+            })) if cost == &vec![CostComponent::Tap]
+                && effect == &vec![EffectStep::AddMana(ManaPool { green: 1, ..Default::default() })]
+        ));
+    }
+
+    #[test]
+    fn two_tap_add_two_green_parses_as_activated() {
+        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::mana::{ManaCost, ManaPool};
+        let result = parse_oracle_text("{2}, {T}: Add {G}{G}.");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(
+            &result[0],
+            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { cost, effect }))
+            if cost == &vec![
+                CostComponent::Mana(ManaCost { generic: 2, ..Default::default() }),
+                CostComponent::Tap,
+            ]
+            && effect == &vec![EffectStep::AddMana(ManaPool { green: 2, ..Default::default() })]
+        ));
+    }
+
+    #[test]
+    fn one_draw_a_card_parses_as_activated() {
+        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::mana::ManaCost;
+        let result = parse_oracle_text("{1}: Draw a card.");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(
+            &result[0],
+            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { cost, effect }))
+            if cost == &vec![CostComponent::Mana(ManaCost { generic: 1, ..Default::default() })]
+            && effect == &vec![EffectStep::DrawCard(1)]
+        ));
+    }
+
+    #[test]
+    fn tap_mill_two_parses_as_activated() {
+        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        let result = parse_oracle_text("{T}: Mill 2.");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(
+            &result[0],
+            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { cost, effect }))
+            if cost == &vec![CostComponent::Tap]
+            && effect == &vec![EffectStep::Mill(2)]
+        ));
+    }
+
+    #[test]
+    fn reminder_text_colon_not_treated_as_activated() {
+        // ({T}: Add {G}.) is reminder text — not an activated ability
+        let result = parse_oracle_text("({T}: Add {G}.)");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(
+            &result[0],
+            OracleSpan::Ignored(IgnoredKind::ReminderText, _)
+        ));
+    }
+
+    #[test]
+    fn sacrifice_cost_becomes_unimplemented_in_cost_activated_parsed() {
+        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::mana::ManaPool;
+        let result = parse_oracle_text("Sacrifice a creature: Add {G}{G}.");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(
+            &result[0],
+            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { cost, effect }))
+            if cost == &vec![CostComponent::Unimplemented("Sacrifice a creature".to_string())]
+            && effect == &vec![EffectStep::AddMana(ManaPool { green: 2, ..Default::default() })]
+        ));
+    }
+
+    #[test]
+    fn unknown_effect_becomes_parsed_unimplemented() {
+        let result = parse_oracle_text("{T}: Create a 1/1 token.");
+        assert_eq!(result.len(), 1);
+        assert!(matches!(&result[0], OracleSpan::ParsedUnimplemented(_)));
     }
 }
