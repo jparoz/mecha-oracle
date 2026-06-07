@@ -1,4 +1,6 @@
 # UI issues
+- Tooltips are displayed behind the middle row (with the turn steps); tooltips should always be in front of everything else.
+- When there's not enough horizontal space to fit all the turn steps, it wraps weirdly; probably should prefer to shrink the text (maybe truncate to the initials of each step or something), or else wrap in rows (so that a single step isn't isolated from the rest, but they're split 50/50 or something).
 
 # Gameplay issues
 - On each main phase of each player's turn, the player is still allowed to play lands/creatures/etc. after they've passed priority. This is both a UI issue (the options shouldn't be visible after passing priority), and a server rules issue (the commands to play a land or cast a spell should be forbidden). The server needs to check who has priority before playing lands/casting spells.
