@@ -2,6 +2,7 @@ mod downloader;
 mod scryfall;
 
 pub use downloader::update_cards;
+use scryfall::ParsedEntry;
 
 use crate::types::card::CardDefinition;
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ use std::path::Path;
 
 pub struct CardDatabase {
     inner: HashMap<String, CardDefinition>,
+    tokens: HashMap<String, CardDefinition>,
 }
 
 impl CardDatabase {
@@ -28,17 +30,19 @@ impl CardDatabase {
             .map_err(|e| format!("Invalid JSON in {}: {e}", path.display()))?;
 
         let mut inner = HashMap::new();
-        let mut loaded = 0usize;
+        let mut tokens = HashMap::new();
         let mut skipped = 0usize;
         let mut unparsed = 0usize;
         for v in &cards {
-            match scryfall::parse_card(v) {
-                Ok(def) => {
+            match scryfall::parse_entry(v) {
+                Ok(ParsedEntry::Card(def)) => {
                     if def.has_unparsed() {
                         unparsed += 1;
                     }
                     inner.insert(def.name.to_lowercase(), def);
-                    loaded += 1;
+                }
+                Ok(ParsedEntry::Token(def)) => {
+                    tokens.insert(def.name.to_lowercase(), def);
                 }
                 Err(e) => {
                     let name = v["name"].as_str().unwrap_or("<unknown>");
@@ -47,9 +51,17 @@ impl CardDatabase {
                 }
             }
         }
-        tracing::info!(loaded, skipped, unparsed, "card database loaded");
+        let loaded = inner.len();
+        let token_count = tokens.len();
+        tracing::info!(
+            loaded,
+            token_count,
+            skipped,
+            unparsed,
+            "card database loaded"
+        );
 
-        Ok(Self { inner })
+        Ok(Self { inner, tokens })
     }
 
     /// Number of loaded cards that contain at least one `OracleSpan::Unparsed` span.
@@ -59,6 +71,10 @@ impl CardDatabase {
 
     pub fn get(&self, name: &str) -> Option<&CardDefinition> {
         self.inner.get(&name.to_lowercase())
+    }
+
+    pub fn get_token(&self, name: &str) -> Option<&CardDefinition> {
+        self.tokens.get(&name.to_lowercase())
     }
 }
 
@@ -136,5 +152,20 @@ mod tests {
                 .iter()
                 .any(|s| { matches!(s, OracleSpan::Parsed(AbilityAST::Activated(_))) })
         );
+    }
+
+    #[test]
+    fn token_does_not_overwrite_card() {
+        let db = test_db();
+        let card = db.get("Llanowar Elves").expect("creature not found");
+        // The creature has a mana cost; the token does not
+        assert!(card.mana_cost.is_some());
+    }
+
+    #[test]
+    fn get_token_returns_token() {
+        let db = test_db();
+        let token = db.get_token("Llanowar Elves").expect("token not found");
+        assert!(token.mana_cost.is_none());
     }
 }
