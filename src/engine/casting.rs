@@ -2,6 +2,7 @@ use super::{
     EngineError,
     mana::{greedy_payment_plan, pay_mana_cost},
     state_based_actions::check_and_apply_sbas,
+    triggered::fire_etb_triggers,
 };
 use crate::types::{GameState, ObjectId, PlayerId, Zone};
 
@@ -49,6 +50,7 @@ pub fn play_land(
     }
     state.lands_played_this_turn += 1;
 
+    let state = fire_etb_triggers(state, object_id);
     Ok(check_and_apply_sbas(state))
 }
 
@@ -108,6 +110,7 @@ pub fn cast_creature(
         obj.summoning_sick = true; // creatures always enter with summoning sickness
     }
 
+    let state = fire_etb_triggers(state, object_id);
     Ok(check_and_apply_sbas(state))
 }
 
@@ -115,7 +118,7 @@ pub fn cast_creature(
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::{CardObject, Player, Step};
+    use crate::types::{CardObject, OracleSpan, Player, Step};
 
     fn make_state() -> GameState {
         let mut gs = GameState::new(vec![
@@ -235,5 +238,112 @@ mod tests {
         let gs = play_land(gs, PlayerId(0), forest_id).unwrap();
 
         assert!(gs.mana_checkpoint.is_none());
+    }
+
+    #[test]
+    fn cast_creature_fires_etb_draw_trigger() {
+        use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+        use crate::types::card::{CardType, TypeLine};
+        use crate::types::effect::EffectStep;
+        use crate::types::mana::{ManaCost, ManaPip};
+
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green = 1;
+
+        // Put a card in library so the draw trigger has something to draw.
+        let library_card = {
+            let def = crate::types::CardDefinition {
+                name: "Dummy".into(),
+                mana_cost: None,
+                type_line: TypeLine {
+                    supertypes: vec![],
+                    card_types: vec![CardType::Creature],
+                    subtypes: vec![],
+                },
+                oracle_text: String::new(),
+                abilities: vec![],
+                power: Some(1),
+                toughness: Some(1),
+            };
+            let id = gs.alloc_id();
+            let obj = CardObject::new(id, def, PlayerId(0), Zone::Library);
+            gs.libraries.get_mut(&PlayerId(0)).unwrap().push(id);
+            gs.add_object(obj);
+            id
+        };
+
+        let def = crate::types::CardDefinition {
+            name: "Elvish Visionary".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Green],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Elf".into(), "Scout".into()],
+            },
+            oracle_text: "When this enters, draw a card.".into(),
+            abilities: vec![OracleSpan::Parsed(AbilityAST::Triggered(
+                TriggeredAbility {
+                    trigger: TriggerEvent::EntersTheBattlefield {
+                        subject_is_self: true,
+                    },
+                    effect: vec![EffectStep::DrawCard(1)],
+                },
+            ))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        let creature_id = put_in_hand(&mut gs, PlayerId(0), def);
+
+        let gs = cast_creature(gs, PlayerId(0), creature_id).unwrap();
+
+        // Creature on battlefield.
+        assert!(gs.battlefield.contains(&creature_id));
+        // Draw trigger fired: library card now in hand.
+        assert!(gs.hands[&PlayerId(0)].contains(&library_card));
+        assert!(gs.libraries[&PlayerId(0)].is_empty());
+    }
+
+    #[test]
+    fn cast_creature_fires_etb_gain_life_trigger() {
+        use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+        use crate::types::card::{CardType, TypeLine};
+        use crate::types::effect::EffectStep;
+        use crate::types::mana::{ManaCost, ManaPip};
+
+        let mut gs = make_state();
+        let before_life = gs.get_player(PlayerId(0)).unwrap().life;
+
+        let def = crate::types::CardDefinition {
+            name: "Gain Life Creature".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(1)],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "When this enters, you gain 5 life.".into(),
+            abilities: vec![OracleSpan::Parsed(AbilityAST::Triggered(
+                TriggeredAbility {
+                    trigger: TriggerEvent::EntersTheBattlefield {
+                        subject_is_self: true,
+                    },
+                    effect: vec![EffectStep::GainLife(5)],
+                },
+            ))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        let creature_id = put_in_hand(&mut gs, PlayerId(0), def);
+
+        // Give enough mana for {1}.
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 1;
+
+        let gs = cast_creature(gs, PlayerId(0), creature_id).unwrap();
+
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, before_life + 5);
     }
 }
