@@ -47,7 +47,7 @@ pub fn fire_etb_triggers(mut state: GameState, entering_id: ObjectId) -> GameSta
                     }
                 }
                 _ => {
-                    debug_assert!(false, "unexpected EffectStep in ETB trigger: {step:?}");
+                    unreachable!("unexpected EffectStep in ETB trigger: {step:?}");
                 }
             }
         }
