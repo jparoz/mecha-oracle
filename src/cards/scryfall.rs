@@ -8,7 +8,7 @@ pub enum ParsedEntry {
     Token(CardDefinition),
 }
 
-pub fn parse_card(v: &Value) -> Result<CardDefinition, String> {
+pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
     let name = v["name"].as_str().ok_or("missing name")?.to_string();
 
     let _span = tracing::debug_span!("parsing", card = name).entered();
@@ -30,7 +30,7 @@ pub fn parse_card(v: &Value) -> Result<CardDefinition, String> {
     let power = v["power"].as_str().and_then(|s| s.parse::<i32>().ok());
     let toughness = v["toughness"].as_str().and_then(|s| s.parse::<i32>().ok());
 
-    Ok(CardDefinition {
+    let def = CardDefinition {
         name,
         mana_cost,
         type_line,
@@ -38,11 +38,8 @@ pub fn parse_card(v: &Value) -> Result<CardDefinition, String> {
         abilities,
         power,
         toughness,
-    })
-}
+    };
 
-pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
-    let def = parse_card(v)?;
     Ok(match v["layout"].as_str() {
         Some("token") => ParsedEntry::Token(def),
         _ => ParsedEntry::Card(def),
@@ -173,7 +170,9 @@ mod tests {
             "power": "2",
             "toughness": "2"
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         assert_eq!(card.name, "Grizzly Bears");
         assert_eq!(card.power, Some(2));
         assert_eq!(card.toughness, Some(2));
@@ -193,7 +192,9 @@ mod tests {
             "type_line": "Basic Land \u{2014} Forest",
             "oracle_text": "({T}: Add {G}.)"
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         assert!(card.mana_cost.is_none());
         assert!(card.type_line.is_land());
         assert!(!card.type_line.is_creature());
@@ -214,7 +215,9 @@ mod tests {
             "power": "3",
             "toughness": "3"
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         assert_eq!(cost.mana_value(), 4);
         assert!(cost.pips.contains(&ManaPip::Generic(3)));
@@ -231,7 +234,9 @@ mod tests {
             "power": "*",
             "toughness": "*+1"
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         assert_eq!(card.power, None);
         assert_eq!(card.toughness, None);
     }
@@ -244,7 +249,9 @@ mod tests {
             "type_line": "Sorcery",
             "oracle_text": ""
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         assert!(cost.pips.contains(&ManaPip::X));
         assert!(cost.pips.contains(&ManaPip::Red));
@@ -259,7 +266,9 @@ mod tests {
             "type_line": "Creature \u{2014} Goblin Warrior",
             "oracle_text": "Haste"
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         assert_eq!(cost.pips.len(), 3);
         assert!(
@@ -278,7 +287,9 @@ mod tests {
             "type_line": "Instant",
             "oracle_text": ""
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         assert_eq!(cost.pips, vec![ManaPip::Phyrexian(ManaColor::Blue)]);
         assert_eq!(cost.mana_value(), 1);
@@ -292,7 +303,9 @@ mod tests {
             "type_line": "Instant",
             "oracle_text": ""
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         assert_eq!(
             cost.pips,
@@ -308,7 +321,9 @@ mod tests {
             "type_line": "Sorcery",
             "oracle_text": ""
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         assert_eq!(cost.pips.len(), 3);
         assert!(
@@ -327,7 +342,9 @@ mod tests {
             "type_line": "Instant",
             "oracle_text": ""
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         assert!(cost.pips.contains(&ManaPip::Colorless));
     }
@@ -340,7 +357,9 @@ mod tests {
             "type_line": "Instant",
             "oracle_text": ""
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         assert!(cost.pips.contains(&ManaPip::Snow));
         assert!(cost.pips.contains(&ManaPip::Red));
@@ -348,14 +367,16 @@ mod tests {
 
     #[test]
     fn unknown_symbol_is_skipped_not_errored() {
-        // {E} (energy) should not cause parse_card to fail
+        // {E} (energy) should not cause parse_entry to fail
         let v = json!({
             "name": "Test",
             "mana_cost": "{E}{G}",
             "type_line": "Creature \u{2014} Test",
             "oracle_text": ""
         });
-        let card = parse_card(&v).unwrap();
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
         let cost = card.mana_cost.unwrap();
         // {E} is skipped; only {G} is kept
         assert!(cost.pips.contains(&ManaPip::Green));
