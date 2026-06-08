@@ -40,10 +40,11 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
         toughness,
     };
 
-    Ok(match v["layout"].as_str() {
-        Some("token") => ParsedEntry::Token(def),
-        _ => ParsedEntry::Card(def),
-    })
+    match v["layout"].as_str() {
+        Some("token") | Some("double_faced_token") | Some("emblem") => Ok(ParsedEntry::Token(def)),
+        Some("art_series") => Err("unsupported layout: art_series".to_string()),
+        _ => Ok(ParsedEntry::Card(def)),
+    }
 }
 
 fn color_from_str(s: &str) -> Option<ManaColor> {
@@ -419,5 +420,41 @@ mod tests {
             "toughness": "3"
         });
         assert!(matches!(parse_entry(&v), Ok(ParsedEntry::Card(_))));
+    }
+
+    #[test]
+    fn parse_entry_routes_double_faced_token() {
+        let v = json!({
+            "layout": "double_faced_token",
+            "name": "Treasure",
+            "mana_cost": "",
+            "type_line": "Token Artifact — Treasure",
+            "oracle_text": "{T}, Sacrifice this artifact: Add one mana of any color."
+        });
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::Token(_))));
+    }
+
+    #[test]
+    fn parse_entry_routes_emblem() {
+        let v = json!({
+            "layout": "emblem",
+            "name": "Emblem Garruk",
+            "mana_cost": "",
+            "type_line": "Emblem — Garruk",
+            "oracle_text": "At the beginning of your end step, you may search your library for a creature card, put it onto the battlefield, then shuffle."
+        });
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::Token(_))));
+    }
+
+    #[test]
+    fn parse_entry_skips_art_series() {
+        let v = json!({
+            "layout": "art_series",
+            "name": "Island Art Series",
+            "mana_cost": "",
+            "type_line": "Card",
+            "oracle_text": ""
+        });
+        assert!(parse_entry(&v).is_err());
     }
 }
