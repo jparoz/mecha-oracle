@@ -461,5 +461,20 @@
     "oracle_text": "",
     "power": "1",
     "toughness": "1"
+  },
+  {
+    "object": "card",
+    "name": "Elvish Visionary",
+    "lang": "en",
+    "layout": "normal",
+    "mana_cost": "{1}{G}",
+    "cmc": 2.0,
+    "type_line": "Creature — Elf Scout",
+    "oracle_text": "When this enters, draw a card.",
+    "power": "1",
+    "toughness": "1",
+    "colors": ["G"],
+    "color_identity": ["G"],
+    "keywords": []
   }
 ]
