@@ -32,17 +32,26 @@ impl CardDatabase {
         let mut inner = HashMap::new();
         let mut tokens = HashMap::new();
         let mut skipped = 0usize;
-        let mut unparsed = 0usize;
+        let mut partially_parsed = 0usize;
+        let mut fully_parsed = 0usize;
+        let mut art_series = 0usize;
         for v in &cards {
             match scryfall::parse_entry(v) {
                 Ok(ParsedEntry::Card(def)) => {
                     if def.has_unparsed() {
-                        unparsed += 1;
+                        partially_parsed += 1;
+                    } else {
+                        fully_parsed += 1;
                     }
-                    inner.insert(def.name.to_lowercase(), def);
+                    if let Some(existing) = inner.insert(def.name.to_lowercase(), def) {
+                        tracing::warn!(card = ?existing, "overwrote");
+                    }
                 }
                 Ok(ParsedEntry::Token(def)) => {
                     tokens.insert(def.name.to_lowercase(), def);
+                }
+                Ok(ParsedEntry::ArtSeries) => {
+                    art_series += 1;
                 }
                 Err(e) => {
                     let name = v["name"].as_str().unwrap_or("<unknown>");
@@ -51,13 +60,15 @@ impl CardDatabase {
                 }
             }
         }
-        let loaded = inner.len();
+        let card_count = inner.len();
         let token_count = tokens.len();
         tracing::info!(
-            loaded,
-            token_count,
+            cards = card_count,
+            partially_parsed,
+            fully_parsed,
+            tokens = token_count,
+            art_series,
             skipped,
-            unparsed,
             "card database loaded"
         );
 

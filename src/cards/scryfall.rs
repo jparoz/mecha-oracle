@@ -6,6 +6,7 @@ use serde_json::Value;
 pub enum ParsedEntry {
     Card(CardDefinition),
     Token(CardDefinition),
+    ArtSeries, // Stub to show that we correctly loaded the entry
 }
 
 pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
@@ -42,7 +43,7 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
 
     match v["layout"].as_str() {
         Some("token") | Some("double_faced_token") | Some("emblem") => Ok(ParsedEntry::Token(def)),
-        Some("art_series") => Err("unsupported layout: art_series".to_string()),
+        Some("art_series") => Ok(ParsedEntry::ArtSeries),
         _ => Ok(ParsedEntry::Card(def)),
     }
 }
