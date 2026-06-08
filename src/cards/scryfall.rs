@@ -6,20 +6,28 @@ use serde_json::Value;
 pub enum ParsedEntry {
     Card(CardDefinition),
     Token(CardDefinition),
-    UnCard,    // Silver border or acorn stamp (CR 100.7); out of scope
-    ArtSeries, // Non-playable; out of scope
+    UnCard,  // Silver border or acorn stamp (CR 100.7); out of scope
+    ArtCard, // Non-playable; out of scope
 }
 
 pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
-    // CR 100.7: Un-cards (silver border or acorn stamp) are out of scope
-    if v["border_color"].as_str() == Some("silver") || v["security_stamp"].as_str() == Some("acorn")
+    // CR 100.7: Un-cards (silver border, acorn stamp, or playtest cards) are out of scope
+    if v["border_color"].as_str() == Some("silver")
+        || v["security_stamp"].as_str() == Some("acorn")
+        || {
+            if let Some(promo_types) = v["promo_types"].as_array() {
+                promo_types.contains(&Value::String("playtest".to_string()))
+            } else {
+                false
+            }
+        }
     {
         return Ok(ParsedEntry::UnCard);
     }
 
     // Art series cards are unplayable, out of scope
-    if v["layout"].as_str() == Some("art_series") {
-        return Ok(ParsedEntry::ArtSeries);
+    if v["layout"].as_str() == Some("art_series") || v["set_type"].as_str() == Some("memorabilia") {
+        return Ok(ParsedEntry::ArtCard);
     }
 
     let name = v["name"].as_str().ok_or("missing name")?.to_string();
@@ -467,7 +475,7 @@ mod tests {
             "type_line": "Card",
             "oracle_text": ""
         });
-        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::ArtSeries)));
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::ArtCard)));
     }
 
     #[test]
