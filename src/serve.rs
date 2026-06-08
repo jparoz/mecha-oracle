@@ -10,7 +10,9 @@ use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
-use mecha_oracle::types::ability::{AbilityAST, ActivatedAbility, CostComponent, OracleSpan};
+use mecha_oracle::types::ability::{
+    AbilityAST, ActivatedAbility, CostComponent, OracleSpan, TriggeredAbility,
+};
 use mecha_oracle::types::effect::EffectStep;
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
@@ -307,6 +309,25 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
     format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))
 }
 
+fn format_triggered_ability(t: &mecha_oracle::types::ability::TriggeredAbility) -> String {
+    use mecha_oracle::types::ability::TriggerEvent;
+    let trigger_str = match &t.trigger {
+        TriggerEvent::EntersTheBattlefield { .. } => "When this enters",
+    };
+    let effect_parts: Vec<String> = t
+        .effect
+        .iter()
+        .map(|e| match e {
+            EffectStep::DrawCard(1) => "draw a card".to_string(),
+            EffectStep::DrawCard(n) => format!("draw {n} cards"),
+            EffectStep::GainLife(n) => format!("you gain {n} life"),
+            EffectStep::AddMana(pool) => format!("add {}", format_mana_pool(pool)),
+            EffectStep::Mill(n) => format!("mill {n}"),
+        })
+        .collect();
+    format!("{}, {}.", trigger_str, effect_parts.join(". "))
+}
+
 fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
     use mecha_oracle::types::ObjectId;
     use std::collections::HashSet;
@@ -351,6 +372,11 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     OracleSpan::ParsedUnimplemented(t) => OracleSpanView {
                         kind: SpanKind::ParsedUnimplemented,
                         text: t.clone(),
+                        ignored_kind: None,
+                    },
+                    OracleSpan::Parsed(AbilityAST::Triggered(t)) => OracleSpanView {
+                        kind: SpanKind::Parsed,
+                        text: format_triggered_ability(t),
                         ignored_kind: None,
                     },
                     _ => OracleSpanView {
