@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn llanowar_elves_loads_with_activated_ability() {
-        use crate::types::{AbilityAST, OracleSpan};
+        use crate::types::{Ability, OracleSpan};
         let db = test_db();
         let card = db
             .get("Llanowar Elves")
@@ -166,7 +166,7 @@ mod tests {
         assert!(
             card.abilities
                 .iter()
-                .any(|s| { matches!(s, OracleSpan::Parsed(AbilityAST::Activated(_))) })
+                .any(|s| { matches!(s, OracleSpan::Parsed(Ability::Activated(_))) })
         );
     }
 

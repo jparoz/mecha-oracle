@@ -2,7 +2,7 @@ use super::EngineError;
 use crate::engine::mana::{can_pay_mana, greedy_payment_plan, pay_mana_cost};
 use crate::engine::turn::draw_card;
 use crate::types::ability::StaticAbility;
-use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent, OracleSpan};
+use crate::types::ability::{Ability, ActivatedAbility, CostComponent, OracleSpan};
 use crate::types::effect::EffectStep;
 use crate::types::{GameState, ManaCheckpoint, ObjectId, PaymentPlan, PlayerId, Zone};
 
@@ -37,7 +37,7 @@ pub fn activate_ability(
         .abilities
         .iter()
         .filter_map(|span| match span {
-            OracleSpan::Parsed(AbilityAST::Activated(a)) => Some(a.clone()),
+            OracleSpan::Parsed(Ability::Activated(a)) => Some(a.clone()),
             _ => None,
         })
         .nth(ability_index)
@@ -248,7 +248,7 @@ pub fn can_pay_cost(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent};
+    use crate::types::ability::{Ability, ActivatedAbility, CostComponent};
     use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::effect::EffectStep;
     use crate::types::mana::{ManaCost, ManaPip, ManaPool};
@@ -273,15 +273,13 @@ mod tests {
                 subtypes: vec!["Elf".into(), "Druid".into()],
             },
             oracle_text: "{T}: Add {G}.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Activated(
-                ActivatedAbility {
-                    cost: vec![CostComponent::Tap],
-                    effect: vec![EffectStep::AddMana(ManaPool {
-                        green: 1,
-                        ..Default::default()
-                    })],
-                },
-            ))],
+            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+                cost: vec![CostComponent::Tap],
+                effect: vec![EffectStep::AddMana(ManaPool {
+                    green: 1,
+                    ..Default::default()
+                })],
+            }))],
             power: Some(1),
             toughness: Some(1),
         }
@@ -297,12 +295,10 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{T}: Mill 2.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Activated(
-                ActivatedAbility {
-                    cost: vec![CostComponent::Tap],
-                    effect: vec![EffectStep::Mill(2)],
-                },
-            ))],
+            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+                cost: vec![CostComponent::Tap],
+                effect: vec![EffectStep::Mill(2)],
+            }))],
             power: None,
             toughness: None,
         }
@@ -318,14 +314,12 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{1}: Draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Activated(
-                ActivatedAbility {
-                    cost: vec![CostComponent::Mana(ManaCost {
-                        pips: vec![ManaPip::Generic(1)],
-                    })],
-                    effect: vec![EffectStep::DrawCard(1)],
-                },
-            ))],
+            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+                cost: vec![CostComponent::Mana(ManaCost {
+                    pips: vec![ManaPip::Generic(1)],
+                })],
+                effect: vec![EffectStep::DrawCard(1)],
+            }))],
             power: None,
             toughness: None,
         }
@@ -469,12 +463,10 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Sacrifice a creature: Mill 2.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Activated(
-                ActivatedAbility {
-                    cost: vec![CostComponent::Unimplemented("Sacrifice a creature".into())],
-                    effect: vec![EffectStep::Mill(2)],
-                },
-            ))],
+            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+                cost: vec![CostComponent::Unimplemented("Sacrifice a creature".into())],
+                effect: vec![EffectStep::Mill(2)],
+            }))],
             power: None,
             toughness: None,
         };
@@ -523,15 +515,13 @@ mod tests {
                 subtypes: vec!["Elf".into()],
             },
             oracle_text: "{T}: Add {G}.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Activated(
-                ActivatedAbility {
-                    cost: vec![CostComponent::Tap],
-                    effect: vec![EffectStep::AddMana(ManaPool {
-                        green: 1,
-                        ..Default::default()
-                    })],
-                },
-            ))],
+            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+                cost: vec![CostComponent::Tap],
+                effect: vec![EffectStep::AddMana(ManaPool {
+                    green: 1,
+                    ..Default::default()
+                })],
+            }))],
             power: Some(1),
             toughness: Some(1),
         };

@@ -1,5 +1,5 @@
 use crate::engine::turn::draw_card;
-use crate::types::ability::{AbilityAST, TriggerEvent};
+use crate::types::ability::{Ability, TriggerEvent};
 use crate::types::effect::EffectStep;
 use crate::types::{GameState, ObjectId, OracleSpan};
 
@@ -17,7 +17,7 @@ pub fn fire_etb_triggers(mut state: GameState, entering_id: ObjectId) -> GameSta
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Parsed(AbilityAST::Triggered(t))
+                OracleSpan::Parsed(Ability::Triggered(t))
                     if matches!(
                         t.trigger,
                         TriggerEvent::EntersTheBattlefield {
@@ -59,7 +59,7 @@ pub fn fire_etb_triggers(mut state: GameState, entering_id: ObjectId) -> GameSta
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+    use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
     use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::effect::EffectStep;
     use crate::types::mana::ManaCost;
@@ -115,14 +115,12 @@ mod tests {
                 subtypes: vec!["Elf".into(), "Scout".into()],
             },
             oracle_text: "When this enters, draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Triggered(
-                TriggeredAbility {
-                    trigger: TriggerEvent::EntersTheBattlefield {
-                        subject_is_self: true,
-                    },
-                    effect: vec![EffectStep::DrawCard(1)],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::EntersTheBattlefield {
+                    subject_is_self: true,
                 },
-            ))],
+                effect: vec![EffectStep::DrawCard(1)],
+            }))],
             power: Some(1),
             toughness: Some(1),
         }
@@ -138,14 +136,12 @@ mod tests {
                 subtypes: vec!["Wurm".into()],
             },
             oracle_text: "When this enters, you gain 7 life.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Triggered(
-                TriggeredAbility {
-                    trigger: TriggerEvent::EntersTheBattlefield {
-                        subject_is_self: true,
-                    },
-                    effect: vec![EffectStep::GainLife(7)],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::EntersTheBattlefield {
+                    subject_is_self: true,
                 },
-            ))],
+                effect: vec![EffectStep::GainLife(7)],
+            }))],
             power: Some(7),
             toughness: Some(7),
         }
@@ -189,14 +185,12 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "When this enters, draw a card. You gain 2 life.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Triggered(
-                TriggeredAbility {
-                    trigger: TriggerEvent::EntersTheBattlefield {
-                        subject_is_self: true,
-                    },
-                    effect: vec![EffectStep::DrawCard(1), EffectStep::GainLife(2)],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::EntersTheBattlefield {
+                    subject_is_self: true,
                 },
-            ))],
+                effect: vec![EffectStep::DrawCard(1), EffectStep::GainLife(2)],
+            }))],
             power: Some(1),
             toughness: Some(1),
         };

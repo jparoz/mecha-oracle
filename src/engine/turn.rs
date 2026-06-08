@@ -441,7 +441,7 @@ mod tests {
     #[test]
     fn decayed_attacker_sacrificed_at_end_of_combat() {
         use crate::types::card::{CardType, TypeLine};
-        use crate::types::{AbilityAST, CardDefinition, OracleSpan, ability::StaticAbility};
+        use crate::types::{Ability, CardDefinition, OracleSpan, ability::StaticAbility};
         let mut gs = make_state();
         gs.step = Step::EndOfCombat;
         let id = gs.alloc_id();
@@ -454,9 +454,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Static(
-                StaticAbility::Decayed,
-            ))],
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Decayed))],
             power: Some(2),
             toughness: Some(2),
         };

@@ -391,7 +391,7 @@ mod tests {
         keywords: Vec<crate::types::ability::StaticAbility>,
     ) -> ObjectId {
         use crate::types::{
-            AbilityAST, CardDefinition, OracleSpan,
+            Ability, CardDefinition, OracleSpan,
             card::{CardType, TypeLine},
         };
         let id = state.alloc_id();
@@ -406,7 +406,7 @@ mod tests {
             oracle_text: String::new(),
             abilities: keywords
                 .into_iter()
-                .map(|k| OracleSpan::Parsed(AbilityAST::Static(k)))
+                .map(|k| OracleSpan::Parsed(Ability::Static(k)))
                 .collect(),
             power: Some(power),
             toughness: Some(toughness),

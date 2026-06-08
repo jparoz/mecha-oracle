@@ -93,7 +93,7 @@ pub enum IgnoredKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AbilityAST {
+pub enum Ability {
     Static(StaticAbility),
     Triggered(TriggeredAbility),
     Activated(ActivatedAbility),
@@ -104,7 +104,7 @@ pub enum AbilityAST {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OracleSpan {
     /// A recognised ability the engine can act on.
-    Parsed(AbilityAST),
+    Parsed(Ability),
     /// Non-rules text — displayed in italics in the UI.
     Ignored(IgnoredKind, String),
     /// Text the parser could not interpret — displayed red+underline in the UI.
@@ -120,8 +120,8 @@ mod tests {
 
     #[test]
     fn oracle_span_variants_are_comparable() {
-        let a = OracleSpan::Parsed(AbilityAST::Static(StaticAbility::Flying));
-        let b = OracleSpan::Parsed(AbilityAST::Static(StaticAbility::Flying));
+        let a = OracleSpan::Parsed(Ability::Static(StaticAbility::Flying));
+        let b = OracleSpan::Parsed(Ability::Static(StaticAbility::Flying));
         assert_eq!(a, b);
 
         let c = OracleSpan::Ignored(IgnoredKind::ReminderText, "(reminder)".into());

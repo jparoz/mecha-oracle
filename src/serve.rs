@@ -11,7 +11,7 @@ use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
-    AbilityAST, ActivatedAbility, CostComponent, OracleSpan, TriggeredAbility,
+    Ability, ActivatedAbility, CostComponent, OracleSpan, TriggeredAbility,
 };
 use mecha_oracle::types::effect::EffectStep;
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
@@ -309,7 +309,7 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
     format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))
 }
 
-fn format_triggered_ability(t: &mecha_oracle::types::ability::TriggeredAbility) -> String {
+fn format_triggered_ability(t: &TriggeredAbility) -> String {
     use mecha_oracle::types::ability::TriggerEvent;
     let trigger_str = match &t.trigger {
         TriggerEvent::EntersTheBattlefield { .. } => "When this enters",
@@ -349,14 +349,19 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                 .abilities
                 .iter()
                 .map(|span| match span {
-                    OracleSpan::Parsed(AbilityAST::Static(kw)) => OracleSpanView {
+                    OracleSpan::Parsed(Ability::Static(kw)) => OracleSpanView {
                         kind: SpanKind::Parsed,
                         text: kw.display_name().to_string(),
                         ignored_kind: None,
                     },
-                    OracleSpan::Parsed(AbilityAST::Activated(a)) => OracleSpanView {
+                    OracleSpan::Parsed(Ability::Activated(a)) => OracleSpanView {
                         kind: SpanKind::Parsed,
                         text: format_activated_ability(a),
+                        ignored_kind: None,
+                    },
+                    OracleSpan::Parsed(Ability::Triggered(t)) => OracleSpanView {
+                        kind: SpanKind::Parsed,
+                        text: format_triggered_ability(t),
                         ignored_kind: None,
                     },
                     OracleSpan::Ignored(kind, t) => OracleSpanView {
@@ -364,24 +369,14 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                         text: t.clone(),
                         ignored_kind: Some(kind.clone()),
                     },
-                    OracleSpan::Unparsed(t) => OracleSpanView {
-                        kind: SpanKind::Unparsed,
-                        text: t.clone(),
-                        ignored_kind: None,
-                    },
                     OracleSpan::ParsedUnimplemented(t) => OracleSpanView {
                         kind: SpanKind::ParsedUnimplemented,
                         text: t.clone(),
                         ignored_kind: None,
                     },
-                    OracleSpan::Parsed(AbilityAST::Triggered(t)) => OracleSpanView {
-                        kind: SpanKind::Parsed,
-                        text: format_triggered_ability(t),
-                        ignored_kind: None,
-                    },
-                    _ => OracleSpanView {
+                    OracleSpan::Unparsed(t) => OracleSpanView {
                         kind: SpanKind::Unparsed,
-                        text: format!("{span:?}"),
+                        text: t.clone(),
                         ignored_kind: None,
                     },
                 })
@@ -406,7 +401,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Parsed(AbilityAST::Activated(a)) => Some(a),
+                OracleSpan::Parsed(Ability::Activated(a)) => Some(a),
                 _ => None,
             })
             .enumerate()

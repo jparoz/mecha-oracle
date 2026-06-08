@@ -3,7 +3,7 @@ use crate::types::ability::{ActivationCost, CostComponent};
 use crate::types::effect::{Effect, EffectStep};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use crate::types::{
-    AbilityAST, IgnoredKind, OracleSpan,
+    Ability, IgnoredKind, OracleSpan,
     ability::{ActivatedAbility, StaticAbility},
 };
 
@@ -290,7 +290,7 @@ fn match_keyword(kw: &str) -> OracleSpan {
     // ── Fully-implemented keywords ────────────────────────────────────────────
     macro_rules! parsed {
         ($variant:ident) => {
-            OracleSpan::Parsed(AbilityAST::Static(StaticAbility::$variant))
+            OracleSpan::Parsed(Ability::Static(StaticAbility::$variant))
         };
     }
     match s {
@@ -701,7 +701,7 @@ fn is_cr702_keyword(s: &str) -> bool {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<OracleSpan> {
-    use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+    use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
 
     // Strip "When " or "Whenever " prefix (case-insensitive).
     let lower = paragraph.to_lowercase();
@@ -751,14 +751,12 @@ fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<OracleSpan>
     let effect_str = after_enters[comma_pos + 1..].trim();
 
     match parse_ability_effect(effect_str) {
-        Some(effect) => Some(OracleSpan::Parsed(AbilityAST::Triggered(
-            TriggeredAbility {
-                trigger: TriggerEvent::EntersTheBattlefield {
-                    subject_is_self: true,
-                },
-                effect,
+        Some(effect) => Some(OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            trigger: TriggerEvent::EntersTheBattlefield {
+                subject_is_self: true,
             },
-        ))),
+            effect,
+        }))),
         None => Some(OracleSpan::ParsedUnimplemented(paragraph.to_string())),
     }
 }
@@ -811,9 +809,10 @@ pub fn parse_oracle_text(text: &str, card_name: &str) -> Vec<OracleSpan> {
             let cost = parse_activation_cost(cost_str);
             if !cost.is_empty() {
                 if let Some(effect) = parse_ability_effect(effect_str) {
-                    spans.push(OracleSpan::Parsed(AbilityAST::Activated(
-                        ActivatedAbility { cost, effect },
-                    )));
+                    spans.push(OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+                        cost,
+                        effect,
+                    })));
                 } else {
                     spans.push(OracleSpan::ParsedUnimplemented(paragraph.to_string()));
                 }
@@ -845,7 +844,7 @@ mod tests {
     use crate::types::ability::StaticAbility;
 
     fn parsed(kw: StaticAbility) -> OracleSpan {
-        OracleSpan::Parsed(AbilityAST::Static(kw))
+        OracleSpan::Parsed(Ability::Static(kw))
     }
     fn reminder(text: &str) -> OracleSpan {
         OracleSpan::Ignored(IgnoredKind::ReminderText, text.to_string())
@@ -1300,7 +1299,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility {
+            OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
                 cost,
                 effect,
             })) if cost == &vec![CostComponent::Tap]
@@ -1315,7 +1314,7 @@ mod tests {
         use crate::types::mana::{ManaCost, ManaPip, ManaPool};
         let result = parse_oracle_text("{2}, {T}: Add {G}{G}.", "");
         assert_eq!(result.len(), 1);
-        if let OracleSpan::Parsed(AbilityAST::Activated(ability)) = &result[0] {
+        if let OracleSpan::Parsed(Ability::Activated(ability)) = &result[0] {
             assert_eq!(
                 ability.cost,
                 vec![
@@ -1344,7 +1343,7 @@ mod tests {
         use crate::types::mana::{ManaCost, ManaPip};
         let result = parse_oracle_text("{1}: Draw a card.", "");
         assert_eq!(result.len(), 1);
-        if let OracleSpan::Parsed(AbilityAST::Activated(ability)) = &result[0] {
+        if let OracleSpan::Parsed(Ability::Activated(ability)) = &result[0] {
             assert_eq!(
                 ability.cost,
                 vec![CostComponent::Mana(ManaCost {
@@ -1365,7 +1364,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { cost, effect }))
+            OracleSpan::Parsed(Ability::Activated(ActivatedAbility { cost, effect }))
             if cost == &vec![CostComponent::Tap]
             && effect == &vec![EffectStep::Mill(2)]
         ));
@@ -1391,7 +1390,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(AbilityAST::Activated(ActivatedAbility { cost, effect }))
+            OracleSpan::Parsed(Ability::Activated(ActivatedAbility { cost, effect }))
             if cost == &vec![CostComponent::Unimplemented("Sacrifice a creature".to_string())]
             && effect == &vec![EffectStep::AddMana(ManaPool { green: 2, ..Default::default() })]
         ));
@@ -1423,13 +1422,13 @@ mod tests {
 
     #[test]
     fn etb_self_draw_parses_as_triggered() {
-        use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+        use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::effect::EffectStep;
         let result = parse_oracle_text("When this enters, draw a card.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(AbilityAST::Triggered(TriggeredAbility {
+            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield { subject_is_self: true },
                 effect,
             })) if effect == &vec![EffectStep::DrawCard(1)]
@@ -1438,14 +1437,14 @@ mod tests {
 
     #[test]
     fn etb_creature_form_parses_as_triggered() {
-        use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+        use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::effect::EffectStep;
         // Older template: "When this creature enters"
         let result = parse_oracle_text("When this creature enters, draw a card.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(AbilityAST::Triggered(TriggeredAbility {
+            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield { subject_is_self: true },
                 effect,
             })) if effect == &vec![EffectStep::DrawCard(1)]
@@ -1454,14 +1453,14 @@ mod tests {
 
     #[test]
     fn etb_battlefield_form_parses_as_triggered() {
-        use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+        use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::effect::EffectStep;
         let result =
             parse_oracle_text("Whenever this enters the battlefield, you gain 3 life.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(AbilityAST::Triggered(TriggeredAbility {
+            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield { subject_is_self: true },
                 effect,
             })) if effect == &vec![EffectStep::GainLife(3)]
@@ -1470,7 +1469,7 @@ mod tests {
 
     #[test]
     fn etb_card_name_subject_parses_as_triggered() {
-        use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+        use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::effect::EffectStep;
         let result = parse_oracle_text(
             "When Elvish Visionary enters the battlefield, draw a card.",
@@ -1479,7 +1478,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(AbilityAST::Triggered(TriggeredAbility {
+            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield { subject_is_self: true },
                 effect,
             })) if effect == &vec![EffectStep::DrawCard(1)]
@@ -1488,13 +1487,13 @@ mod tests {
 
     #[test]
     fn etb_multistep_effect_parses_as_triggered() {
-        use crate::types::ability::{AbilityAST, TriggeredAbility};
+        use crate::types::ability::{Ability, TriggeredAbility};
         use crate::types::effect::EffectStep;
         let result = parse_oracle_text("When this enters, draw a card. You gain 2 life.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(AbilityAST::Triggered(TriggeredAbility { effect, .. }))
+            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility { effect, .. }))
             if effect == &vec![EffectStep::DrawCard(1), EffectStep::GainLife(2)]
         ));
     }

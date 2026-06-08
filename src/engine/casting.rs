@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn cast_creature_fires_etb_draw_trigger() {
-        use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+        use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::card::{CardType, TypeLine};
         use crate::types::effect::EffectStep;
         use crate::types::mana::{ManaCost, ManaPip};
@@ -283,14 +283,12 @@ mod tests {
                 subtypes: vec!["Elf".into(), "Scout".into()],
             },
             oracle_text: "When this enters, draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Triggered(
-                TriggeredAbility {
-                    trigger: TriggerEvent::EntersTheBattlefield {
-                        subject_is_self: true,
-                    },
-                    effect: vec![EffectStep::DrawCard(1)],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::EntersTheBattlefield {
+                    subject_is_self: true,
                 },
-            ))],
+                effect: vec![EffectStep::DrawCard(1)],
+            }))],
             power: Some(1),
             toughness: Some(1),
         };
@@ -307,7 +305,7 @@ mod tests {
 
     #[test]
     fn cast_creature_fires_etb_gain_life_trigger() {
-        use crate::types::ability::{AbilityAST, TriggerEvent, TriggeredAbility};
+        use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::card::{CardType, TypeLine};
         use crate::types::effect::EffectStep;
         use crate::types::mana::{ManaCost, ManaPip};
@@ -326,14 +324,12 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "When this enters, you gain 5 life.".into(),
-            abilities: vec![OracleSpan::Parsed(AbilityAST::Triggered(
-                TriggeredAbility {
-                    trigger: TriggerEvent::EntersTheBattlefield {
-                        subject_is_self: true,
-                    },
-                    effect: vec![EffectStep::GainLife(5)],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::EntersTheBattlefield {
+                    subject_is_self: true,
                 },
-            ))],
+                effect: vec![EffectStep::GainLife(5)],
+            }))],
             power: Some(1),
             toughness: Some(1),
         };
