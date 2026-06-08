@@ -6,8 +6,8 @@ use serde_json::Value;
 pub enum ParsedEntry {
     Card(CardDefinition),
     Token(CardDefinition),
-    ArtSeries, // Stub to show that we correctly loaded the entry
     UnCard,    // Silver border or acorn stamp (CR 100.7); out of scope
+    ArtSeries, // Non-playable; out of scope
 }
 
 pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
@@ -15,6 +15,11 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
     if v["border_color"].as_str() == Some("silver") || v["security_stamp"].as_str() == Some("acorn")
     {
         return Ok(ParsedEntry::UnCard);
+    }
+
+    // Art series cards are unplayable, out of scope
+    if v["layout"].as_str() == Some("art_series") {
+        return Ok(ParsedEntry::ArtSeries);
     }
 
     let name = v["name"].as_str().ok_or("missing name")?.to_string();
@@ -50,7 +55,6 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
 
     match v["layout"].as_str() {
         Some("token") | Some("double_faced_token") | Some("emblem") => Ok(ParsedEntry::Token(def)),
-        Some("art_series") => Ok(ParsedEntry::ArtSeries),
         _ => Ok(ParsedEntry::Card(def)),
     }
 }
