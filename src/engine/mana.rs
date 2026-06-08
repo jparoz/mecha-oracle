@@ -99,81 +99,54 @@ fn land_produces(subtypes: &[String]) -> ManaColor {
     ManaColor::Colorless
 }
 
-fn amount_for_color(color: &ManaColor, w: u32, u: u32, b: u32, r: u32, g: u32, c: u32) -> u32 {
+fn amount_for_color(color: &ManaColor, rem: &ManaPool) -> u32 {
     match color {
-        ManaColor::White => w,
-        ManaColor::Blue => u,
-        ManaColor::Black => b,
-        ManaColor::Red => r,
-        ManaColor::Green => g,
-        ManaColor::Colorless => c,
+        ManaColor::White => rem.white,
+        ManaColor::Blue => rem.blue,
+        ManaColor::Black => rem.black,
+        ManaColor::Red => rem.red,
+        ManaColor::Green => rem.green,
+        ManaColor::Colorless => rem.colorless,
     }
 }
 
-fn deduct_one_color(
-    color: &ManaColor,
-    rw: &mut u32,
-    ru: &mut u32,
-    rb: &mut u32,
-    rr: &mut u32,
-    rg: &mut u32,
-    rc: &mut u32,
-    pw: &mut u32,
-    pu: &mut u32,
-    pb: &mut u32,
-    pr: &mut u32,
-    pg: &mut u32,
-    pc: &mut u32,
-) -> Option<()> {
+fn deduct_one_color(color: &ManaColor, rem: &mut ManaPool, plan: &mut PaymentPlan) -> Option<()> {
     macro_rules! go {
-        ($ra:expr, $pa:expr) => {{
-            if *$ra == 0 {
+        ($c:ident) => {{
+            if rem.$c == 0 {
                 return None;
             }
-            *$ra -= 1;
-            *$pa += 1;
+            rem.$c -= 1;
+            plan.$c += 1;
             Some(())
         }};
     }
     match color {
-        ManaColor::White => go!(rw, pw),
-        ManaColor::Blue => go!(ru, pu),
-        ManaColor::Black => go!(rb, pb),
-        ManaColor::Red => go!(rr, pr),
-        ManaColor::Green => go!(rg, pg),
-        ManaColor::Colorless => go!(rc, pc),
+        ManaColor::White => go!(white),
+        ManaColor::Blue => go!(blue),
+        ManaColor::Black => go!(black),
+        ManaColor::Red => go!(red),
+        ManaColor::Green => go!(green),
+        ManaColor::Colorless => go!(colorless),
     }
 }
 
-fn spend_generic_rem(
-    mut n: u32,
-    rw: &mut u32,
-    ru: &mut u32,
-    rb: &mut u32,
-    rr: &mut u32,
-    rg: &mut u32,
-    rc: &mut u32,
-    pw: &mut u32,
-    pu: &mut u32,
-    pb: &mut u32,
-    pr: &mut u32,
-    pg: &mut u32,
-    pc: &mut u32,
-) {
+fn spend_generic_rem(mut n: u32, rem: &mut ManaPool, plan: &mut PaymentPlan) {
     macro_rules! spend {
-        ($r:expr, $p:expr) => {
-            let s = n.min(*$r);
-            *$r -= s;
-            *$p += s;
+        ($f:ident) => {
+            let s = n.min(rem.$f);
+            rem.$f -= s;
+            plan.$f += s;
             n -= s;
         };
     }
-    spend!(rw, pw);
-    spend!(ru, pu);
-    spend!(rb, pb);
-    spend!(rr, pr);
-    spend!(rg, pg);
-    spend!(rc, pc);
+    spend!(white);
+    spend!(blue);
+    spend!(black);
+    spend!(red);
+    spend!(green);
+    spend!(colorless);
+    let _ = n;
 }
 
 fn pip_color_available(color: &ManaColor, plan: &PaymentPlan) -> bool {
@@ -217,6 +190,7 @@ fn spend_from_rem(mut n: u32, rem: &mut PaymentPlan) {
     spend!(red);
     spend!(green);
     spend!(colorless);
+    let _ = n;
 }
 
 /// Build a greedy payment plan for `cost` given current `pool` and player `life`.
@@ -226,18 +200,7 @@ fn spend_from_rem(mut n: u32, rem: &mut PaymentPlan) {
 pub fn greedy_payment_plan(cost: &ManaCost, pool: &ManaPool, life: i32) -> Option<PaymentPlan> {
     use crate::types::mana::ManaPip::*;
     let mut plan = PaymentPlan::default();
-    let mut rem_w = pool.white;
-    let mut rem_u = pool.blue;
-    let mut rem_b = pool.black;
-    let mut rem_r = pool.red;
-    let mut rem_g = pool.green;
-    let mut rem_c = pool.colorless;
-    let mut rem_sw = pool.snow_white;
-    let mut rem_su = pool.snow_blue;
-    let mut rem_sb = pool.snow_black;
-    let mut rem_sr = pool.snow_red;
-    let mut rem_sg = pool.snow_green;
-    let mut rem_sc = pool.snow_colorless;
+    let mut rem = pool.clone();
     let mut rem_life = life;
 
     if cost.pips.iter().any(|p| matches!(p, X)) {
@@ -246,127 +209,43 @@ pub fn greedy_payment_plan(cost: &ManaCost, pool: &ManaPool, life: i32) -> Optio
 
     for pip in &cost.pips {
         match pip {
-            White => deduct_one_color(
-                &ManaColor::White,
-                &mut rem_w,
-                &mut rem_u,
-                &mut rem_b,
-                &mut rem_r,
-                &mut rem_g,
-                &mut rem_c,
-                &mut plan.white,
-                &mut plan.blue,
-                &mut plan.black,
-                &mut plan.red,
-                &mut plan.green,
-                &mut plan.colorless,
-            )?,
-            Blue => deduct_one_color(
-                &ManaColor::Blue,
-                &mut rem_w,
-                &mut rem_u,
-                &mut rem_b,
-                &mut rem_r,
-                &mut rem_g,
-                &mut rem_c,
-                &mut plan.white,
-                &mut plan.blue,
-                &mut plan.black,
-                &mut plan.red,
-                &mut plan.green,
-                &mut plan.colorless,
-            )?,
-            Black => deduct_one_color(
-                &ManaColor::Black,
-                &mut rem_w,
-                &mut rem_u,
-                &mut rem_b,
-                &mut rem_r,
-                &mut rem_g,
-                &mut rem_c,
-                &mut plan.white,
-                &mut plan.blue,
-                &mut plan.black,
-                &mut plan.red,
-                &mut plan.green,
-                &mut plan.colorless,
-            )?,
-            Red => deduct_one_color(
-                &ManaColor::Red,
-                &mut rem_w,
-                &mut rem_u,
-                &mut rem_b,
-                &mut rem_r,
-                &mut rem_g,
-                &mut rem_c,
-                &mut plan.white,
-                &mut plan.blue,
-                &mut plan.black,
-                &mut plan.red,
-                &mut plan.green,
-                &mut plan.colorless,
-            )?,
-            Green => deduct_one_color(
-                &ManaColor::Green,
-                &mut rem_w,
-                &mut rem_u,
-                &mut rem_b,
-                &mut rem_r,
-                &mut rem_g,
-                &mut rem_c,
-                &mut plan.white,
-                &mut plan.blue,
-                &mut plan.black,
-                &mut plan.red,
-                &mut plan.green,
-                &mut plan.colorless,
-            )?,
-            Colorless => deduct_one_color(
-                &ManaColor::Colorless,
-                &mut rem_w,
-                &mut rem_u,
-                &mut rem_b,
-                &mut rem_r,
-                &mut rem_g,
-                &mut rem_c,
-                &mut plan.white,
-                &mut plan.blue,
-                &mut plan.black,
-                &mut plan.red,
-                &mut plan.green,
-                &mut plan.colorless,
-            )?,
+            White => deduct_one_color(&ManaColor::White, &mut rem, &mut plan)?,
+            Blue => deduct_one_color(&ManaColor::Blue, &mut rem, &mut plan)?,
+            Black => deduct_one_color(&ManaColor::Black, &mut rem, &mut plan)?,
+            Red => deduct_one_color(&ManaColor::Red, &mut rem, &mut plan)?,
+            Green => deduct_one_color(&ManaColor::Green, &mut rem, &mut plan)?,
+            Colorless => deduct_one_color(&ManaColor::Colorless, &mut rem, &mut plan)?,
             X => {} // x_value already set to 0
             Snow => {
                 // Pick first available snow-tagged color (CR 107.4k)
-                if rem_sw > 0 && rem_w > 0 {
-                    rem_w -= 1;
-                    rem_sw -= 1;
+                if rem.snow_white > 0 && rem.white > 0 {
+                    rem.white -= 1;
+                    rem.snow_white -= 1;
                     plan.white += 1;
                     plan.snow_white += 1;
-                } else if rem_su > 0 && rem_u > 0 {
-                    rem_u -= 1;
-                    rem_su -= 1;
+                } else if rem.snow_blue > 0 && rem.blue > 0 {
+                    rem.blue -= 1;
+                    rem.snow_blue -= 1;
                     plan.blue += 1;
                     plan.snow_blue += 1;
-                } else if rem_sb > 0 && rem_b > 0 {
-                    rem_b -= 1;
-                    rem_sb -= 1;
+                } else if rem.snow_black > 0 && rem.black > 0 {
+                    rem.black -= 1;
+                    rem.snow_black -= 1;
                     plan.black += 1;
                     plan.snow_black += 1;
-                } else if rem_sr > 0 && rem_r > 0 {
-                    rem_r -= 1;
-                    rem_sr -= 1;
+                } else if rem.snow_red > 0 && rem.red > 0 {
+                    rem.red -= 1;
+                    rem.snow_red -= 1;
                     plan.red += 1;
                     plan.snow_red += 1;
-                } else if rem_sg > 0 && rem_g > 0 {
-                    rem_g -= 1;
-                    rem_sg -= 1;
+                } else if rem.snow_green > 0 && rem.green > 0 {
+                    rem.green -= 1;
+                    rem.snow_green -= 1;
                     plan.green += 1;
                     plan.snow_green += 1;
-                } else if rem_sc > 0 && rem_c > 0 {
-                    rem_c -= 1;
-                    rem_sc -= 1;
+                } else if rem.snow_colorless > 0 && rem.colorless > 0 {
+                    rem.colorless -= 1;
+                    rem.snow_colorless -= 1;
                     plan.colorless += 1;
                     plan.snow_colorless += 1;
                 } else {
@@ -379,21 +258,7 @@ pub fn greedy_payment_plan(cost: &ManaCost, pool: &ManaPool, life: i32) -> Optio
                     rem_life -= 2;
                     plan.blood += 1;
                 } else {
-                    deduct_one_color(
-                        c,
-                        &mut rem_w,
-                        &mut rem_u,
-                        &mut rem_b,
-                        &mut rem_r,
-                        &mut rem_g,
-                        &mut rem_c,
-                        &mut plan.white,
-                        &mut plan.blue,
-                        &mut plan.black,
-                        &mut plan.red,
-                        &mut plan.green,
-                        &mut plan.colorless,
-                    )?;
+                    deduct_one_color(c, &mut rem, &mut plan)?;
                 }
             }
             HybridPhyrexian(c1, c2) => {
@@ -402,134 +267,51 @@ pub fn greedy_payment_plan(cost: &ManaCost, pool: &ManaPool, life: i32) -> Optio
                     rem_life -= 2;
                     plan.blood += 1;
                 } else {
-                    let a1 = amount_for_color(c1, rem_w, rem_u, rem_b, rem_r, rem_g, rem_c);
-                    let a2 = amount_for_color(c2, rem_w, rem_u, rem_b, rem_r, rem_g, rem_c);
+                    let a1 = amount_for_color(c1, &rem);
+                    let a2 = amount_for_color(c2, &rem);
                     let chosen = if a1 >= a2 { c1 } else { c2 };
-                    deduct_one_color(
-                        chosen,
-                        &mut rem_w,
-                        &mut rem_u,
-                        &mut rem_b,
-                        &mut rem_r,
-                        &mut rem_g,
-                        &mut rem_c,
-                        &mut plan.white,
-                        &mut plan.blue,
-                        &mut plan.black,
-                        &mut plan.red,
-                        &mut plan.green,
-                        &mut plan.colorless,
-                    )?;
+                    deduct_one_color(chosen, &mut rem, &mut plan)?;
                 }
             }
             Hybrid(c1, c2) => {
                 // CR 107.4b: pay either color; prefer the side with more available
-                let a1 = amount_for_color(c1, rem_w, rem_u, rem_b, rem_r, rem_g, rem_c);
-                let a2 = amount_for_color(c2, rem_w, rem_u, rem_b, rem_r, rem_g, rem_c);
+                let a1 = amount_for_color(c1, &rem);
+                let a2 = amount_for_color(c2, &rem);
                 if a1 == 0 && a2 == 0 {
                     return None;
                 }
                 let chosen = if a1 >= a2 { c1 } else { c2 };
-                deduct_one_color(
-                    chosen,
-                    &mut rem_w,
-                    &mut rem_u,
-                    &mut rem_b,
-                    &mut rem_r,
-                    &mut rem_g,
-                    &mut rem_c,
-                    &mut plan.white,
-                    &mut plan.blue,
-                    &mut plan.black,
-                    &mut plan.red,
-                    &mut plan.green,
-                    &mut plan.colorless,
-                )?;
+                deduct_one_color(chosen, &mut rem, &mut plan)?;
             }
             ColorlessHybrid(c) => {
                 // CR 107.4d: pay 1 colorless or 1 of the specified color
-                if rem_c > 0 {
-                    rem_c -= 1;
+                if rem.colorless > 0 {
+                    rem.colorless -= 1;
                     plan.colorless += 1;
                 } else {
-                    deduct_one_color(
-                        c,
-                        &mut rem_w,
-                        &mut rem_u,
-                        &mut rem_b,
-                        &mut rem_r,
-                        &mut rem_g,
-                        &mut rem_c,
-                        &mut plan.white,
-                        &mut plan.blue,
-                        &mut plan.black,
-                        &mut plan.red,
-                        &mut plan.green,
-                        &mut plan.colorless,
-                    )?;
+                    deduct_one_color(c, &mut rem, &mut plan)?;
                 }
             }
             GenericHybrid(n, c) => {
                 // CR 107.4c: pay N generic or 1 of the specified color
-                let ca = amount_for_color(c, rem_w, rem_u, rem_b, rem_r, rem_g, rem_c);
+                let ca = amount_for_color(c, &rem);
                 if ca > 0 {
-                    deduct_one_color(
-                        c,
-                        &mut rem_w,
-                        &mut rem_u,
-                        &mut rem_b,
-                        &mut rem_r,
-                        &mut rem_g,
-                        &mut rem_c,
-                        &mut plan.white,
-                        &mut plan.blue,
-                        &mut plan.black,
-                        &mut plan.red,
-                        &mut plan.green,
-                        &mut plan.colorless,
-                    )?;
+                    deduct_one_color(c, &mut rem, &mut plan)?;
                 } else {
-                    let total = rem_w + rem_u + rem_b + rem_r + rem_g + rem_c;
+                    let total =
+                        rem.white + rem.blue + rem.black + rem.red + rem.green + rem.colorless;
                     if total < *n {
                         return None;
                     }
-                    spend_generic_rem(
-                        *n,
-                        &mut rem_w,
-                        &mut rem_u,
-                        &mut rem_b,
-                        &mut rem_r,
-                        &mut rem_g,
-                        &mut rem_c,
-                        &mut plan.white,
-                        &mut plan.blue,
-                        &mut plan.black,
-                        &mut plan.red,
-                        &mut plan.green,
-                        &mut plan.colorless,
-                    );
+                    spend_generic_rem(*n, &mut rem, &mut plan);
                 }
             }
             Generic(n) => {
-                let total = rem_w + rem_u + rem_b + rem_r + rem_g + rem_c;
+                let total = rem.white + rem.blue + rem.black + rem.red + rem.green + rem.colorless;
                 if total < *n {
                     return None;
                 }
-                spend_generic_rem(
-                    *n,
-                    &mut rem_w,
-                    &mut rem_u,
-                    &mut rem_b,
-                    &mut rem_r,
-                    &mut rem_g,
-                    &mut rem_c,
-                    &mut plan.white,
-                    &mut plan.blue,
-                    &mut plan.black,
-                    &mut plan.red,
-                    &mut plan.green,
-                    &mut plan.colorless,
-                );
+                spend_generic_rem(*n, &mut rem, &mut plan);
             }
         }
     }
@@ -947,7 +729,7 @@ mod tests {
 
         let cp = gs.mana_checkpoint.as_ref().unwrap();
         assert_eq!(cp.tapped_lands, vec![f1, f2]);
-        assert_eq!(cp.pools[&PlayerId(0)].is_empty(), true); // pool at checkpoint was empty
+        assert!(cp.pools[&PlayerId(0)].is_empty()); // pool at checkpoint was empty
     }
 
     #[test]
@@ -986,8 +768,10 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Hybrid(ManaColor::Black, ManaColor::Green)],
         };
-        let mut pool = ManaPool::default();
-        pool.green = 1;
+        let pool = ManaPool {
+            green: 1,
+            ..Default::default()
+        };
         let plan = super::greedy_payment_plan(&cost, &pool, 20).unwrap();
         assert_eq!(plan.green, 1);
         assert_eq!(plan.black, 0);
@@ -998,9 +782,11 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Hybrid(ManaColor::Black, ManaColor::Green)],
         };
-        let mut pool = ManaPool::default();
-        pool.black = 1;
-        pool.green = 3;
+        let pool = ManaPool {
+            black: 1,
+            green: 3,
+            ..Default::default()
+        };
         let plan = super::greedy_payment_plan(&cost, &pool, 20).unwrap();
         assert_eq!(plan.green, 1);
         assert_eq!(plan.black, 0);
@@ -1011,8 +797,10 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Phyrexian(ManaColor::Blue)],
         };
-        let mut pool = ManaPool::default();
-        pool.blue = 2;
+        let pool = ManaPool {
+            blue: 2,
+            ..Default::default()
+        };
         let plan = super::greedy_payment_plan(&cost, &pool, 20).unwrap();
         assert_eq!(plan.blood, 1);
         assert_eq!(plan.blue, 0);
@@ -1023,8 +811,10 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Phyrexian(ManaColor::Blue)],
         };
-        let mut pool = ManaPool::default();
-        pool.blue = 1;
+        let pool = ManaPool {
+            blue: 1,
+            ..Default::default()
+        };
         let plan = super::greedy_payment_plan(&cost, &pool, 1).unwrap();
         assert_eq!(plan.blood, 0);
         assert_eq!(plan.blue, 1);
@@ -1056,8 +846,10 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Hybrid(ManaColor::Red, ManaColor::Green)],
         };
-        let mut pool = ManaPool::default();
-        pool.red = 1;
+        let pool = ManaPool {
+            red: 1,
+            ..Default::default()
+        };
         assert!(super::can_pay_mana(&cost, &pool, 20));
     }
 

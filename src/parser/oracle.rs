@@ -24,7 +24,7 @@ fn find_at_depth_zero(text: &str, target: char) -> Option<usize> {
 }
 
 /// Splits `text` on `sep` characters at parenthetical depth 0.
-fn split_at_depth_zero<'a>(text: &'a str, sep: char) -> Vec<&'a str> {
+fn split_at_depth_zero(text: &str, sep: char) -> Vec<&str> {
     let mut result = Vec::new();
     let mut depth = 0usize;
     let mut start = 0usize;
@@ -201,8 +201,8 @@ fn try_parse_effect_step(s: &str) -> Option<EffectStep> {
             return Some(EffectStep::DrawCard(n));
         }
     }
-    if lower.starts_with("mill ") {
-        let rest = lower["mill ".len()..].trim_end_matches(" cards");
+    if let Some(stripped) = lower.strip_prefix("mill ") {
+        let rest = stripped.trim_end_matches(" cards");
         if let Some(n) = parse_number_word(rest.trim()) {
             return Some(EffectStep::Mill(n));
         }
@@ -216,11 +216,6 @@ fn parse_ability_effect(s: &str) -> Option<AbilityEffect> {
         .filter(|step| !step.is_empty())
         .map(|step| try_parse_effect_step(step.trim()))
         .collect()
-}
-
-/// True if `s` (already lowercased) is any recognised CR 702 keyword (implemented or not).
-fn is_known_keyword(s: &str) -> bool {
-    !matches!(match_keyword(s), OracleSpan::Unparsed(_))
 }
 
 /// Emits spans for a single comma-separated token (no top-level em-dash).
@@ -1035,7 +1030,6 @@ mod tests {
     #[test]
     fn parse_ability_effect_multi_step() {
         use crate::types::ability::EffectStep;
-        use crate::types::mana::ManaPool;
         let effect = super::parse_ability_effect("Mill 2. Draw a card.").unwrap();
         assert_eq!(effect, vec![EffectStep::Mill(2), EffectStep::DrawCard(1),]);
     }
@@ -1083,7 +1077,7 @@ mod tests {
 
     #[test]
     fn try_parse_mana_cost_hybrid() {
-        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        use crate::types::mana::{ManaColor, ManaPip};
         let cost = super::try_parse_mana_cost("{B/G}").unwrap();
         assert_eq!(
             cost.pips,
@@ -1093,28 +1087,28 @@ mod tests {
 
     #[test]
     fn try_parse_mana_cost_phyrexian() {
-        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        use crate::types::mana::{ManaColor, ManaPip};
         let cost = super::try_parse_mana_cost("{U/P}").unwrap();
         assert_eq!(cost.pips, vec![ManaPip::Phyrexian(ManaColor::Blue)]);
     }
 
     #[test]
     fn try_parse_mana_cost_x() {
-        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::mana::ManaPip;
         let cost = super::try_parse_mana_cost("{X}{R}").unwrap();
         assert_eq!(cost.pips, vec![ManaPip::X, ManaPip::Red]);
     }
 
     #[test]
     fn try_parse_mana_cost_snow() {
-        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::mana::ManaPip;
         let cost = super::try_parse_mana_cost("{S}").unwrap();
         assert_eq!(cost.pips, vec![ManaPip::Snow]);
     }
 
     #[test]
     fn try_parse_mana_cost_hybrid_phyrexian() {
-        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        use crate::types::mana::{ManaColor, ManaPip};
         let cost = super::try_parse_mana_cost("{G/U/P}").unwrap();
         assert_eq!(
             cost.pips,
@@ -1124,14 +1118,14 @@ mod tests {
 
     #[test]
     fn try_parse_mana_cost_generic_hybrid() {
-        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        use crate::types::mana::{ManaColor, ManaPip};
         let cost = super::try_parse_mana_cost("{2/R}").unwrap();
         assert_eq!(cost.pips, vec![ManaPip::GenericHybrid(2, ManaColor::Red)]);
     }
 
     #[test]
     fn try_parse_mana_cost_colorless_hybrid() {
-        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        use crate::types::mana::{ManaColor, ManaPip};
         let cost = super::try_parse_mana_cost("{C/G}").unwrap();
         assert_eq!(cost.pips, vec![ManaPip::ColorlessHybrid(ManaColor::Green)]);
     }
@@ -1242,7 +1236,7 @@ mod tests {
 
     #[test]
     fn two_tap_add_two_green_parses_as_activated() {
-        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::ability::{CostComponent, EffectStep};
         use crate::types::mana::{ManaCost, ManaPip, ManaPool};
         let result = parse_oracle_text("{2}, {T}: Add {G}{G}.");
         assert_eq!(result.len(), 1);
@@ -1270,7 +1264,7 @@ mod tests {
 
     #[test]
     fn one_draw_a_card_parses_as_activated() {
-        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::ability::{CostComponent, EffectStep};
         use crate::types::mana::{ManaCost, ManaPip};
         let result = parse_oracle_text("{1}: Draw a card.");
         assert_eq!(result.len(), 1);

@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn declare_attackers_sets_declared_flag() {
-        let mut gs = make_combat_state();
+        let gs = make_combat_state();
         assert!(!gs.combat.attackers_declared);
         let gs = declare_attackers(gs, PlayerId(0), &[]).unwrap();
         assert!(gs.combat.attackers_declared);
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn declare_blockers_sets_declared_flag() {
-        let mut gs = make_combat_state();
+        let gs = make_combat_state();
         assert!(!gs.combat.blockers_declared);
         let gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
         assert!(gs.combat.blockers_declared);
