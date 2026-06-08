@@ -1,7 +1,8 @@
 use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
 
-#[derive(Debug, Clone)]
+/// Retained for the future targeting system (stack project).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectTarget {
     Player(PlayerId),
     Object(ObjectId),

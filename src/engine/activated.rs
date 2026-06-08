@@ -201,7 +201,7 @@ pub fn activate_ability(
                 }
             }
             EffectStep::GainLife(_) => {
-                debug_assert!(false, "GainLife not expected in activated ability effect");
+                unreachable!("GainLife not expected in activated ability effect");
             }
         }
     }
