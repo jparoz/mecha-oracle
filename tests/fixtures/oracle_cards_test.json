@@ -392,6 +392,7 @@
   ,
   {
     "object": "card",
+    "layout": "normal",
     "name": "Serra Angel",
     "mana_cost": "{3}{W}{W}",
     "type_line": "Creature — Angel",
@@ -401,6 +402,7 @@
   },
   {
     "object": "card",
+    "layout": "normal",
     "name": "Charging Badger",
     "mana_cost": "{G}",
     "type_line": "Creature — Badger",
@@ -410,6 +412,7 @@
   },
   {
     "object": "card",
+    "layout": "normal",
     "name": "Typhoid Rats",
     "mana_cost": "{B}",
     "type_line": "Creature — Rat",
@@ -419,6 +422,7 @@
   },
   {
     "object": "card",
+    "layout": "normal",
     "name": "Anaba Bodyguard",
     "mana_cost": "{3}{R}",
     "type_line": "Creature — Minotaur Warrior",
@@ -429,6 +433,7 @@
   ,
   {
     "object": "card",
+    "layout": "normal",
     "name": "Grazing Gladehart",
     "mana_cost": "{2}{G}",
     "type_line": "Creature — Elk",
@@ -439,6 +444,7 @@
   ,
   {
     "object": "card",
+    "layout": "normal",
     "name": "Llanowar Elves",
     "mana_cost": "{G}",
     "type_line": "Creature — Elf Druid",
