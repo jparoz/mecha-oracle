@@ -1,3 +1,6 @@
+# Meta issues
+- Can we run dead code analysis on library re-exports? That is, check that all library exports are actually used in the binary?
+
 # UI issues
 - Tooltips are displayed behind the middle row (with the turn steps); tooltips should always be in front of everything else.
 - When there's not enough horizontal space to fit all the turn steps, it wraps weirdly; probably should prefer to shrink the text (maybe truncate to the initials of each step or something), or else wrap in rows (so that a single step isn't isolated from the rest, but they're split 50/50 or something).
