@@ -46,7 +46,7 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
 
     let oracle_text = v["oracle_text"].as_str().unwrap_or("").to_string();
 
-    let abilities = parse_oracle_text(&oracle_text);
+    let abilities = parse_oracle_text(&oracle_text, &name);
 
     let power = v["power"].as_str().and_then(|s| s.parse::<i32>().ok());
     let toughness = v["toughness"].as_str().and_then(|s| s.parse::<i32>().ok());
