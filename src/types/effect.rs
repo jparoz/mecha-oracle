@@ -1,5 +1,5 @@
 use super::ids::{ObjectId, PlayerId};
-use super::zone::Zone;
+use super::mana::ManaPool;
 
 #[derive(Debug, Clone)]
 pub enum EffectTarget {
@@ -7,11 +7,12 @@ pub enum EffectTarget {
     Object(ObjectId),
 }
 
-#[derive(Debug, Clone)]
-pub enum Effect {
-    DealDamage { target: EffectTarget, amount: u32 },
-    DestroyPermanent { target: ObjectId },
-    DrawCard { player: PlayerId },
-    GainLife { player: PlayerId, amount: u32 },
-    MoveToZone { object: ObjectId, to: Zone },
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectStep {
+    AddMana(ManaPool),
+    Mill(u32),
+    DrawCard(u32),
+    GainLife(u32),
 }
+
+pub type Effect = Vec<EffectStep>;

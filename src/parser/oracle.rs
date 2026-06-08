@@ -1,5 +1,6 @@
 use crate::types::OracleSpan::ParsedUnimplemented;
-use crate::types::ability::{AbilityEffect, ActivationCost, CostComponent, EffectStep};
+use crate::types::ability::{ActivationCost, CostComponent};
+use crate::types::effect::{Effect, EffectStep};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use crate::types::{
     AbilityAST, IgnoredKind, OracleSpan,
@@ -210,7 +211,7 @@ fn try_parse_effect_step(s: &str) -> Option<EffectStep> {
     None
 }
 
-fn parse_ability_effect(s: &str) -> Option<AbilityEffect> {
+fn parse_ability_effect(s: &str) -> Option<Effect> {
     let s = s.trim_end_matches('.');
     s.split(". ")
         .filter(|step| !step.is_empty())
@@ -1001,7 +1002,7 @@ mod tests {
 
     #[test]
     fn parse_ability_effect_add_mana() {
-        use crate::types::ability::EffectStep;
+        use crate::types::effect::EffectStep;
         use crate::types::mana::ManaPool;
         let effect = super::parse_ability_effect("Add {G}.").unwrap();
         assert_eq!(
@@ -1015,21 +1016,21 @@ mod tests {
 
     #[test]
     fn parse_ability_effect_draw_a_card() {
-        use crate::types::ability::EffectStep;
+        use crate::types::effect::EffectStep;
         let effect = super::parse_ability_effect("Draw a card.").unwrap();
         assert_eq!(effect, vec![EffectStep::DrawCard(1)]);
     }
 
     #[test]
     fn parse_ability_effect_mill_two() {
-        use crate::types::ability::EffectStep;
+        use crate::types::effect::EffectStep;
         let effect = super::parse_ability_effect("Mill 2.").unwrap();
         assert_eq!(effect, vec![EffectStep::Mill(2)]);
     }
 
     #[test]
     fn parse_ability_effect_multi_step() {
-        use crate::types::ability::EffectStep;
+        use crate::types::effect::EffectStep;
         let effect = super::parse_ability_effect("Mill 2. Draw a card.").unwrap();
         assert_eq!(effect, vec![EffectStep::Mill(2), EffectStep::DrawCard(1),]);
     }
@@ -1220,7 +1221,8 @@ mod tests {
 
     #[test]
     fn tap_add_green_parses_as_activated() {
-        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::ability::{ActivatedAbility, CostComponent};
+        use crate::types::effect::EffectStep;
         use crate::types::mana::ManaPool;
         let result = parse_oracle_text("{T}: Add {G}.");
         assert_eq!(result.len(), 1);
@@ -1236,7 +1238,8 @@ mod tests {
 
     #[test]
     fn two_tap_add_two_green_parses_as_activated() {
-        use crate::types::ability::{CostComponent, EffectStep};
+        use crate::types::ability::CostComponent;
+        use crate::types::effect::EffectStep;
         use crate::types::mana::{ManaCost, ManaPip, ManaPool};
         let result = parse_oracle_text("{2}, {T}: Add {G}{G}.");
         assert_eq!(result.len(), 1);
@@ -1264,7 +1267,8 @@ mod tests {
 
     #[test]
     fn one_draw_a_card_parses_as_activated() {
-        use crate::types::ability::{CostComponent, EffectStep};
+        use crate::types::ability::CostComponent;
+        use crate::types::effect::EffectStep;
         use crate::types::mana::{ManaCost, ManaPip};
         let result = parse_oracle_text("{1}: Draw a card.");
         assert_eq!(result.len(), 1);
@@ -1283,7 +1287,8 @@ mod tests {
 
     #[test]
     fn tap_mill_two_parses_as_activated() {
-        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::ability::{ActivatedAbility, CostComponent};
+        use crate::types::effect::EffectStep;
         let result = parse_oracle_text("{T}: Mill 2.");
         assert_eq!(result.len(), 1);
         assert!(matches!(
@@ -1307,7 +1312,8 @@ mod tests {
 
     #[test]
     fn sacrifice_cost_becomes_unimplemented_in_cost_activated_parsed() {
-        use crate::types::ability::{ActivatedAbility, CostComponent, EffectStep};
+        use crate::types::ability::{ActivatedAbility, CostComponent};
+        use crate::types::effect::EffectStep;
         use crate::types::mana::ManaPool;
         let result = parse_oracle_text("Sacrifice a creature: Add {G}{G}.");
         assert_eq!(result.len(), 1);

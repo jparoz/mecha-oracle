@@ -10,9 +10,8 @@ use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
-use mecha_oracle::types::ability::{
-    AbilityAST, ActivatedAbility, CostComponent, EffectStep, OracleSpan,
-};
+use mecha_oracle::types::ability::{AbilityAST, ActivatedAbility, CostComponent, OracleSpan};
+use mecha_oracle::types::effect::EffectStep;
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -302,6 +301,7 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
                     format!("Draw {n} cards")
                 }
             }
+            EffectStep::GainLife(n) => format!("Gain {n} life"),
         })
         .collect();
     format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))

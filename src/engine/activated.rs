@@ -2,7 +2,8 @@ use super::EngineError;
 use crate::engine::mana::{can_pay_mana, greedy_payment_plan, pay_mana_cost};
 use crate::engine::turn::draw_card;
 use crate::types::ability::StaticAbility;
-use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent, EffectStep, OracleSpan};
+use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent, OracleSpan};
+use crate::types::effect::EffectStep;
 use crate::types::{GameState, ManaCheckpoint, ObjectId, PaymentPlan, PlayerId, Zone};
 
 pub fn activate_ability(
@@ -199,6 +200,9 @@ pub fn activate_ability(
                     state = draw_card(state, activating_player);
                 }
             }
+            EffectStep::GainLife(_) => {
+                debug_assert!(false, "GainLife not expected in activated ability effect");
+            }
         }
     }
 
@@ -244,8 +248,9 @@ pub fn can_pay_cost(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent, EffectStep};
+    use crate::types::ability::{AbilityAST, ActivatedAbility, CostComponent};
     use crate::types::card::{CardDefinition, CardType, TypeLine};
+    use crate::types::effect::EffectStep;
     use crate::types::mana::{ManaCost, ManaPip, ManaPool};
     use crate::types::{CardObject, Player};
 

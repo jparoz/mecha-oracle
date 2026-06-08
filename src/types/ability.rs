@@ -1,4 +1,5 @@
-use super::mana::{ManaCost, ManaPool};
+use super::effect::Effect;
+use super::mana::ManaCost;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StaticAbility {
@@ -20,24 +21,26 @@ pub enum StaticAbility {
     Decayed,
 }
 
-/// The event that fires a triggered ability. Phase 2+ adds condition variants.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TriggerEvent;
+pub enum TriggerEvent {
+    EntersTheBattlefield { subject_is_self: bool },
+}
 
-/// An ability that triggers on a game event. Phase 2+ adds trigger + effect fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TriggeredAbility {
     pub trigger: TriggerEvent,
+    pub effect: Effect,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivatedAbility {
     pub cost: ActivationCost,
-    pub effect: AbilityEffect,
+    pub effect: Effect,
 }
 
 pub type ActivationCost = Vec<CostComponent>;
-pub type AbilityEffect = Vec<EffectStep>;
+
+// EffectStep and Effect are defined in effect.rs and re-exported via types/mod.rs.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CostComponent {
@@ -47,13 +50,6 @@ pub enum CostComponent {
     Sacrifice(u32, PermanentFilter),
     Discard(u32, CardFilter),
     Unimplemented(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EffectStep {
-    AddMana(ManaPool),
-    Mill(u32),
-    DrawCard(u32),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +146,7 @@ mod tests {
     #[test]
     fn activated_ability_construction() {
         use super::super::mana::ManaPool;
+        use crate::types::effect::EffectStep;
         let ability = ActivatedAbility {
             cost: vec![CostComponent::Tap],
             effect: vec![EffectStep::AddMana(ManaPool {
