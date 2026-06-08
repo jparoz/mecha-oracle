@@ -3,6 +3,11 @@ use crate::types::card::{CardDefinition, CardType, Supertype, TypeLine};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip};
 use serde_json::Value;
 
+pub enum ParsedEntry {
+    Card(CardDefinition),
+    Token(CardDefinition),
+}
+
 pub fn parse_card(v: &Value) -> Result<CardDefinition, String> {
     let name = v["name"].as_str().ok_or("missing name")?.to_string();
 
@@ -33,6 +38,14 @@ pub fn parse_card(v: &Value) -> Result<CardDefinition, String> {
         abilities,
         power,
         toughness,
+    })
+}
+
+pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
+    let def = parse_card(v)?;
+    Ok(match v["layout"].as_str() {
+        Some("token") => ParsedEntry::Token(def),
+        _ => ParsedEntry::Card(def),
     })
 }
 
@@ -346,5 +359,44 @@ mod tests {
         let cost = card.mana_cost.unwrap();
         // {E} is skipped; only {G} is kept
         assert!(cost.pips.contains(&ManaPip::Green));
+    }
+
+    #[test]
+    fn parse_entry_routes_token() {
+        let v = json!({
+            "layout": "token",
+            "name": "Llanowar Elves",
+            "mana_cost": "",
+            "type_line": "Token Creature \u{2014} Elf Druid",
+            "oracle_text": ""
+        });
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::Token(_))));
+    }
+
+    #[test]
+    fn parse_entry_routes_normal_card() {
+        let v = json!({
+            "layout": "normal",
+            "name": "Grizzly Bears",
+            "mana_cost": "{1}{G}",
+            "type_line": "Creature \u{2014} Bear",
+            "oracle_text": "",
+            "power": "2",
+            "toughness": "2"
+        });
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::Card(_))));
+    }
+
+    #[test]
+    fn parse_entry_missing_layout_defaults_to_card() {
+        let v = json!({
+            "name": "Hill Giant",
+            "mana_cost": "{3}{R}",
+            "type_line": "Creature \u{2014} Giant",
+            "oracle_text": "",
+            "power": "3",
+            "toughness": "3"
+        });
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::Card(_))));
     }
 }
