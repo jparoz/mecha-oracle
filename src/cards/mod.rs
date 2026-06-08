@@ -35,6 +35,7 @@ impl CardDatabase {
         let mut partially_parsed = 0usize;
         let mut fully_parsed = 0usize;
         let mut art_series = 0usize;
+        let mut un_cards = 0usize;
         for v in &cards {
             match scryfall::parse_entry(v) {
                 Ok(ParsedEntry::Card(def)) => {
@@ -53,6 +54,9 @@ impl CardDatabase {
                 Ok(ParsedEntry::ArtSeries) => {
                     art_series += 1;
                 }
+                Ok(ParsedEntry::UnCard) => {
+                    un_cards += 1;
+                }
                 Err(e) => {
                     let name = v["name"].as_str().unwrap_or("<unknown>");
                     tracing::debug!(card = name, error = %e, "skipped card");
@@ -68,6 +72,7 @@ impl CardDatabase {
             fully_parsed,
             tokens = token_count,
             art_series,
+            un_cards,
             skipped,
             "card database loaded"
         );

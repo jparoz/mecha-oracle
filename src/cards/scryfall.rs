@@ -7,9 +7,16 @@ pub enum ParsedEntry {
     Card(CardDefinition),
     Token(CardDefinition),
     ArtSeries, // Stub to show that we correctly loaded the entry
+    UnCard,    // Silver border or acorn stamp (CR 100.7); out of scope
 }
 
 pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
+    // CR 100.7: Un-cards (silver border or acorn stamp) are out of scope
+    if v["border_color"].as_str() == Some("silver") || v["security_stamp"].as_str() == Some("acorn")
+    {
+        return Ok(ParsedEntry::UnCard);
+    }
+
     let name = v["name"].as_str().ok_or("missing name")?.to_string();
 
     let _span = tracing::debug_span!("parsing", card = name).entered();
@@ -456,6 +463,30 @@ mod tests {
             "type_line": "Card",
             "oracle_text": ""
         });
-        assert!(parse_entry(&v).is_err());
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::ArtSeries)));
+    }
+
+    #[test]
+    fn parse_entry_skips_silver_border() {
+        let v = json!({
+            "border_color": "silver",
+            "name": "Look at Me, I'm the DCI",
+            "mana_cost": "{3}{W}{W}",
+            "type_line": "Sorcery",
+            "oracle_text": ""
+        });
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::UnCard)));
+    }
+
+    #[test]
+    fn parse_entry_skips_acorn_stamp() {
+        let v = json!({
+            "security_stamp": "acorn",
+            "name": "Everythingamajig",
+            "mana_cost": "{5}",
+            "type_line": "Artifact",
+            "oracle_text": ""
+        });
+        assert!(matches!(parse_entry(&v), Ok(ParsedEntry::UnCard)));
     }
 }
