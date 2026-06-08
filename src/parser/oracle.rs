@@ -208,6 +208,15 @@ fn try_parse_effect_step(s: &str) -> Option<EffectStep> {
             return Some(EffectStep::Mill(n));
         }
     }
+    let stripped = lower
+        .strip_prefix("you gain ")
+        .or_else(|| lower.strip_prefix("gain "));
+    if let Some(rest) = stripped {
+        let s = rest.trim_end_matches(" life").trim();
+        if let Some(n) = parse_number_word(s) {
+            return Some(EffectStep::GainLife(n));
+        }
+    }
     None
 }
 
@@ -1330,5 +1339,22 @@ mod tests {
         let result = parse_oracle_text("{T}: Create a 1/1 token.");
         assert_eq!(result.len(), 1);
         assert!(matches!(&result[0], OracleSpan::ParsedUnimplemented(_)));
+    }
+
+    #[test]
+    fn parse_ability_effect_gain_life() {
+        use crate::types::effect::EffectStep;
+        assert_eq!(
+            super::parse_ability_effect("You gain 3 life."),
+            Some(vec![EffectStep::GainLife(3)])
+        );
+        assert_eq!(
+            super::parse_ability_effect("gain 1 life."),
+            Some(vec![EffectStep::GainLife(1)])
+        );
+        assert_eq!(
+            super::parse_ability_effect("you gain two life."),
+            Some(vec![EffectStep::GainLife(2)])
+        );
     }
 }
