@@ -6,6 +6,8 @@ use serde_json::Value;
 pub fn parse_card(v: &Value) -> Result<CardDefinition, String> {
     let name = v["name"].as_str().ok_or("missing name")?.to_string();
 
+    let _span = tracing::debug_span!("parsing", card = name).entered();
+
     let mana_cost = match v["mana_cost"].as_str() {
         Some(s) if !s.is_empty() => Some(parse_mana_cost(s)),
         _ => None,
