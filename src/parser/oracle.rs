@@ -228,6 +228,24 @@ fn parse_ability_effect(s: &str) -> Option<Effect> {
         .collect()
 }
 
+/// Leniently parses a single oracle-text paragraph as a list of effect steps.
+/// Splits on ". " (sentence boundary) and ", then " (intra-sentence linking).
+/// Steps that cannot be parsed become EffectStep::Unimplemented.
+fn parse_spell_effect(paragraph: &str) -> Effect {
+    let paragraph = paragraph.trim_end_matches('.');
+    paragraph
+        .split(". ")
+        .flat_map(|sentence| {
+            let sentence = sentence.trim_start_matches("Then ").trim();
+            sentence.split(", then ").map(|step| {
+                let step = step.trim();
+                try_parse_effect_step(step)
+                    .unwrap_or_else(|| EffectStep::Unimplemented(step.to_string()))
+            })
+        })
+        .collect()
+}
+
 /// Emits spans for a single comma-separated token (no top-level em-dash).
 /// Extracts any `(…)` reminder text inline, in source order.
 fn emit_token_spans(token: &str, spans: &mut Vec<OracleSpan>) {
@@ -835,6 +853,23 @@ pub fn parse_oracle_text(text: &str, card_name: &str) -> Vec<OracleSpan> {
         }
     }
 
+    spans
+}
+
+/// Parse the oracle text of an instant or sorcery.
+/// Each paragraph becomes one SpellEffect span containing parsed and
+/// unimplemented effect steps in written order (CR 609).
+pub fn parse_instant_or_sorcery(text: &str) -> Vec<OracleSpan> {
+    use crate::types::ability::Ability;
+    let mut spans = Vec::new();
+    for paragraph in text.split('\n') {
+        let paragraph = paragraph.trim();
+        if paragraph.is_empty() {
+            continue;
+        }
+        let steps = parse_spell_effect(paragraph);
+        spans.push(OracleSpan::Parsed(Ability::SpellEffect(steps)));
+    }
     spans
 }
 
@@ -1503,5 +1538,93 @@ mod tests {
         let result = parse_oracle_text("When this enters, create a 1/1 token.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(&result[0], OracleSpan::ParsedUnimplemented(_)));
+    }
+
+    // ── parse_instant_or_sorcery ─────────────────────────────────────────────────
+
+    fn spell_effect(steps: Vec<EffectStep>) -> OracleSpan {
+        OracleSpan::Parsed(Ability::SpellEffect(steps))
+    }
+    fn unimpl(s: &str) -> EffectStep {
+        EffectStep::Unimplemented(s.to_string())
+    }
+
+    #[test]
+    fn instant_draw_one_card() {
+        let result = parse_instant_or_sorcery("Draw a card.");
+        assert_eq!(result, vec![spell_effect(vec![EffectStep::DrawCard(1)])]);
+    }
+
+    #[test]
+    fn brainstorm_then_split() {
+        // ", then " splits intra-sentence; DrawCard(3) is parseable, the rest is not
+        let result = parse_instant_or_sorcery(
+            "Draw three cards, then put two cards from your hand on top of your library in any order.",
+        );
+        assert_eq!(
+            result,
+            vec![spell_effect(vec![
+                EffectStep::DrawCard(3),
+                unimpl("put two cards from your hand on top of your library in any order"),
+            ])]
+        );
+    }
+
+    #[test]
+    fn opt_period_then_draw() {
+        // ". " splits sentences; first sentence unimplemented, second parseable
+        let result = parse_instant_or_sorcery("Scry 1. Draw a card.");
+        assert_eq!(
+            result,
+            vec![spell_effect(vec![
+                unimpl("Scry 1"),
+                EffectStep::DrawCard(1),
+            ])]
+        );
+    }
+
+    #[test]
+    fn serum_visions_draw_then_scry() {
+        // "Draw a card, then scry 2." — draw is parsed, scry is unimplemented
+        let result = parse_instant_or_sorcery("Draw a card, then scry 2.");
+        assert_eq!(
+            result,
+            vec![spell_effect(vec![
+                EffectStep::DrawCard(1),
+                unimpl("scry 2"),
+            ])]
+        );
+    }
+
+    #[test]
+    fn counterspell_fully_unimplemented() {
+        let result = parse_instant_or_sorcery("Counter target spell.");
+        assert_eq!(
+            result,
+            vec![spell_effect(vec![unimpl("Counter target spell"),])]
+        );
+    }
+
+    #[test]
+    fn ponder_multi_sentence_mixed() {
+        // One paragraph; three sentences; first has ", then " inside it
+        let result = parse_instant_or_sorcery(
+            "Look at the top three cards of your library, then put them back in any order. You may shuffle. Draw a card.",
+        );
+        assert_eq!(
+            result,
+            vec![spell_effect(vec![
+                unimpl("Look at the top three cards of your library"),
+                unimpl("put them back in any order"),
+                unimpl("You may shuffle"),
+                EffectStep::DrawCard(1),
+            ])]
+        );
+    }
+
+    #[test]
+    fn empty_oracle_text_returns_empty() {
+        let result = parse_instant_or_sorcery("");
+        assert_eq!(result, vec![]);
     }
 }
