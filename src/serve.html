@@ -637,7 +637,7 @@ function cardHTML(card, s, pid) {
   if (card.is_blocking) classes += ' blocking';
   if (isSelected) classes += ' selected';
 
-  if (!isSelected && !card.is_attacking) {
+  if (!isSelected && !card.is_attacking && !card.is_blocking) {
     if (s && pid !== undefined && isCardActionable(card, s, pid)) {
       classes += ' actionable';
     } else {
@@ -709,6 +709,14 @@ function renderActionBar(s) {
 }
 
 function renderActionBarNormal(s, bar) {
+  if (s.game_over) {
+    bar.className = 'normal';
+    const winner = s.winner != null ? `Player ${s.winner + 1} wins!` : 'Draw!';
+    bar.innerHTML =
+      `<span style="color:#ffcc44;font-weight:bold">Game Over — ${winner}</span>`;
+    return;
+  }
+
   bar.className = 'normal';
   const cur = STEP_ORDER.indexOf(s.step);
   const chips = STEP_ORDER.map((step, i) => {
