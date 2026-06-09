@@ -257,6 +257,23 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
   opacity: 1; transition: opacity 0.4s ease;
 }
 #toast.hiding { opacity: 0; }
+
+/* Popup disambiguation menu */
+#popup {
+  display: none; position: fixed; z-index: 400;
+  background: #1e2430; border: 1px solid #4a6a9a; border-radius: 6px;
+  padding: 8px; min-width: 150px; max-width: 220px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+}
+.popup-header { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.popup-item {
+  display: block; width: 100%; background: #1c2a3a; border: 1px solid #2a4a6a;
+  border-radius: 4px; padding: 6px 10px; color: #7ab8e8; font-size: 12px;
+  cursor: pointer; text-align: left; margin-bottom: 3px;
+}
+.popup-item:last-child { margin-bottom: 0; }
+.popup-item:hover { background: #243650; border-color: #4a7aaa; }
+.popup-item.active { border-color: #ffdd57; color: #ffdd57; background: #2a2500; }
 </style>
 </head>
 <body>
@@ -336,6 +353,9 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 <!-- Toast notification -->
 <div id="toast"></div>
 
+<!-- Popup disambiguation menu -->
+<div id="popup"></div>
+
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -344,6 +364,7 @@ let attackersSelected = [];
 let blockersAssignment = {}; // blocker_id (number) -> attacker_id (number)
 let gyData = { 1: [], 2: [] };
 let toastTimer = null;
+let popupDismissHandler = null;
 
 // ── Toast ────────────────────────────────────────────────────────────────────
 
@@ -357,6 +378,55 @@ function showToast(msg) {
     el.classList.add('hiding');
     setTimeout(() => { el.style.display = 'none'; }, 400);
   }, 3000);
+}
+
+// ── Popup disambiguation menu ─────────────────────────────────────────────────
+
+// items: [{ label, onClick, active }]   active = true highlights the item (used for blocker reassignment)
+// header: optional string shown above items
+function openPopup(items, anchorEl, header) {
+  const popup = document.getElementById('popup');
+  popup.innerHTML =
+    (header ? `<div class="popup-header">${esc(header)}</div>` : '') +
+    items.map((item, i) =>
+      `<button class="popup-item${item.active ? ' active' : ''}" data-idx="${i}">${esc(item.label)}</button>`
+    ).join('');
+
+  // Position near anchor
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.display = 'block';
+  const pw = popup.offsetWidth;
+  const ph = popup.offsetHeight;
+  let left = rect.right + 6;
+  if (left + pw > window.innerWidth) left = rect.left - pw - 6;
+  let top = rect.top;
+  if (top + ph > window.innerHeight) top = window.innerHeight - ph - 8;
+  popup.style.left = left + 'px';
+  popup.style.top  = Math.max(8, top) + 'px';
+
+  // Wire button clicks
+  popup.querySelectorAll('.popup-item').forEach((btn, i) => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      closePopup();
+      items[i].onClick();
+    });
+  });
+
+  // Dismiss on outside click or Escape
+  if (popupDismissHandler) document.removeEventListener('mousedown', popupDismissHandler);
+  popupDismissHandler = e => {
+    if (!popup.contains(e.target)) closePopup();
+  };
+  setTimeout(() => document.addEventListener('mousedown', popupDismissHandler), 0);
+}
+
+function closePopup() {
+  document.getElementById('popup').style.display = 'none';
+  if (popupDismissHandler) {
+    document.removeEventListener('mousedown', popupDismissHandler);
+    popupDismissHandler = null;
+  }
 }
 
 // ── Fetch / send ─────────────────────────────────────────────────────────────
@@ -779,6 +849,10 @@ function renderStack(stack) {
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', e => {
+  if (e.code === 'Escape') {
+    closePopup();
+    return;
+  }
   if (e.code === 'Space' && !e.target.closest('input, textarea, button')) {
     e.preventDefault();
     sendAction({ type: 'advance_step' });
