@@ -528,12 +528,12 @@ fn dispatch_action(mut state: GameState, action: ActionRequest) -> Result<GameSt
             tap_land_for_mana(state, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::PlayLand { object_id } => {
-            let active = state.active_player;
-            play_land(state, active, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
+            let player = state.priority_player;
+            play_land(state, player, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::CastCreature { object_id } => {
-            let active = state.active_player;
-            cast_creature(state, active, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
+            let player = state.priority_player;
+            cast_creature(state, player, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::DeclareAttackers { attacker_ids } => {
             let ids: Vec<ObjectId> = attacker_ids.iter().map(|&id| ObjectId(id)).collect();

@@ -19,6 +19,9 @@ pub fn play_land(
     if state.active_player != player_id {
         return Err(EngineError::CannotCastNow);
     }
+    if !state.stack.is_empty() {
+        return Err(EngineError::CannotCastNow); // CR 116.2a: playing a land requires empty stack
+    }
     if state.lands_played_this_turn >= 1 {
         return Err(EngineError::LandLimitReached);
     }
@@ -56,6 +59,7 @@ pub fn play_land(
 
     // Playing a land resets the consecutive-pass counter (an action occurred).
     state.consecutive_passes = 0;
+    state.priority_player = player_id; // CR 116.3 / 117.3c: actor retains priority after special action
 
     // Collect any ETB triggers from the land entering and push onto stack.
     let triggers = crate::engine::triggered::collect_etb_triggers(&mut state, object_id);
@@ -333,6 +337,33 @@ mod tests {
         assert!(matches!(
             play_land(gs, PlayerId(0), forest_id),
             Err(EngineError::NotYourPriority)
+        ));
+    }
+
+    #[test]
+    fn play_land_fails_with_nonempty_stack() {
+        use crate::types::stack::{StackId, StackObject, StackPayload};
+        let db = test_db();
+        let mut gs = make_state();
+        // Put a dummy trigger on the stack to make it non-empty
+        let sid = gs.alloc_stack_id();
+        let obj = StackObject {
+            id: sid,
+            payload: StackPayload::TriggeredAbility {
+                source_id: crate::types::ObjectId(99),
+                effect: vec![],
+                label: "dummy".into(),
+            },
+            controller: PlayerId(0),
+        };
+        gs.stack.push(sid);
+        gs.stack_objects.insert(sid, obj);
+
+        let forest_id = put_in_hand(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
+
+        assert!(matches!(
+            play_land(gs, PlayerId(0), forest_id),
+            Err(EngineError::CannotCastNow)
         ));
     }
 }
