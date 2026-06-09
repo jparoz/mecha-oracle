@@ -881,22 +881,6 @@ function handleCardClick(cardId, pid, event) {
 
 // ── Attacker / Blocker selection ──────────────────────────────────────────────
 
-function toggleAttacker(id) {
-  const idx = attackersSelected.indexOf(id);
-  if (idx >= 0) attackersSelected.splice(idx, 1);
-  else attackersSelected.push(id);
-  render(currentState);
-}
-
-function toggleBlocker(blockerId, attackerId) {
-  if (blockersAssignment[blockerId] === attackerId) {
-    delete blockersAssignment[blockerId];
-  } else {
-    blockersAssignment[blockerId] = attackerId;
-  }
-  render(currentState);
-}
-
 function confirmAttackers() {
   sendAction({ type: 'declare_attackers', attacker_ids: attackersSelected });
 }
