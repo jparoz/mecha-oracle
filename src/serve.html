@@ -384,17 +384,16 @@ let popupDismissHandler = null;
 
 // Returns true if this card has at least one available action right now.
 // Used for visual state only — clicking is always allowed regardless.
-function isCardActionable(card, s, pid) {
-  // Hand cards
-  if (card.type_line.includes('Land')) {
-    // Land in hand: actionable at sorcery speed when we haven't played a land yet
+function isCardActionable(card, s, pid, zone) {
+  // Hand lands: only playable at sorcery speed when the land-drop is available
+  if (zone === 'hand' && card.type_line.includes('Land')) {
     return s.active_player === pid &&
       s.lands_played_this_turn === 0 &&
       (s.step === 'PreCombatMain' || s.step === 'PostCombatMain');
   }
   if (card.can_cast) return true;
 
-  // Battlefield cards
+  // Battlefield cards (including lands)
   if (card.can_attack) return true;
   if (card.can_block) return true;
   if (card.activated_abilities && card.activated_abilities.some(a => a.can_activate)) return true;
@@ -584,12 +583,12 @@ function render(s) {
   renderGYPile('p1', s.p1.graveyard);
   renderGYPile('p2', s.p2.graveyard);
 
-  document.getElementById('p1-hand').innerHTML      = s.p1.hand.map(c => cardHTML(c, s, 0)).join('');
-  document.getElementById('p2-hand').innerHTML      = s.p2.hand.map(c => cardHTML(c, s, 1)).join('');
-  document.getElementById('p1-lands').innerHTML     = s.p1.lands.map(c => cardHTML(c, s, 0)).join('');
-  document.getElementById('p2-lands').innerHTML     = s.p2.lands.map(c => cardHTML(c, s, 1)).join('');
-  document.getElementById('p1-creatures').innerHTML = s.p1.creatures.map(c => cardHTML(c, s, 0)).join('');
-  document.getElementById('p2-creatures').innerHTML = s.p2.creatures.map(c => cardHTML(c, s, 1)).join('');
+  document.getElementById('p1-hand').innerHTML      = s.p1.hand.map(c => cardHTML(c, s, 0, 'hand')).join('');
+  document.getElementById('p2-hand').innerHTML      = s.p2.hand.map(c => cardHTML(c, s, 1, 'hand')).join('');
+  document.getElementById('p1-lands').innerHTML     = s.p1.lands.map(c => cardHTML(c, s, 0, 'bf')).join('');
+  document.getElementById('p2-lands').innerHTML     = s.p2.lands.map(c => cardHTML(c, s, 1, 'bf')).join('');
+  document.getElementById('p1-creatures').innerHTML = s.p1.creatures.map(c => cardHTML(c, s, 0, 'bf')).join('');
+  document.getElementById('p2-creatures').innerHTML = s.p2.creatures.map(c => cardHTML(c, s, 1, 'bf')).join('');
 
   renderActionBar(s);
   renderStack(s.stack ?? []);
@@ -625,7 +624,7 @@ function renderGYPile(prefix, graveyard) {
   document.getElementById(prefix + '-gy-wrap').style.cursor = graveyard.length > 0 ? 'pointer' : 'default';
 }
 
-function cardHTML(card, s, pid) {
+function cardHTML(card, s, pid, zone) {
   const isLand = card.type_line.includes('Land');
   const isSelected = attackersSelected.includes(card.id) ||
     Object.keys(blockersAssignment).map(Number).includes(card.id);
@@ -638,7 +637,7 @@ function cardHTML(card, s, pid) {
   if (isSelected) classes += ' selected';
 
   if (!isSelected && !card.is_attacking && !card.is_blocking) {
-    if (s && pid !== undefined && isCardActionable(card, s, pid)) {
+    if (s && pid !== undefined && isCardActionable(card, s, pid, zone)) {
       classes += ' actionable';
     } else {
       classes += ' dim';
@@ -913,7 +912,7 @@ function openGY(player) {
   if (cards.length === 0) return;
   document.getElementById('gy-modal-title').textContent = `Player ${player} — Graveyard`;
   document.getElementById('gy-modal-cards').innerHTML =
-    `<div class="gy-cards-grid">${cards.map(c => cardHTML(c, null, -1)).join('')}</div>`;
+    `<div class="gy-cards-grid">${cards.map(c => cardHTML(c, null, -1, 'gy')).join('')}</div>`;
   document.getElementById('gy-modal').classList.add('open');
 }
 function closeGY() { document.getElementById('gy-modal').classList.remove('open'); }
