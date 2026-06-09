@@ -579,17 +579,6 @@ struct ActionResponse {
     error: Option<String>,
 }
 
-fn advance_with_auto_steps(mut state: GameState) -> GameState {
-    loop {
-        state = advance_step(state);
-        state = apply_step_start(state);
-        if !matches!(state.step(), Step::Untap | Step::Cleanup) || state.is_game_over() {
-            break;
-        }
-    }
-    state
-}
-
 // After pass_priority has already advanced the step, apply step-start actions and
 // auto-advance through Untap/Cleanup steps (CR 502, 514).
 fn apply_step_start_loop(mut state: GameState) -> GameState {
@@ -603,7 +592,7 @@ fn apply_step_start_loop(mut state: GameState) -> GameState {
     state
 }
 
-fn dispatch_action(mut state: GameState, action: ActionRequest) -> Result<GameState, String> {
+fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState, String> {
     match action {
         ActionRequest::TapLand { object_id } => {
             tap_land_for_mana(state, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
@@ -649,6 +638,12 @@ fn dispatch_action(mut state: GameState, action: ActionRequest) -> Result<GameSt
                 .map_err(|e| format!("{e:?}"))
         }
         ActionRequest::PassPriority { player_id } => {
+            if state.step() == Step::DeclareAttackers && !state.combat.attackers_declared {
+                return Err("must declare attackers before passing priority".to_string());
+            }
+            if state.step() == Step::DeclareBlockers && !state.combat.blockers_declared {
+                return Err("must declare blockers before passing priority".to_string());
+            }
             let before = state.step();
             pass_priority(state, PlayerId(player_id))
                 .map(|s| {
