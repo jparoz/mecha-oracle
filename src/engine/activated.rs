@@ -170,13 +170,15 @@ pub fn activate_ability(
                         player.mana_pool.colorless += pool_add.colorless;
                     }
                 }
-                _ => {}
+                _ => unreachable!("non-AddMana step in mana ability effect: {:?}", step),
             }
         }
+        // CR 405.6c: the player who had priority before activating retains it afterward.
+        // priority_player is already set to that player; no change needed.
         Ok(state)
     } else {
         // CR 405: non-mana activated abilities use the stack.
-        // CR 116.2b: a player may activate an ability only when they have priority.
+        // CR 117.1b: a player may activate an activated ability only when they have priority.
         if state.priority_player != activating_player {
             return Err(EngineError::NotYourPriority);
         }
