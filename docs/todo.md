@@ -4,15 +4,6 @@
 - Consider renaming `Ability` (in `types/ability.rs`) to `Rule` or `RulesText` — it looks odd to see `Ability::SpellEffect` as a variant on a type named `Ability`, even though it's the right place structurally.
 
 # UI issues
-- Tooltips are displayed behind the middle row (with the turn steps); tooltips should always be in front of everything else.
-- When there's not enough horizontal space to fit all the turn steps, the turn step bar doesn't handle it well. Probably should shrink the text (maybe truncate to the initials of each step or something), or else wrap in rows (so that a single step isn't isolated from the rest, but they're split 50/50 or something).
-- Which player has priority isn't clear any more; make the "P1 priority" message colour-coded to match the player's colour.
-- Add an indicator of whose turn is currently is, maybe change the turn counteron the left side of the turn step bar into a colour-coded chip (add the player to the text as well, like "Turn 8: P1's turn").
-- When attackers/blockers are confirmed, the bar should change back into turn step mode straight away, instead of after passing priority.
-- Forests on the battlefield are greyed out after playing a land for turn. Instead, when on the battlefield they should be highlighted as interactable when untapped (because they have a usable ability), and greyed out when tapped; it shouldn't matter whether you've played a land or not.
-- Lands in hand should only be highlighted as interactable when they may be played, i.e. that player's main phase with empty stack.
-- Toasts from engine errors should be right-aligned, not centre-aligned.
-- The un-tapping rotation on hovering over a card is unnecessary, remove it.
 
 # Gameplay issues
 - I can still use spacebar to advance the steps after the game has finished; this should be forbidden.
