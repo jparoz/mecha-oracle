@@ -17,6 +17,7 @@ pub fn pass_priority(mut state: GameState, player_id: PlayerId) -> Result<GameSt
     state.consecutive_passes += 1;
     if state.consecutive_passes as usize >= state.players.len() {
         if state.stack.is_empty() {
+            state.consecutive_passes = 0; // reset before step advance
             Ok(advance_step(state))
         } else {
             Ok(resolve_top(state))
@@ -89,7 +90,9 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                                 .filter(|l| !l.is_empty())
                                 .map(|l| l.remove(0))
                             {
-                                state.graveyards.get_mut(&controller).unwrap().push(card_id);
+                                if let Some(gy) = state.graveyards.get_mut(&controller) {
+                                    gy.push(card_id);
+                                }
                                 if let Some(obj) = state.objects.get_mut(&card_id) {
                                     obj.zone = Zone::Graveyard;
                                 }
@@ -332,6 +335,14 @@ mod tests {
         assert_eq!(gs.objects[&id].zone, Zone::Battlefield);
         assert!(gs.objects[&id].summoning_sick);
         assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn resolve_top_empty_stack_is_noop() {
+        let gs = make_state();
+        let gs2 = resolve_top(gs);
+        assert!(gs2.stack.is_empty());
+        assert_eq!(gs2.consecutive_passes, 0);
     }
 
     #[test]
