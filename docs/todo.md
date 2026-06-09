@@ -47,7 +47,6 @@ Grouped roughly by complexity of implementation.
 - **Dredge N** (702.52): replace draw with mill N, return this card
 
 ## Alternative casting (casting system extensions)
-- **Flash** (702.8): instant speed
 - **Morph [cost]** (702.37): cast face-down as 2/2 for {3}
 - **Kicker [cost]** (702.33): additional optional cost
 - **Cycling [cost]** (702.29): discard to draw a card
