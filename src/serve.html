@@ -934,12 +934,16 @@ document.addEventListener('mouseover', e => {
   const rect = wrap.getBoundingClientRect();
   const TW = 208; // tooltip width (200) + small buffer
   const TH = 260; // conservative max tooltip height
+  // Horizontal: prefer right of card; flip left if it would overflow
   let left = rect.right + 4;
-  if (left + TW > window.innerWidth) left = rect.left - TW - 4;
+  if (left + TW > window.innerWidth - 8) left = rect.left - TW - 4;
+  left = Math.max(8, left);
+  // Vertical: prefer aligned to card top; flip above if it would overflow
   let top = rect.top;
-  if (top + TH > window.innerHeight) top = window.innerHeight - TH - 8;
-  tooltip.style.left = Math.max(8, left) + 'px';
-  tooltip.style.top  = Math.max(8, top)  + 'px';
+  if (top + TH > window.innerHeight - 8) top = rect.bottom - TH;
+  top = Math.max(8, top);
+  tooltip.style.left = left + 'px';
+  tooltip.style.top  = top  + 'px';
 });
 
 // ── Stack column ──────────────────────────────────────────────────────────────
