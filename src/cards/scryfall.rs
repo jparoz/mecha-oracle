@@ -1,4 +1,4 @@
-use crate::parser::parse_oracle_text;
+use crate::parser::{parse_instant_or_sorcery, parse_permanent};
 use crate::types::card::{CardDefinition, CardType, Supertype, TypeLine};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip};
 use serde_json::Value;
@@ -46,7 +46,15 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
 
     let oracle_text = v["oracle_text"].as_str().unwrap_or("").to_string();
 
-    let abilities = parse_oracle_text(&oracle_text, &name);
+    let abilities = if type_line
+        .card_types
+        .iter()
+        .any(|t| matches!(t, CardType::Instant | CardType::Sorcery))
+    {
+        parse_instant_or_sorcery(&oracle_text)
+    } else {
+        parse_permanent(&oracle_text, &name)
+    };
 
     let power = v["power"].as_str().and_then(|s| s.parse::<i32>().ok());
     let toughness = v["toughness"].as_str().and_then(|s| s.parse::<i32>().ok());
