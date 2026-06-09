@@ -99,11 +99,11 @@ The function name `parse_oracle_text` in `parser/mod.rs` is removed; call sites 
 
 `casting.rs` gains `cast_spell(state, player_id, object_id) -> Result<GameState, EngineError>` which subsumes and replaces `cast_creature`.
 
-Timing validation (CR 307.1, CR 302.1):
+Timing validation (CR 307.1, CR 302.1, CR 702.8a):
 - Card must be in the player's hand and have a mana cost
 - Player must have priority
-- If the card is **instant**: no further timing restriction
-- If the card is **anything else** (creature, sorcery, artifact, enchantment, planeswalker): must also be active player, in a main phase (`PreCombatMain` or `PostCombatMain`), and stack must be empty
+- If the card is **instant** or has the **Flash** keyword: no further timing restriction
+- If the card is **anything else** (creature, sorcery, artifact, enchantment, planeswalker without Flash): must also be active player, in a main phase (`PreCombatMain` or `PostCombatMain`), and stack must be empty
 
 Mana payment, zone transition (`Hand → Stack`), and stack-push logic are identical to current `cast_creature`. Caster retains priority (CR 117.3c).
 
@@ -140,7 +140,7 @@ else:
 Adds `can_cast: bool`. Computed per card in hand:
 - Player has priority
 - Card has a mana cost the player can afford (using `greedy_payment_plan`)
-- If instant: no further restriction
+- If instant or has Flash keyword: no further restriction
 - If anything else: active player, main phase, stack empty
 
 ### `ActionRequest` enum
@@ -155,16 +155,31 @@ The `build_player_view` oracle span match gains an arm for `Ability::SpellEffect
 
 ---
 
+## 6. Flash keyword (CR 702.8a)
+
+Flash is a static ability that allows a permanent spell to be cast at instant speed. It is currently listed in `is_cr702_keyword` as `ParsedUnimplemented`. Since the instant-speed casting path is being built here, Flash can be fully implemented in the same pass at negligible extra cost.
+
+Changes:
+- Move `"flash"` from `is_cr702_keyword` to the `match_keyword` match arm, emitting `OracleSpan::Parsed(Ability::Static(StaticAbility::Flash))`
+- Add `StaticAbility::Flash` to the `StaticAbility` enum
+- `cast_spell` timing check: `card.is_instant() || card.has_keyword(StaticAbility::Flash)` for instant-speed permission
+- `can_cast` view computation mirrors this check
+- Delete the Flash bullet from `docs/todo.md` (currently under "Evasion / blocking restrictions") when implemented
+
+Snapcaster Mage (which has Flash) will then be castable at instant speed, though its ETB ability (grant flashback) is still unimplemented.
+
+---
+
 ## Files changed
 
 | File | Change |
 |------|--------|
 | `src/types/effect.rs` | Add `EffectStep::Unimplemented` |
-| `src/types/ability.rs` | Add `Ability::SpellEffect` |
-| `src/parser/oracle.rs` | Rename `parse_oracle_text` → `parse_permanent`; add `parse_instant_or_sorcery`; add internal `parse_spell_effect` helper |
+| `src/types/ability.rs` | Add `Ability::SpellEffect`; add `StaticAbility::Flash` |
+| `src/parser/oracle.rs` | Rename `parse_oracle_text` → `parse_permanent`; add `parse_instant_or_sorcery`; add internal `parse_spell_effect` helper; move `"flash"` to fully-implemented keywords |
 | `src/parser/mod.rs` | Update public exports |
 | `src/cards/scryfall.rs` | Dispatch to correct parser based on `TypeLine` |
-| `src/engine/casting.rs` | Replace `cast_creature` with `cast_spell`; update timing check |
+| `src/engine/casting.rs` | Replace `cast_creature` with `cast_spell`; update timing check (instant, Flash) |
 | `src/engine/stack.rs` | Branch on permanent vs. instant/sorcery in `resolve_top`; extract `execute_effect_steps` |
 | `src/serve.rs` | `CastCreature` → `CastSpell`; add `can_cast` to `CardView`; add `SpellEffect` span formatting |
 | `src/serve.html` | Update JS to send `cast_spell` action type |
