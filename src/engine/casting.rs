@@ -342,7 +342,7 @@ mod tests {
 
     #[test]
     fn play_land_fails_with_nonempty_stack() {
-        use crate::types::stack::{StackId, StackObject, StackPayload};
+        use crate::types::stack::{StackObject, StackPayload};
         let db = test_db();
         let mut gs = make_state();
         // Put a dummy trigger on the stack to make it non-empty

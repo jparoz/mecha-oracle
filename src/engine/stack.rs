@@ -36,7 +36,9 @@ pub fn resolve_top(mut state: GameState) -> GameState {
     state.stack.pop();
     let stack_obj = match state.stack_objects.remove(&stack_id) {
         Some(obj) => obj,
-        None => return state,
+        None => {
+            unreachable!("stack id {stack_id:?} missing from stack_objects; invariant violated")
+        }
     };
 
     match stack_obj.payload {
