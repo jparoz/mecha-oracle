@@ -567,6 +567,12 @@ const STEP_LABELS = {
   DeclareBlockers:'Blockers', CombatDamage:'Damage', EndOfCombat:'End Combat',
   PostCombatMain:'Main 2', End:'End', Cleanup:'Cleanup'
 };
+const STEP_INITIALS = {
+  Untap:'UT', Upkeep:'UP', Draw:'DR', PreCombatMain:'M1',
+  BeginningOfCombat:'BC', DeclareAttackers:'ATK',
+  DeclareBlockers:'BLK', CombatDamage:'DMG', EndOfCombat:'EC',
+  PostCombatMain:'M2', End:'END', Cleanup:'CL'
+};
 
 function render(s) {
   gyData = { 1: s.p1.graveyard, 2: s.p2.graveyard };
@@ -720,9 +726,12 @@ function renderActionBarNormal(s, bar) {
 
   bar.className = 'normal';
   const cur = STEP_ORDER.indexOf(s.step);
+  // bar.clientWidth is available synchronously; right cluster ≈ 210px, turn chip ≈ 80px
+  const compact = bar.clientWidth > 0 && bar.clientWidth < 900;
+  const stepMap = compact ? STEP_INITIALS : STEP_LABELS;
   const chips = STEP_ORDER.map((step, i) => {
     const cls = i < cur ? 'done' : i === cur ? 'active' : 'upcoming';
-    return `<span class="step-chip ${cls}">${STEP_LABELS[step]}</span>`;
+    return `<span class="step-chip ${cls}">${stepMap[step]}</span>`;
   }).join('<span class="step-sep">·</span>');
 
   const pp = s.priority_player === 0 ? 'P1' : 'P2';
