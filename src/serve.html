@@ -490,7 +490,7 @@ function render(s) {
 
   renderTurnTracker(s);
   renderPanes(s);
-  renderStack(s.stack);
+  renderStack(s.stack ?? []);
 }
 
 function renderMana(elId, pool) {
@@ -841,7 +841,7 @@ function renderStack(stack) {
       el.dataset.leaving = '1';
       el.style.opacity = '0';
       el.style.transform = `translate(calc(-50% + ${savedX}px), calc(-50% + ${savedY - 12}px))`;
-      setTimeout(() => el.remove(), 260);
+      setTimeout(() => el.remove(), 400); // past both 250ms opacity and 350ms transform transitions
     }
   }
 
