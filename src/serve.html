@@ -428,7 +428,11 @@ function describeAction(action) {
   switch (action.type) {
     case 'tap_land':       return `<span class="who">P${apLabel}</span> tapped a land for mana`;
     case 'play_land':      return `<span class="who">P${apLabel}</span> played a land`;
-    case 'cast_spell':     return `<span class="who">P${apLabel}</span> cast a spell`;
+    case 'cast_spell': {
+      // Instants and Flash creatures can be cast by any player with priority
+      const casterLabel = currentState.priority_player + 1;
+      return `<span class="who">P${casterLabel}</span> cast a spell`;
+    }
     case 'declare_attackers': return `<span class="who">P${apLabel}</span> declared attackers`;
     case 'declare_blockers': {
       const defLabel = ap === 0 ? 2 : 1;
