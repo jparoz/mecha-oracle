@@ -218,7 +218,7 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  color: #2a2a35;
+  color: #3a3a48;
   text-transform: uppercase;
   letter-spacing: 2px;
   pointer-events: none;
@@ -490,6 +490,7 @@ function render(s) {
 
   renderTurnTracker(s);
   renderPanes(s);
+  renderStack(s.stack);
 }
 
 function renderMana(elId, pool) {
@@ -811,6 +812,80 @@ document.addEventListener('mouseover', e => {
     tooltip.style.bottom = 'auto';
   }
 });
+
+// ── Stack column ──────────────────────────────────────────────────────────────
+
+const STACK_ITEM_STEP = 60; // px between consecutive card centres (78px tall - 18px overlap)
+const STACK_STAGGER_X = 8;  // px left/right alternating offset
+
+function renderStack(stack) {
+  const container = document.getElementById('stack-items');
+  const emptyEl   = document.getElementById('stack-empty');
+
+  emptyEl.style.display = stack.length === 0 ? 'flex' : 'none';
+
+  const n = stack.length;
+
+  // Index existing DOM cards by stack id
+  const existing = {};
+  container.querySelectorAll('.stack-card').forEach(el => {
+    existing[el.dataset.stackId] = el;
+  });
+
+  // Remove cards no longer in the stack (leaving animation)
+  const incomingIds = new Set(stack.map(item => String(item.id)));
+  for (const [id, el] of Object.entries(existing)) {
+    if (!incomingIds.has(id)) {
+      const savedX = el._stackX || 0;
+      const savedY = el._stackY || 0;
+      el.style.opacity = '0';
+      el.style.transform = `translate(calc(-50% + ${savedX}px), calc(-50% + ${savedY - 12}px))`;
+      setTimeout(() => el.remove(), 220);
+    }
+  }
+
+  // Add or reposition cards
+  stack.forEach((item, i) => {
+    const staggerX = (i % 2 === 0) ? -STACK_STAGGER_X : STACK_STAGGER_X;
+    // (n-1)/2 - i: index 0 (bottom) gets largest Y (bottom of screen);
+    // index n-1 (top/next to resolve) gets smallest Y (top of screen).
+    const offsetY  = ((n - 1) / 2 - i) * STACK_ITEM_STEP;
+    const zIndex   = i + 1;
+    const idStr    = String(item.id);
+    let el = existing[idStr];
+
+    if (!el) {
+      // New card — create at entering position, then animate to final
+      const kindLabel = item.kind === 'spell'              ? 'SPELL'
+                      : item.kind === 'activated_ability' ? 'ACT'
+                      : 'TRIG'; // triggered_ability
+      el = document.createElement('div');
+      el.className       = 'stack-card ' + (item.controller === 0 ? 'p1' : 'p2');
+      el.dataset.stackId = idStr;
+      el.innerHTML =
+        `<span class="stack-card-name">${esc(item.label)}</span>` +
+        `<span class="stack-kind">${kindLabel}</span>`;
+      el.style.opacity   = '0';
+      el.style.zIndex    = zIndex;
+      // Start 12px below final position
+      el.style.transform = `translate(calc(-50% + ${staggerX}px), calc(-50% + ${offsetY + 12}px))`;
+      el._stackX = staggerX;
+      el._stackY = offsetY;
+      container.appendChild(el);
+
+      requestAnimationFrame(() => {
+        el.style.opacity   = '1';
+        el.style.transform = `translate(calc(-50% + ${staggerX}px), calc(-50% + ${offsetY}px))`;
+      });
+    } else {
+      // Existing card — slide to new position
+      el._stackX = staggerX;
+      el._stackY = offsetY;
+      el.style.zIndex    = zIndex;
+      el.style.transform = `translate(calc(-50% + ${staggerX}px), calc(-50% + ${offsetY}px))`;
+    }
+  });
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
