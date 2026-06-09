@@ -5,8 +5,8 @@ use super::{
     turn::{advance_step, draw_card},
 };
 use crate::types::effect::EffectStep;
-use crate::types::stack::{StackObject, StackPayload};
-use crate::types::{GameState, ObjectId, PlayerId, Zone};
+use crate::types::stack::StackPayload;
+use crate::types::{GameState, PlayerId, Zone};
 
 // CR 405.5: when all players pass in succession, top of stack resolves;
 // if stack is empty, current step/phase ends.
@@ -114,8 +114,8 @@ mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
     use crate::types::effect::EffectStep;
-    use crate::types::stack::{StackId, StackObject, StackPayload};
-    use crate::types::{CardObject, Player, Step};
+    use crate::types::stack::{StackObject, StackPayload};
+    use crate::types::{CardObject, ObjectId, Player, Step};
 
     fn make_state() -> GameState {
         let mut gs = GameState::new(vec![
