@@ -55,6 +55,13 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
   user-select: none;
 }
 .card:hover { box-shadow: 0 0 10px rgba(100,200,100,0.5); border-color: #6a9a6a; transform: none !important; }
+.card.dim { border-color: #2a2a2a !important; box-shadow: none !important; }
+.card.dim .card-name { color: #555; }
+.card.dim .card-cost { color: #444; }
+.card.dim .card-type { color: #3a3a3a; }
+.card.dim .card-pt   { color: #444; border-top-color: #222; }
+.card.actionable { border-color: #506050; box-shadow: 0 0 6px rgba(200,220,200,0.18); cursor: pointer; }
+.card.land.actionable { border-color: #7a6030; box-shadow: 0 0 6px rgba(220,200,160,0.18); }
 .card.land { background: #2a1e10; border-color: #6b4c1e; }
 .card.land:hover { box-shadow: 0 0 10px rgba(180,140,60,0.5) !important; border-color: #c49a3a !important; }
 .card.tapped { transform: rotate(90deg); }
@@ -366,6 +373,28 @@ let gyData = { 1: [], 2: [] };
 let toastTimer = null;
 let popupDismissHandler = null;
 
+// ── Card state helpers ───────────────────────────────────────────────────────
+
+// Returns true if this card has at least one available action right now.
+// Used for visual state only — clicking is always allowed regardless.
+function isCardActionable(card, s, pid) {
+  // Hand cards
+  if (card.type_line.includes('Land')) {
+    // Land in hand: actionable at sorcery speed when we haven't played a land yet
+    return s.active_player === pid &&
+      s.lands_played_this_turn === 0 &&
+      (s.step === 'PreCombatMain' || s.step === 'PostCombatMain');
+  }
+  if (card.can_cast) return true;
+
+  // Battlefield cards
+  if (card.can_attack) return true;
+  if (card.can_block) return true;
+  if (card.activated_abilities && card.activated_abilities.some(a => a.can_activate)) return true;
+
+  return false;
+}
+
 // ── Toast ────────────────────────────────────────────────────────────────────
 
 function showToast(msg) {
@@ -548,12 +577,12 @@ function render(s) {
   renderGYPile('p1', s.p1.graveyard);
   renderGYPile('p2', s.p2.graveyard);
 
-  document.getElementById('p1-hand').innerHTML     = s.p1.hand.map(c => cardHTML(c)).join('');
-  document.getElementById('p2-hand').innerHTML     = s.p2.hand.map(c => cardHTML(c)).join('');
-  document.getElementById('p1-lands').innerHTML    = s.p1.lands.map(c => cardHTML(c)).join('');
-  document.getElementById('p2-lands').innerHTML    = s.p2.lands.map(c => cardHTML(c)).join('');
-  document.getElementById('p1-creatures').innerHTML = s.p1.creatures.map(c => cardHTML(c)).join('');
-  document.getElementById('p2-creatures').innerHTML = s.p2.creatures.map(c => cardHTML(c)).join('');
+  document.getElementById('p1-hand').innerHTML      = s.p1.hand.map(c => cardHTML(c, s, 0)).join('');
+  document.getElementById('p2-hand').innerHTML      = s.p2.hand.map(c => cardHTML(c, s, 1)).join('');
+  document.getElementById('p1-lands').innerHTML     = s.p1.lands.map(c => cardHTML(c, s, 0)).join('');
+  document.getElementById('p2-lands').innerHTML     = s.p2.lands.map(c => cardHTML(c, s, 1)).join('');
+  document.getElementById('p1-creatures').innerHTML = s.p1.creatures.map(c => cardHTML(c, s, 0)).join('');
+  document.getElementById('p2-creatures').innerHTML = s.p2.creatures.map(c => cardHTML(c, s, 1)).join('');
 
   renderActionBar(s);
   renderStack(s.stack ?? []);
@@ -584,7 +613,7 @@ function renderGYPile(prefix, graveyard) {
   document.getElementById(prefix + '-gy-wrap').style.cursor = graveyard.length > 0 ? 'pointer' : 'default';
 }
 
-function cardHTML(card) {
+function cardHTML(card, s, pid) {
   const isLand = card.type_line.includes('Land');
   const isSelected = attackersSelected.includes(card.id) ||
     Object.keys(blockersAssignment).map(Number).includes(card.id);
@@ -595,6 +624,14 @@ function cardHTML(card) {
   if (card.is_attacking) classes += ' attacking';
   if (card.is_blocking) classes += ' blocking';
   if (isSelected) classes += ' selected';
+
+  if (!isSelected && !card.is_attacking) {
+    if (s && pid !== undefined && isCardActionable(card, s, pid)) {
+      classes += ' actionable';
+    } else {
+      classes += ' dim';
+    }
+  }
 
   const wrap = card.tapped ? 'card-wrap tapped-wrap' : 'card-wrap';
 
@@ -727,7 +764,7 @@ function openGY(player) {
   if (cards.length === 0) return;
   document.getElementById('gy-modal-title').textContent = `Player ${player} — Graveyard`;
   document.getElementById('gy-modal-cards').innerHTML =
-    `<div class="gy-cards-grid">${cards.map(c => cardHTML(c)).join('')}</div>`;
+    `<div class="gy-cards-grid">${cards.map(c => cardHTML(c, null, -1)).join('')}</div>`;
   document.getElementById('gy-modal').classList.add('open');
 }
 function closeGY() { document.getElementById('gy-modal').classList.remove('open'); }
