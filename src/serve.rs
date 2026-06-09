@@ -9,11 +9,13 @@ use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
 use mecha_oracle::engine::casting::{cast_creature, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
+use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
     Ability, ActivatedAbility, CostComponent, OracleSpan, TriggeredAbility,
 };
 use mecha_oracle::types::effect::EffectStep;
+use mecha_oracle::types::stack::StackPayload;
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -132,6 +134,15 @@ struct ActivatedAbilityView {
 }
 
 #[derive(Serialize)]
+struct StackItemView {
+    id: u64,
+    kind: String,
+    label: String,
+    controller: PlayerId,
+    card: Option<CardView>,
+}
+
+#[derive(Serialize)]
 struct CardView {
     id: ObjectId,
     name: String,
@@ -175,6 +186,8 @@ struct GameView {
     can_reset_mana: bool,
     attackers_declared: bool,
     blockers_declared: bool,
+    stack: Vec<StackItemView>,
+    consecutive_passes: u32,
 }
 
 fn format_mana_cost(cost: &mecha_oracle::types::mana::ManaCost) -> String {
@@ -455,6 +468,56 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
 }
 
 fn build_game_view(state: &GameState) -> GameView {
+    let stack: Vec<StackItemView> = state
+        .stack
+        .iter()
+        .map(|&sid| {
+            let obj = &state.stack_objects[&sid];
+            match &obj.payload {
+                StackPayload::Spell { card_id } => {
+                    let card = state.objects.get(card_id);
+                    StackItemView {
+                        id: sid.0,
+                        kind: "spell".into(),
+                        label: card.map(|c| c.definition.name.clone()).unwrap_or_default(),
+                        controller: obj.controller,
+                        card: card.map(|c| CardView {
+                            id: c.id,
+                            name: c.definition.name.clone(),
+                            type_line: format_type_line(&c.definition.type_line),
+                            oracle_text: vec![],
+                            mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost),
+                            power: c.current_power,
+                            toughness: c.current_toughness,
+                            tapped: false,
+                            summoning_sick: false,
+                            damage_marked: 0,
+                            is_attacking: false,
+                            is_blocking: false,
+                            can_attack: false,
+                            can_block: false,
+                            activated_abilities: vec![],
+                        }),
+                    }
+                }
+                StackPayload::TriggeredAbility { label, .. } => StackItemView {
+                    id: sid.0,
+                    kind: "triggered_ability".into(),
+                    label: label.clone(),
+                    controller: obj.controller,
+                    card: None,
+                },
+                StackPayload::ActivatedAbility { label, .. } => StackItemView {
+                    id: sid.0,
+                    kind: "activated_ability".into(),
+                    label: label.clone(),
+                    controller: obj.controller,
+                    card: None,
+                },
+            }
+        })
+        .collect();
+
     GameView {
         turn: state.turn_number,
         step: format!("{:?}", state.step()),
@@ -468,6 +531,8 @@ fn build_game_view(state: &GameState) -> GameView {
         can_reset_mana: state.mana_checkpoint.is_some(),
         attackers_declared: state.combat.attackers_declared,
         blockers_declared: state.combat.blockers_declared,
+        stack,
+        consecutive_passes: state.consecutive_passes,
     }
 }
 
@@ -492,6 +557,9 @@ enum ActionRequest {
         blocks: Vec<[u64; 2]>,
     },
     AdvanceStep,
+    PassPriority {
+        player_id: u8,
+    },
     ResetMana,
     ActivateAbility {
         object_id: u64,
@@ -518,6 +586,19 @@ fn advance_with_auto_steps(mut state: GameState) -> GameState {
         if !matches!(state.step(), Step::Untap | Step::Cleanup) || state.is_game_over() {
             break;
         }
+    }
+    state
+}
+
+// After pass_priority has already advanced the step, apply step-start actions and
+// auto-advance through Untap/Cleanup steps (CR 502, 514).
+fn apply_step_start_loop(mut state: GameState) -> GameState {
+    loop {
+        state = apply_step_start(state);
+        if !matches!(state.step(), Step::Untap | Step::Cleanup) || state.is_game_over() {
+            break;
+        }
+        state = advance_step(state);
     }
     state
 }
@@ -549,20 +630,35 @@ fn dispatch_action(mut state: GameState, action: ActionRequest) -> Result<GameSt
             declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::AdvanceStep => {
-            // Turn-based actions (CR 508/509) must complete before priority opens
             if state.step() == Step::DeclareAttackers && !state.combat.attackers_declared {
                 return Err("must declare attackers before passing priority".to_string());
             }
             if state.step() == Step::DeclareBlockers && !state.combat.blockers_declared {
                 return Err("must declare blockers before passing priority".to_string());
             }
-            let nap = state.opponent_of(state.active_player);
-            if state.priority_player == state.active_player {
-                state.priority_player = nap;
-                Ok(state)
-            } else {
-                Ok(advance_with_auto_steps(state))
-            }
+            let before = state.step();
+            let player = state.priority_player;
+            pass_priority(state, player)
+                .map(|s| {
+                    if s.step() != before {
+                        apply_step_start_loop(s)
+                    } else {
+                        s
+                    }
+                })
+                .map_err(|e| format!("{e:?}"))
+        }
+        ActionRequest::PassPriority { player_id } => {
+            let before = state.step();
+            pass_priority(state, PlayerId(player_id))
+                .map(|s| {
+                    if s.step() != before {
+                        apply_step_start_loop(s)
+                    } else {
+                        s
+                    }
+                })
+                .map_err(|e| format!("{e:?}"))
         }
         ActionRequest::ResetMana => reset_mana(state).map_err(|e| format!("{e:?}")),
         ActionRequest::ActivateAbility {
