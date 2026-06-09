@@ -719,10 +719,25 @@ function renderActionBarNormal(s, bar) {
     `</div>`;
 }
 
-// renderActionBarCombat is added in Task 9.
-// For now, fall back to normal rendering during combat steps.
 function renderActionBarCombat(s, bar) {
-  renderActionBarNormal(s, bar);
+  bar.className = 'combat';
+  const isDeclareAttackers = s.step === 'DeclareAttackers';
+  const label = isDeclareAttackers ? 'Declare Attackers' : 'Declare Blockers';
+  const count = isDeclareAttackers
+    ? attackersSelected.length
+    : Object.keys(blockersAssignment).length;
+  const noun = isDeclareAttackers ? 'Attackers' : 'Blockers';
+  const confirmFn = isDeclareAttackers ? 'confirmAttackers()' : 'confirmBlockers()';
+
+  bar.innerHTML =
+    `<span style="color:#888">${label}</span>` +
+    `<span style="color:#333;margin:0 4px">·</span>` +
+    `<span style="color:#b8b840">${count} selected</span>` +
+    `<span style="color:#555;font-size:10px;margin-left:4px">· click creatures to toggle · Enter to confirm</span>` +
+    `<div class="bar-right">` +
+      `<button class="bar-btn bar-btn-confirm" onclick="${confirmFn}">Confirm ${noun} ✓</button>` +
+      `<button class="bar-btn-log" onclick="toggleLog()">Log</button>` +
+    `</div>`;
 }
 
 function toggleLog() {
@@ -1012,6 +1027,12 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Escape') {
     closePopup();
     return;
+  }
+  if (e.code === 'Enter' && !e.target.closest('input, textarea, button')) {
+    const s = currentState;
+    if (!s) return;
+    if (s.step === 'DeclareAttackers' && !s.attackers_declared) { confirmAttackers(); return; }
+    if (s.step === 'DeclareBlockers'  && !s.blockers_declared)  { confirmBlockers();  return; }
   }
   if (e.code === 'Space' && !e.target.closest('input, textarea, button')) {
     e.preventDefault();
