@@ -61,7 +61,7 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
   transform-origin: center center;
   user-select: none;
 }
-.card:hover { box-shadow: 0 0 10px rgba(100,200,100,0.5); border-color: #6a9a6a; transform: none !important; }
+.card:hover { box-shadow: 0 0 10px rgba(100,200,100,0.5); border-color: #6a9a6a; }
 .card.dim { border-color: #2a2a2a !important; box-shadow: none !important; }
 .card.dim .card-name { color: #555; }
 .card.dim .card-cost { color: #444; }
@@ -263,7 +263,7 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 
 /* Toast notification */
 #toast {
-  display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  display: none; position: fixed; bottom: 24px; right: 24px;
   background: #2a1a1a; border: 1px solid #aa3333; border-radius: 6px;
   padding: 6px 16px; font-size: 11px; color: #ee6666;
   white-space: nowrap; box-shadow: 0 2px 12px rgba(0,0,0,0.5);
