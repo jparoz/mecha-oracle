@@ -83,9 +83,9 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 
 /* Tooltip */
 .tooltip {
-  display: none; position: absolute; left: calc(100% + 4px); top: 0;
+  display: none; position: fixed; left: 0; top: 0;
   width: 200px; background: #1e2430; border: 1px solid #4a6a9a;
-  border-radius: 6px; padding: 10px; z-index: 300;
+  border-radius: 6px; padding: 10px; z-index: 9999;
   font-size: 11px; color: #ccc; pointer-events: none;
   box-shadow: 0 4px 16px rgba(0,0,0,0.6); line-height: 1.5;
 }
@@ -932,20 +932,14 @@ document.addEventListener('mouseover', e => {
   const tooltip = wrap.querySelector('.tooltip');
   if (!tooltip) return;
   const rect = wrap.getBoundingClientRect();
-  if (rect.right + 210 > window.innerWidth) {
-    tooltip.style.left = 'auto';
-    tooltip.style.right = 'calc(100% + 4px)';
-  } else {
-    tooltip.style.left = 'calc(100% + 4px)';
-    tooltip.style.right = 'auto';
-  }
-  if (rect.top + 250 > window.innerHeight) {
-    tooltip.style.top = 'auto';
-    tooltip.style.bottom = '0';
-  } else {
-    tooltip.style.top = '0';
-    tooltip.style.bottom = 'auto';
-  }
+  const TW = 208; // tooltip width (200) + small buffer
+  const TH = 260; // conservative max tooltip height
+  let left = rect.right + 4;
+  if (left + TW > window.innerWidth) left = rect.left - TW - 4;
+  let top = rect.top;
+  if (top + TH > window.innerHeight) top = window.innerHeight - TH - 8;
+  tooltip.style.left = Math.max(8, left) + 'px';
+  tooltip.style.top  = Math.max(8, top)  + 'px';
 });
 
 // ── Stack column ──────────────────────────────────────────────────────────────
