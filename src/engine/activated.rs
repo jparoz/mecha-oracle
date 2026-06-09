@@ -126,87 +126,83 @@ pub fn activate_ability(
         }
     }
 
-    // Apply effects
-    for step in &ability.effect {
-        match step {
-            EffectStep::AddMana(pool_add) => {
-                // CR 107.4k: mana from a Snow source is snow-tagged.
-                let is_snow = state
-                    .objects
-                    .get(&object_id)
-                    .map(|obj| {
-                        obj.definition
-                            .type_line
-                            .supertypes
-                            .contains(&crate::types::card::Supertype::Snow)
-                    })
-                    .unwrap_or(false);
-                let player = state.get_player_mut(activating_player).unwrap();
-                if is_snow {
-                    player
-                        .mana_pool
-                        .add_snow(crate::types::mana::ManaColor::White, pool_add.white);
-                    player
-                        .mana_pool
-                        .add_snow(crate::types::mana::ManaColor::Blue, pool_add.blue);
-                    player
-                        .mana_pool
-                        .add_snow(crate::types::mana::ManaColor::Black, pool_add.black);
-                    player
-                        .mana_pool
-                        .add_snow(crate::types::mana::ManaColor::Red, pool_add.red);
-                    player
-                        .mana_pool
-                        .add_snow(crate::types::mana::ManaColor::Green, pool_add.green);
-                    player
-                        .mana_pool
-                        .add_snow(crate::types::mana::ManaColor::Colorless, pool_add.colorless);
-                } else {
-                    player.mana_pool.white += pool_add.white;
-                    player.mana_pool.blue += pool_add.blue;
-                    player.mana_pool.black += pool_add.black;
-                    player.mana_pool.red += pool_add.red;
-                    player.mana_pool.green += pool_add.green;
-                    player.mana_pool.colorless += pool_add.colorless;
-                }
-            }
-            EffectStep::Mill(n) => {
-                let to_mill = (*n as usize).min(
-                    state
-                        .libraries
-                        .get(&activating_player)
-                        .map_or(0, |l| l.len()),
-                );
-                for _ in 0..to_mill {
-                    if let Some(card_id) = state
-                        .libraries
-                        .get_mut(&activating_player)
-                        .filter(|l| !l.is_empty())
-                        .map(|l| l.remove(0))
-                    {
-                        state
-                            .graveyards
-                            .get_mut(&activating_player)
-                            .unwrap()
-                            .push(card_id);
-                        if let Some(obj) = state.objects.get_mut(&card_id) {
-                            obj.zone = Zone::Graveyard;
-                        }
+    if produces_mana {
+        // CR 405.6c: mana abilities resolve immediately without using the stack.
+        for step in &ability.effect {
+            match step {
+                EffectStep::AddMana(pool_add) => {
+                    // CR 107.4k: mana from a Snow source is snow-tagged.
+                    let is_snow = state
+                        .objects
+                        .get(&object_id)
+                        .map(|obj| {
+                            obj.definition
+                                .type_line
+                                .supertypes
+                                .contains(&crate::types::card::Supertype::Snow)
+                        })
+                        .unwrap_or(false);
+                    let player = state.get_player_mut(activating_player).unwrap();
+                    if is_snow {
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::White, pool_add.white);
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Blue, pool_add.blue);
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Black, pool_add.black);
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Red, pool_add.red);
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Green, pool_add.green);
+                        player
+                            .mana_pool
+                            .add_snow(crate::types::mana::ManaColor::Colorless, pool_add.colorless);
+                    } else {
+                        player.mana_pool.white += pool_add.white;
+                        player.mana_pool.blue += pool_add.blue;
+                        player.mana_pool.black += pool_add.black;
+                        player.mana_pool.red += pool_add.red;
+                        player.mana_pool.green += pool_add.green;
+                        player.mana_pool.colorless += pool_add.colorless;
                     }
                 }
-            }
-            EffectStep::DrawCard(n) => {
-                for _ in 0..*n {
-                    state = draw_card(state, activating_player);
-                }
-            }
-            EffectStep::GainLife(_) => {
-                unreachable!("GainLife not expected in activated ability effect");
+                _ => {}
             }
         }
+        Ok(state)
+    } else {
+        // CR 405: non-mana activated abilities use the stack.
+        // CR 116.2b: a player may activate an ability only when they have priority.
+        if state.priority_player != activating_player {
+            return Err(EngineError::NotYourPriority);
+        }
+        let label = state
+            .objects
+            .get(&object_id)
+            .map(|o| format!("{}: activated ability", o.definition.name))
+            .unwrap_or_else(|| "activated ability".into());
+        let stack_id = state.alloc_stack_id();
+        let stack_obj = crate::types::StackObject {
+            id: stack_id,
+            payload: crate::types::StackPayload::ActivatedAbility {
+                source_id: object_id,
+                effect: ability.effect.clone(),
+                label,
+            },
+            controller: activating_player,
+        };
+        state.stack.push(stack_id);
+        state.stack_objects.insert(stack_id, stack_obj);
+        // CR 117.3c: activator retains priority after activating a non-mana ability.
+        state.consecutive_passes = 0;
+        state.priority_player = activating_player;
+        Ok(state)
     }
-
-    Ok(state)
 }
 
 pub fn can_pay_cost(
@@ -410,50 +406,104 @@ mod tests {
     }
 
     #[test]
-    fn mana_cost_ability_deducts_mana() {
+    fn non_mana_activate_puts_on_stack_not_immediate() {
         let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
         let id = place_on_battlefield(&mut gs, make_draw_def(), PlayerId(0));
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 1;
         put_in_library(&mut gs, PlayerId(0));
+
         let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+
+        // Mana was spent but effect not yet applied
         assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
-        assert_eq!(gs.hands[&PlayerId(0)].len(), 1);
+        assert!(gs.hands[&PlayerId(0)].is_empty());
+        assert_eq!(gs.stack.len(), 1);
     }
 
     #[test]
-    fn mill_two_moves_top_two_to_graveyard() {
+    fn non_mana_activate_resolves_via_resolve_top() {
+        use crate::engine::stack::resolve_top;
         let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
+        let id = place_on_battlefield(&mut gs, make_draw_def(), PlayerId(0));
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 1;
+        put_in_library(&mut gs, PlayerId(0));
+
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.hands[&PlayerId(0)].len(), 1);
+        assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn non_mana_activate_not_your_priority_returns_error() {
+        let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
+        let id = place_on_battlefield(&mut gs, make_mill_def(), PlayerId(0));
+        put_in_library(&mut gs, PlayerId(0));
+        gs.priority_player = PlayerId(1); // opponent has priority
+
+        assert!(matches!(
+            activate_ability(gs, id, 0, PlayerId(0), None, None),
+            Err(EngineError::NotYourPriority)
+        ));
+    }
+
+    #[test]
+    fn mill_two_puts_on_stack_not_immediate() {
+        let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
+        let id = place_on_battlefield(&mut gs, make_mill_def(), PlayerId(0));
+        put_in_library(&mut gs, PlayerId(0));
+        put_in_library(&mut gs, PlayerId(0));
+
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+
+        assert_eq!(gs.libraries[&PlayerId(0)].len(), 2); // not milled yet
+        assert_eq!(gs.stack.len(), 1);
+    }
+
+    #[test]
+    fn mill_two_resolves_via_resolve_top() {
+        use crate::engine::stack::resolve_top;
+        let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
         let id = place_on_battlefield(&mut gs, make_mill_def(), PlayerId(0));
         let card1 = put_in_library(&mut gs, PlayerId(0));
         let card2 = put_in_library(&mut gs, PlayerId(0));
+
         let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = resolve_top(gs);
+
         assert!(gs.libraries[&PlayerId(0)].is_empty());
         assert!(gs.graveyards[&PlayerId(0)].contains(&card1));
         assert!(gs.graveyards[&PlayerId(0)].contains(&card2));
     }
 
     #[test]
-    fn mill_with_fewer_cards_than_n_mills_all_without_error() {
+    fn mill_fewer_cards_than_n_resolves_without_error() {
+        use crate::engine::stack::resolve_top;
         let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
         let id = place_on_battlefield(&mut gs, make_mill_def(), PlayerId(0));
-        let card1 = put_in_library(&mut gs, PlayerId(0));
+        let card1 = put_in_library(&mut gs, PlayerId(0)); // only 1 card, mill 2
+
         let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = resolve_top(gs);
+
         assert!(gs.libraries[&PlayerId(0)].is_empty());
         assert!(gs.graveyards[&PlayerId(0)].contains(&card1));
     }
 
     #[test]
-    fn ability_index_out_of_range_returns_error() {
-        let mut gs = two_player_state();
-        let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        assert!(matches!(
-            activate_ability(gs, id, 99, PlayerId(0), None, None),
-            Err(EngineError::AbilityIndexOutOfRange)
-        ));
-    }
+    fn unimplemented_cost_puts_effect_on_stack() {
+        use crate::engine::stack::resolve_top;
+        use crate::types::ability::{Ability, ActivatedAbility, CostComponent};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::EffectStep;
 
-    #[test]
-    fn unimplemented_cost_component_is_skipped() {
         let def = CardDefinition {
             name: "Free Mill".into(),
             mana_cost: None,
@@ -471,11 +521,26 @@ mod tests {
             toughness: None,
         };
         let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
         let id = place_on_battlefield(&mut gs, def, PlayerId(0));
         put_in_library(&mut gs, PlayerId(0));
         put_in_library(&mut gs, PlayerId(0));
+
         let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        assert_eq!(gs.stack.len(), 1);
+
+        let gs = resolve_top(gs);
         assert!(gs.libraries[&PlayerId(0)].is_empty());
+    }
+
+    #[test]
+    fn ability_index_out_of_range_returns_error() {
+        let mut gs = two_player_state();
+        let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
+        assert!(matches!(
+            activate_ability(gs, id, 99, PlayerId(0), None, None),
+            Err(EngineError::AbilityIndexOutOfRange)
+        ));
     }
 
     #[test]
