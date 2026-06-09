@@ -725,14 +725,19 @@ function renderActionBarNormal(s, bar) {
   }).join('<span class="step-sep">·</span>');
 
   const pp = s.priority_player === 0 ? 'P1' : 'P2';
+  const ppColor = s.priority_player === 0 ? 'var(--p1-color)' : 'var(--p2-color)';
+  const apColor = s.active_player   === 0 ? 'var(--p1-color)' : 'var(--p2-color)';
+  const apLabel = s.active_player   === 0 ? 'P1' : 'P2';
   const passBlocked =
     (s.step === 'DeclareAttackers' && !s.attackers_declared) ||
     (s.step === 'DeclareBlockers'  && !s.blockers_declared);
 
   bar.innerHTML =
-    `<span style="color:#555;margin-right:4px">Turn ${s.turn}</span>${chips}` +
+    `<span style="background:#1a1a1a;border:1px solid #333;border-radius:3px;padding:1px 6px;margin-right:6px;flex-shrink:0;color:#888">` +
+      `Turn ${s.turn}: <span style="color:${apColor};font-weight:bold">${apLabel}</span>` +
+    `</span>${chips}` +
     `<div class="bar-right">` +
-      `<span class="bar-hint">${pp} priority · Space to pass</span>` +
+      `<span class="bar-hint"><span style="color:${ppColor};font-weight:bold">${pp}</span> priority · Space to pass</span>` +
       `<button class="bar-btn bar-btn-pass"${passBlocked ? ' disabled style="opacity:0.35;cursor:not-allowed"' : ''}` +
         ` onclick="sendAction({type:'advance_step'})">Pass Priority →</button>` +
       `<button class="bar-btn-log" onclick="toggleLog()">Log</button>` +
