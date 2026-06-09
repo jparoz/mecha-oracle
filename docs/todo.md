@@ -5,10 +5,16 @@
 
 # UI issues
 - Tooltips are displayed behind the middle row (with the turn steps); tooltips should always be in front of everything else.
-- When there's not enough horizontal space to fit all the turn steps, the turn step bar wraps weirdly; probably should prefer to shrink the text (maybe truncate to the initials of each step or something), or else wrap in rows (so that a single step isn't isolated from the rest, but they're split 50/50 or something).
+- When there's not enough horizontal space to fit all the turn steps, the turn step bar doesn't handle it well. Probably should shrink the text (maybe truncate to the initials of each step or something), or else wrap in rows (so that a single step isn't isolated from the rest, but they're split 50/50 or something).
+- Which player has priority isn't clear any more; make the "P1 priority" message colour-coded to match the player's colour.
+- Add an indicator of whose turn is currently is, maybe change the turn counteron the left side of the turn step bar into a colour-coded chip (add the player to the text as well, like "Turn 8: P1's turn").
+- When attackers/blockers are confirmed, the bar should change back into turn step mode straight away, instead of after passing priority.
+- Forests on the battlefield are greyed out after playing a land for turn. Instead, when on the battlefield they should be highlighted as interactable when untapped (because they have a usable ability), and greyed out when tapped; it shouldn't matter whether you've played a land or not.
+- Lands in hand should only be highlighted as interactable when they may be played, i.e. that player's main phase with empty stack.
+- Toasts from engine errors should be right-aligned, not centre-aligned.
+- The un-tapping rotation on hovering over a card is unnecessary, remove it.
 
 # Gameplay issues
-- On each main phase of each player's turn, the player is still allowed to play lands/creatures/etc. after they've passed priority. This is both a UI issue (the options shouldn't be visible after passing priority), and a server rules issue (the commands to play a land or cast a spell should be forbidden). The server needs to check who has priority before playing lands/casting spells.
 - I can still use spacebar to advance the steps after the game has finished; this should be forbidden.
 - Players should discard to hand size at the cleanup step (see 402.2)
 - Cards in hand are marked as summoning sick (maybe just a UI issue?)
