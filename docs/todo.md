@@ -5,11 +5,18 @@
 
 # UI issues
 - Tooltips are displayed behind the middle row (with the turn steps); tooltips should always be in front of everything else.
-- When there's not enough horizontal space to fit all the turn steps, it wraps weirdly; probably should prefer to shrink the text (maybe truncate to the initials of each step or something), or else wrap in rows (so that a single step isn't isolated from the rest, but they're split 50/50 or something).
+- When there's not enough horizontal space to fit all the turn steps, the turn step bar wraps weirdly; probably should prefer to shrink the text (maybe truncate to the initials of each step or something), or else wrap in rows (so that a single step isn't isolated from the rest, but they're split 50/50 or something).
+
+## Actions (abilities/spells/lands)
+- Player 1 can only use mana abilities on their turn, and same for player 2; both players should be able to use mana abilities at any time allowed by the rules (605.3a). I think this might be a UI issue, I suspect it's just that the button isn't shown in the UI, but would be allowed by the rules engine (or maybe it wouldn't, better to check either way). This also applies to casting spells; even if it's an instant, the button to cast it isn't currently shown.
+- Spells should be a visible option for casting even if there's not the available mana. The button can be disabled if there's insufficient mana, but it should be visible if it's possible to cast at that time.
 
 # Gameplay issues
 - On each main phase of each player's turn, the player is still allowed to play lands/creatures/etc. after they've passed priority. This is both a UI issue (the options shouldn't be visible after passing priority), and a server rules issue (the commands to play a land or cast a spell should be forbidden). The server needs to check who has priority before playing lands/casting spells.
 - I can still use spacebar to advance the steps after the game has finished; this should be forbidden.
+- Players should discard to hand size at the cleanup step (see 402.2)
+
+
 
 # Parsed but unimplemented keyword abilities
 Keywords below are parsed and shown cyan+underlined in the UI but have no rules enforcement yet.
