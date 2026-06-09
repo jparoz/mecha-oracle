@@ -30,6 +30,13 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 .p2 .life { color: #ff6b6b; }
 .p1 .life { color: #51cf66; }
 .mana-pool { display: flex; gap: 3px; align-items: center; }
+.mana-pool-wrap { display: inline-flex; align-items: center; gap: 3px; }
+.mana-pool-wrap.resettable {
+  cursor: pointer; padding: 1px 4px; border-radius: 3px;
+  border: 1px solid #2a3a2a; background: #0d140d;
+}
+.mana-pool-wrap.resettable:hover { border-color: #4a6a4a; }
+.mana-reset-hint { font-size: 9px; color: #4a7a4a; margin-left: 2px; }
 .pip { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #555; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; }
 .pip-W { background: #4d4a1a; border-color: #9a932d; color: #e8e06f; }
 .pip-U { background: #1a2a4d; border-color: #2d4a9a; color: #6f8ee8; }
@@ -568,8 +575,8 @@ function render(s) {
   document.getElementById('p1-life').textContent = '♥ ' + s.p1.life;
   document.getElementById('p2-life').textContent = '♥ ' + s.p2.life;
 
-  renderMana('p1-mana', s.p1.mana_pool);
-  renderMana('p2-mana', s.p2.mana_pool);
+  renderMana('p1-mana', s.p1.mana_pool, s.active_player === 0 && s.can_reset_mana);
+  renderMana('p2-mana', s.p2.mana_pool, s.active_player === 1 && s.can_reset_mana);
 
   document.querySelector('#p1-lib .pile-count').textContent = s.p1.library_count;
   document.querySelector('#p2-lib .pile-count').textContent = s.p2.library_count;
@@ -588,15 +595,20 @@ function render(s) {
   renderStack(s.stack ?? []);
 }
 
-function renderMana(elId, pool) {
+function renderMana(elId, pool, canReset) {
   const colors = [
     ['W', pool.w], ['U', pool.u], ['B', pool.b],
     ['R', pool.r], ['G', pool.g], ['C', pool.c],
   ];
-  document.getElementById(elId).innerHTML = colors
+  const pips = colors
     .filter(([, n]) => n > 0)
     .flatMap(([c, n]) => Array(n).fill(`<span class="pip pip-${c}">${c}</span>`))
     .join('');
+  const wrapClass = 'mana-pool-wrap' + (canReset ? ' resettable' : '');
+  const hint = canReset ? '<span class="mana-reset-hint">↩</span>' : '';
+  const clickAttr = canReset ? ' onclick="sendAction({type:\'reset_mana\'})" title="Click to undo mana taps"' : '';
+  document.getElementById(elId).innerHTML =
+    `<span class="${wrapClass}"${clickAttr}>${pips}${hint}</span>`;
 }
 
 function renderGYPile(prefix, graveyard) {
