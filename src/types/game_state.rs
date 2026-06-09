@@ -2,6 +2,7 @@ use super::card_object::CardObject;
 use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
 use super::player::Player;
+use super::stack::{StackId, StackObject};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,7 +95,10 @@ pub struct GameState {
     pub hands: HashMap<PlayerId, Vec<ObjectId>>,
     pub graveyards: HashMap<PlayerId, Vec<ObjectId>>,
     pub battlefield: Vec<ObjectId>,
-    pub stack: Vec<ObjectId>,
+    pub stack: Vec<StackId>,
+    pub stack_objects: HashMap<StackId, StackObject>,
+    pub next_stack_id: u64,
+    pub consecutive_passes: u32,
     pub exile: Vec<ObjectId>,
     pub active_player: PlayerId,
     pub priority_player: PlayerId,
@@ -131,6 +135,9 @@ impl GameState {
             graveyards,
             battlefield: vec![],
             stack: vec![],
+            stack_objects: HashMap::new(),
+            next_stack_id: 1,
+            consecutive_passes: 0,
             exile: vec![],
             active_player: active,
             priority_player: active,
@@ -156,6 +163,12 @@ impl GameState {
     pub fn alloc_id(&mut self) -> ObjectId {
         let id = ObjectId(self.next_object_id);
         self.next_object_id += 1;
+        id
+    }
+
+    pub fn alloc_stack_id(&mut self) -> StackId {
+        let id = StackId(self.next_stack_id);
+        self.next_stack_id += 1;
         id
     }
 
@@ -193,6 +206,7 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
+    use super::StackId;
     use super::*;
     use crate::types::player::Player;
 
@@ -258,5 +272,24 @@ mod tests {
         let cs = CombatState::empty();
         assert!(!cs.attackers_declared);
         assert!(!cs.blockers_declared);
+    }
+
+    #[test]
+    fn alloc_stack_id_increments() {
+        let mut gs = two_player_state();
+        assert_eq!(gs.alloc_stack_id(), StackId(1));
+        assert_eq!(gs.alloc_stack_id(), StackId(2));
+    }
+
+    #[test]
+    fn new_game_consecutive_passes_is_zero() {
+        let gs = two_player_state();
+        assert_eq!(gs.consecutive_passes, 0);
+    }
+
+    #[test]
+    fn new_game_stack_objects_is_empty() {
+        let gs = two_player_state();
+        assert!(gs.stack_objects.is_empty());
     }
 }
