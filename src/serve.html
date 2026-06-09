@@ -12,7 +12,6 @@
 body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; height: 100vh; overflow: hidden; }
 #root { display: flex; height: 100vh; }
 #board { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-#sidebar { width: 240px; background: #161b22; border-left: 1px solid #30363d; display: flex; flex-direction: column; flex-shrink: 0; }
 
 /* Hand rows */
 .hand-row { display: flex; justify-content: center; align-items: center; gap: 6px; padding: 8px 12px; flex-shrink: 0; flex-wrap: wrap; }
@@ -114,35 +113,6 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 .step-sep { color: #333; }
 .active-label { margin-left: auto; font-size: 11px; color: #6a9a6a; }
 
-/* Sidebar */
-.player-pane {
-  flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
-}
-.player-pane.p2 { border-bottom: 2px solid #30363d; }
-.pane-header {
-  padding: 6px 10px; border-bottom: 1px solid #30363d;
-  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
-}
-.pane-name { font-weight: bold; font-size: 12px; }
-.pane-name.p2 { color: #ff7b7b; }
-.pane-name.p1 { color: #7bff9a; }
-.priority-badge {
-  font-size: 9px; padding: 1px 5px; border-radius: 3px;
-  font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
-}
-.priority-badge.active { background: #2a2500; border: 1px solid #5a4a00; color: #ffd700; }
-.priority-badge.waiting { background: #1e2430; border: 1px solid #2a3a4a; color: #444; }
-.pane-actions { flex: 1; overflow-y: auto; padding: 6px 8px; }
-.pane-pass { flex-shrink: 0; padding: 6px 8px; border-top: 1px solid #30363d; }
-.action-group { margin-bottom: 10px; }
-.action-group-label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; padding-left: 2px; }
-.action-btn { display: block; width: 100%; background: #1c2a3a; border: 1px solid #2a4a6a; border-radius: 4px; padding: 6px 10px; color: #7ab8e8; font-size: 12px; cursor: pointer; text-align: left; margin-bottom: 3px; transition: background 0.1s; }
-.action-btn:hover { background: #243650; border-color: #4a7aaa; }
-.action-btn.pass { background: #1a2a1a; border-color: #2a5a2a; color: #7aaa7a; }
-.action-btn.pass:hover { background: #243524; }
-.action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.action-btn.selected { border-color: #ffdd57; color: #ffdd57; background: #2a2500; }
-.action-btn .cost { float: right; font-size: 10px; color: #888; }
 
 /* Game log */
 .log-entry { font-size: 11px; color: #666; padding: 2px 0; border-bottom: 1px solid #1e2530; line-height: 1.4; }
@@ -309,30 +279,6 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
     </div>
     <div class="stack-edge-label">bottom</div>
   </div>
-  <div id="sidebar">
-    <div class="player-pane p2" id="pane-p2">
-      <div class="pane-header">
-        <span class="pane-name p2">Player 2</span>
-        <span class="priority-badge waiting" id="badge-p2">waiting</span>
-      </div>
-      <div class="pane-actions" id="actions-p2"></div>
-      <div class="pane-pass">
-        <button class="action-btn pass" id="pass-p2" disabled
-                onclick="sendAction({type:'advance_step'})">Pass priority →</button>
-      </div>
-    </div>
-    <div class="player-pane p1" id="pane-p1">
-      <div class="pane-header">
-        <span class="pane-name p1">Player 1</span>
-        <span class="priority-badge waiting" id="badge-p1">waiting</span>
-      </div>
-      <div class="pane-actions" id="actions-p1"></div>
-      <div class="pane-pass">
-        <button class="action-btn pass" id="pass-p1" disabled
-                onclick="sendAction({type:'advance_step'})">Pass priority →</button>
-      </div>
-    </div>
-  </div>
   <div id="log-drawer">
     <div id="log-drawer-header">
       <span style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#888">Game Log</span>
@@ -493,7 +439,6 @@ function render(s) {
   document.getElementById('p2-creatures').innerHTML = s.p2.creatures.map(c => cardHTML(c)).join('');
 
   renderTurnTracker(s);
-  renderPanes(s);
   renderStack(s.stack ?? []);
 }
 
@@ -602,152 +547,6 @@ function toggleLog() {
   document.getElementById('log-drawer').classList.toggle('open');
 }
 
-// ── Actions panel ─────────────────────────────────────────────────────────────
-
-function renderPanes(s) {
-  if (s.game_over) {
-    const winner = s.winner != null ? `Player ${s.winner + 1} wins!` : 'Draw!';
-    const msg = `<div style="background:#2a1a00;border:1px solid #8a5a00;border-radius:4px;padding:8px 10px;font-size:12px;color:#ffcc44;text-align:center">Game Over — ${winner}</div>`;
-    document.getElementById('actions-p1').innerHTML = msg;
-    document.getElementById('actions-p2').innerHTML = '';
-    document.getElementById('pass-p1').disabled = true;
-    document.getElementById('pass-p2').disabled = true;
-    return;
-  }
-
-  const passBlocked =
-    (s.step === 'DeclareAttackers' && !s.attackers_declared) ||
-    (s.step === 'DeclareBlockers'  && !s.blockers_declared);
-
-  [0, 1].forEach(pid => {
-    const suffix    = pid === 0 ? 'p1' : 'p2';
-    const myData    = pid === 0 ? s.p1 : s.p2;
-    const oppData   = pid === 0 ? s.p2 : s.p1;
-    const iAmAP     = pid === s.active_player;
-    const iAmNAP    = !iAmAP;
-    const hasPriority = pid === s.priority_player && !passBlocked;
-    const canPass   = hasPriority;
-
-    // Priority badge
-    const badge = document.getElementById(`badge-${suffix}`);
-    badge.textContent = hasPriority ? 'has priority' : 'waiting';
-    badge.className   = 'priority-badge ' + (hasPriority ? 'active' : 'waiting');
-
-    // Pass button
-    const passBtn = document.getElementById(`pass-${suffix}`);
-    passBtn.disabled      = !canPass;
-    passBtn.style.opacity = canPass ? '1' : '0.35';
-
-    let html = '';
-
-    // Main phase: land/creature actions for AP
-    if (iAmAP && (s.step === 'PreCombatMain' || s.step === 'PostCombatMain')) {
-      const untapped = myData.lands.filter(c => !c.tapped);
-      if (untapped.length > 0) {
-        html += group('Tap for mana', untapped.map(c =>
-          btn(c.name, `sendAction({type:'tap_land',object_id:${c.id}})`)));
-      }
-      if (s.lands_played_this_turn === 0) {
-        const lands = myData.hand.filter(c => c.type_line.includes('Land'));
-        if (lands.length > 0) {
-          html += group('Play land', lands.map(c =>
-            btn('Play ' + esc(c.name), `sendAction({type:'play_land',object_id:${c.id}})`)));
-        }
-      }
-      const castable = myData.hand.filter(c => c.can_cast);
-      if (castable.length > 0) {
-        html += group('Cast spell', castable.map(c =>
-          btn(esc(c.name), `sendAction({type:'cast_spell',object_id:${c.id}})`, c.mana_cost || '')));
-      }
-    }
-
-    // Any step: show castable instants/flash spells for priority player
-    if (pid === s.priority_player && !(iAmAP && (s.step === 'PreCombatMain' || s.step === 'PostCombatMain'))) {
-      const instants = myData.hand.filter(c => c.can_cast);
-      if (instants.length > 0) {
-        html += group('Cast spell', instants.map(c =>
-          btn(esc(c.name), `sendAction({type:'cast_spell',object_id:${c.id}})`, c.mana_cost || '')));
-      }
-    }
-
-    // Declare attackers: selection UI (AP, before confirmation)
-    if (iAmAP && s.step === 'DeclareAttackers' && !s.attackers_declared) {
-      const eligible = myData.creatures.filter(c => c.can_attack);
-      const btns = eligible.map(c => {
-        const sel = attackersSelected.includes(c.id);
-        return `<button class="action-btn${sel ? ' selected' : ''}" onclick="toggleAttacker(${c.id})">${esc(c.name)}${sel ? ' ✓' : ''}</button>`;
-      });
-      btns.push(btn('Confirm Attackers', 'confirmAttackers()'));
-      html += group('Select attackers', btns.length > 1 ? btns : [btn('Confirm Attackers (no attackers)', 'confirmAttackers()')]);
-    }
-
-    // Declare attackers: summary after confirmation
-    if (iAmAP && s.step === 'DeclareAttackers' && s.attackers_declared) {
-      const n = myData.creatures.filter(c => c.is_attacking).length;
-      html += `<p style="font-size:11px;color:#666;padding:4px">${n} attacker${n === 1 ? '' : 's'} declared</p>`;
-    }
-
-    // Declare blockers: assignment UI (NAP, before confirmation)
-    if (iAmNAP && s.step === 'DeclareBlockers' && !s.blockers_declared) {
-      const attackers = oppData.creatures.filter(c => c.is_attacking);
-      const blockers  = myData.creatures.filter(c => c.can_block);
-      if (attackers.length > 0 && blockers.length > 0) {
-        let inner = '';
-        for (const atk of attackers) {
-          inner += `<div style="margin-bottom:6px"><div class="action-group-label">Block ${esc(atk.name)}</div>`;
-          for (const blk of blockers) {
-            const assigned = blockersAssignment[blk.id] === atk.id;
-            inner += `<button class="action-btn${assigned ? ' selected' : ''}" onclick="toggleBlocker(${blk.id},${atk.id})">${esc(blk.name)}${assigned ? ' ✓' : ''}</button>`;
-          }
-          inner += '</div>';
-        }
-        inner += btn('Confirm Blockers', 'confirmBlockers()');
-        html += group('Assign blockers', [inner]);
-      } else {
-        html += group('Assign blockers', [btn('Confirm Blockers (none)', 'confirmBlockers()')]);
-      }
-    }
-
-    // Declare blockers: summary after confirmation
-    if (iAmNAP && s.step === 'DeclareBlockers' && s.blockers_declared) {
-      html += `<p style="font-size:11px;color:#666;padding:4px">Blockers declared</p>`;
-    }
-
-    // Activated abilities: show for priority player during main phases
-    if (pid === s.priority_player && (s.step === 'PreCombatMain' || s.step === 'PostCombatMain')) {
-      const allCards = [...myData.creatures, ...myData.lands];
-      const activatables = [];
-      for (const card of allCards) {
-        if (!card.activated_abilities) continue;
-        for (const ab of card.activated_abilities) {
-          activatables.push({ card, ab });
-        }
-      }
-      if (activatables.length > 0) {
-        const btns = activatables.map(({ card, ab }) => {
-          const disabled = !ab.can_activate ? ' disabled' : '';
-          return `<button class="action-btn"${disabled} onclick="sendAction({type:'activate_ability',object_id:${card.id},ability_index:${ab.index}})">${esc(card.name)} — ${esc(ab.label)}</button>`;
-        });
-        html += group('Activated abilities', btns);
-      }
-    }
-
-    // Reset mana (AP only, when checkpoint exists)
-    if (iAmAP && s.can_reset_mana) {
-      html += group('Mana', [`<button class="action-btn" onclick="sendAction({type:'reset_mana'})">↩ Reset mana</button>`]);
-    }
-
-    document.getElementById(`actions-${suffix}`).innerHTML = html;
-  });
-}
-
-function group(label, btns) {
-  return `<div class="action-group"><div class="action-group-label">${label}</div>${btns.join('')}</div>`;
-}
-function btn(label, onclick, cost) {
-  const costHtml = cost ? `<span class="cost">${esc(cost)}</span>` : '';
-  return `<button class="action-btn" onclick="${onclick}">${label}${costHtml}</button>`;
-}
 
 // ── Attacker / Blocker selection ──────────────────────────────────────────────
 
