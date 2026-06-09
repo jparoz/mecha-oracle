@@ -122,7 +122,7 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 #action-bar {
   border-top: 1px solid #30363d; border-bottom: 1px solid #30363d;
   padding: 0 12px; display: flex; align-items: center; gap: 4px;
-  font-size: 11px; flex-shrink: 0; height: 32px;
+  font-size: 11px; flex-shrink: 0; height: 44px;
 }
 #action-bar.normal { background: #161b22; }
 #action-bar.combat { background: #161900; border-color: #404000; }
@@ -733,8 +733,16 @@ function renderActionBarNormal(s, bar) {
   // bar.clientWidth is available synchronously; right cluster ≈ 210px, turn chip ≈ 80px
   const compact = bar.clientWidth > 0 && bar.clientWidth < 900;
   const stepMap = compact ? STEP_INITIALS : STEP_LABELS;
+  const p1Priority = s.priority_player === 0;
   const chips = STEP_ORDER.map((step, i) => {
     const cls = i < cur ? 'done' : i === cur ? 'active' : 'upcoming';
+    if (cls === 'active') {
+      // CSS triangle chevron: below chip for P1 priority, above for P2
+      const chevron = p1Priority
+        ? `<span style="position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 3px);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid #ffd700;"></span>`
+        : `<span style="position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 3px);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:5px solid #ffd700;"></span>`;
+      return `<span class="step-chip active" style="position:relative">${stepMap[step]}${chevron}</span>`;
+    }
     return `<span class="step-chip ${cls}">${stepMap[step]}</span>`;
   }).join('<span class="step-sep">·</span>');
 
