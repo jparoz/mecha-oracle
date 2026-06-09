@@ -105,6 +105,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                         // Mana abilities never reach the stack (CR 405.6c).
                         unreachable!("AddMana in stack object");
                     }
+                    EffectStep::Unimplemented(_) => {}
                 }
             }
             state.consecutive_passes = 0;

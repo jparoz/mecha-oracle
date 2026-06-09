@@ -19,6 +19,7 @@ pub enum StaticAbility {
     Horsemanship,
     Skulk,
     Decayed,
+    Flash,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +78,7 @@ impl StaticAbility {
             Self::Horsemanship => "Horsemanship",
             Self::Skulk => "Skulk",
             Self::Decayed => "Decayed",
+            Self::Flash => "Flash",
         }
     }
 }
@@ -97,6 +99,7 @@ pub enum Ability {
     Static(StaticAbility),
     Triggered(TriggeredAbility),
     Activated(ActivatedAbility),
+    SpellEffect(Effect),
 }
 
 /// A typed span of oracle text.

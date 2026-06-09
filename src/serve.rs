@@ -317,6 +317,7 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
                 }
             }
             EffectStep::GainLife(n) => format!("Gain {n} life"),
+            EffectStep::Unimplemented(s) => s.clone(),
         })
         .collect();
     format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))
@@ -336,6 +337,7 @@ fn format_triggered_ability(t: &TriggeredAbility) -> String {
             EffectStep::GainLife(n) => format!("you gain {n} life"),
             EffectStep::AddMana(pool) => format!("add {}", format_mana_pool(pool)),
             EffectStep::Mill(n) => format!("mill {n}"),
+            EffectStep::Unimplemented(s) => s.to_string(),
         })
         .collect();
     format!("{}, {}.", trigger_str, effect_parts.join(". "))
@@ -375,6 +377,11 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     OracleSpan::Parsed(Ability::Triggered(t)) => OracleSpanView {
                         kind: SpanKind::Parsed,
                         text: format_triggered_ability(t),
+                        ignored_kind: None,
+                    },
+                    OracleSpan::Parsed(Ability::SpellEffect(_)) => OracleSpanView {
+                        kind: SpanKind::Parsed,
+                        text: String::new(),
                         ignored_kind: None,
                     },
                     OracleSpan::Ignored(kind, t) => OracleSpanView {
