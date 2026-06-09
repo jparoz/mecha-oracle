@@ -1,6 +1,5 @@
 use super::EngineError;
 use crate::engine::mana::{can_pay_mana, greedy_payment_plan, pay_mana_cost};
-use crate::engine::turn::draw_card;
 use crate::types::ability::StaticAbility;
 use crate::types::ability::{Ability, ActivatedAbility, CostComponent, OracleSpan};
 use crate::types::effect::EffectStep;
