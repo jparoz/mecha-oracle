@@ -732,6 +732,66 @@ function toggleLog() {
 
 // ── Card click dispatch ───────────────────────────────────────────────────────
 
+// Returns an array of action items, or null if the action was handled inline
+// (attacker direct-toggle or blocker popup).
+function getBattlefieldCreatureActions(card, s, pid, anchorEl) {
+  const oppData = pid === 0 ? s.p2 : s.p1;
+
+  // DeclareBlockers: always show attacker-assignment popup (takes priority over abilities)
+  if (s.step === 'DeclareBlockers' && card.can_block) {
+    const attackers = oppData.creatures.filter(c => c.is_attacking);
+    const currentAssignment = blockersAssignment[card.id];
+    const items = attackers.map(atk => ({
+      label: `Block ${atk.name}`,
+      active: currentAssignment === atk.id,
+      onClick: () => {
+        if (blockersAssignment[card.id] === atk.id) {
+          delete blockersAssignment[card.id]; // deselect if already assigned here
+        } else {
+          blockersAssignment[card.id] = atk.id;
+        }
+        render(currentState);
+      },
+    }));
+    openPopup(items, anchorEl, 'Assign blocker');
+    return null; // handled inline
+  }
+
+  // Build action list for all other steps
+  const actions = [];
+
+  // DeclareAttackers: "Declare as attacker" toggle is offered as an action
+  if (s.step === 'DeclareAttackers' && card.can_attack) {
+    const isSelected = attackersSelected.includes(card.id);
+    actions.push({
+      label: isSelected ? '✓ Attacking — click to remove' : 'Declare as attacker',
+      onClick: () => {
+        if (isSelected) attackersSelected.splice(attackersSelected.indexOf(card.id), 1);
+        else attackersSelected.push(card.id);
+        render(currentState);
+      },
+    });
+  }
+
+  // Activated abilities
+  if (card.activated_abilities) {
+    card.activated_abilities.forEach(ab => {
+      actions.push({
+        label: ab.label,
+        onClick: () => sendAction({ type: 'activate_ability', object_id: card.id, ability_index: ab.index }),
+      });
+    });
+  }
+
+  // If the only action is the attacker toggle, fire it directly (no popup needed)
+  if (actions.length === 1 && s.step === 'DeclareAttackers' && card.can_attack) {
+    actions[0].onClick();
+    return null; // handled inline
+  }
+
+  return actions; // empty array = no-op; 1+ items = caller opens popup or fires directly
+}
+
 function getBattlefieldLandActions(card) {
   // If the land has multiple parsed activated abilities, offer each as a popup option
   if (card.activated_abilities && card.activated_abilities.length > 1) {
@@ -780,7 +840,16 @@ function handleCardClick(cardId, pid, event) {
     return;
   }
 
-  // Battlefield dispatch — added in Task 8
+  // Battlefield creatures
+  const creature = playerData.creatures.find(c => c.id === cardId);
+  if (creature) {
+    const actions = getBattlefieldCreatureActions(creature, s, pid, event.currentTarget);
+    if (actions === null) return; // handled inline (toggle or popup opened)
+    if (actions.length === 0) return; // no actions — click is a no-op
+    if (actions.length === 1) { actions[0].onClick(); return; }
+    openPopup(actions, event.currentTarget, 'Actions');
+    return;
+  }
 }
 
 // ── Attacker / Blocker selection ──────────────────────────────────────────────
