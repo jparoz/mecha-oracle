@@ -566,7 +566,6 @@ function renderActionBarNormal(s, bar) {
     return `<span class="step-chip ${cls}">${STEP_LABELS[step]}</span>`;
   }).join('<span class="step-sep">·</span>');
 
-  const ap = s.active_player === 0 ? 'P1' : 'P2';
   const pp = s.priority_player === 0 ? 'P1' : 'P2';
   const passBlocked =
     (s.step === 'DeclareAttackers' && !s.attackers_declared) ||
