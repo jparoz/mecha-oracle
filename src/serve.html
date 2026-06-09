@@ -428,7 +428,7 @@ function describeAction(action) {
   switch (action.type) {
     case 'tap_land':       return `<span class="who">P${apLabel}</span> tapped a land for mana`;
     case 'play_land':      return `<span class="who">P${apLabel}</span> played a land`;
-    case 'cast_creature':  return `<span class="who">P${apLabel}</span> cast a creature`;
+    case 'cast_spell':     return `<span class="who">P${apLabel}</span> cast a spell`;
     case 'declare_attackers': return `<span class="who">P${apLabel}</span> declared attackers`;
     case 'declare_blockers': {
       const defLabel = ap === 0 ? 2 : 1;
@@ -650,10 +650,19 @@ function renderPanes(s) {
             btn('Play ' + esc(c.name), `sendAction({type:'play_land',object_id:${c.id}})`)));
         }
       }
-      const castable = myData.hand.filter(c => c.type_line.includes('Creature'));
+      const castable = myData.hand.filter(c => c.can_cast);
       if (castable.length > 0) {
-        html += group('Cast creature', castable.map(c =>
-          btn(esc(c.name), `sendAction({type:'cast_creature',object_id:${c.id}})`, c.mana_cost || '')));
+        html += group('Cast spell', castable.map(c =>
+          btn(esc(c.name), `sendAction({type:'cast_spell',object_id:${c.id}})`, c.mana_cost || '')));
+      }
+    }
+
+    // Any step: show castable instants/flash spells for priority player
+    if (pid === s.priority_player && !(iAmAP && (s.step === 'PreCombatMain' || s.step === 'PostCombatMain'))) {
+      const instants = myData.hand.filter(c => c.can_cast);
+      if (instants.length > 0) {
+        html += group('Cast spell', instants.map(c =>
+          btn(esc(c.name), `sendAction({type:'cast_spell',object_id:${c.id}})`, c.mana_cost || '')));
       }
     }
 

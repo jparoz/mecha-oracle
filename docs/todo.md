@@ -16,7 +16,6 @@ Keywords below are parsed and shown cyan+underlined in the UI but have no rules 
 Grouped roughly by complexity of implementation.
 
 ## Evasion / blocking restrictions (combat, moderate)
-- **Flash** (702.8): cast at instant speed — requires instant-speed casting infrastructure
 - **Fear** (702.36): unblockable except by artifact/black — requires color tracking
 - **Intimidate** (702.13): unblockable except by artifact/same-color — requires color tracking
 - **Landwalk variants** (702.14): unblockable if defending player controls matching land — requires land type lookup

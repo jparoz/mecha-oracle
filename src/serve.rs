@@ -8,11 +8,11 @@ use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
 use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
-use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
+use mecha_oracle::engine::mana::{greedy_payment_plan, reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
-    Ability, ActivatedAbility, CostComponent, OracleSpan, TriggeredAbility,
+    Ability, ActivatedAbility, CostComponent, OracleSpan, StaticAbility, TriggeredAbility,
 };
 use mecha_oracle::types::effect::EffectStep;
 use mecha_oracle::types::stack::StackPayload;
@@ -158,6 +158,7 @@ struct CardView {
     is_blocking: bool,
     can_attack: bool,
     can_block: bool,
+    can_cast: bool,
     activated_abilities: Vec<ActivatedAbilityView>,
 }
 
@@ -323,6 +324,21 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
     format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))
 }
 
+fn format_spell_effect(effect: &[EffectStep]) -> String {
+    effect
+        .iter()
+        .map(|step| match step {
+            EffectStep::DrawCard(1) => "Draw a card".to_string(),
+            EffectStep::DrawCard(n) => format!("Draw {n} cards"),
+            EffectStep::GainLife(n) => format!("Gain {n} life"),
+            EffectStep::Mill(n) => format!("Mill {n}"),
+            EffectStep::AddMana(pool) => format!("Add {}", format_mana_pool(pool)),
+            EffectStep::Unimplemented(s) => s.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(", then ")
+}
+
 fn format_triggered_ability(t: &TriggeredAbility) -> String {
     use mecha_oracle::types::ability::TriggerEvent;
     let trigger_str = match &t.trigger {
@@ -341,6 +357,43 @@ fn format_triggered_ability(t: &TriggeredAbility) -> String {
         })
         .collect();
     format!("{}, {}.", trigger_str, effect_parts.join(". "))
+}
+
+fn compute_can_cast(
+    state: &GameState,
+    pid: PlayerId,
+    obj: &mecha_oracle::types::CardObject,
+) -> bool {
+    use mecha_oracle::types::card::CardType;
+    if obj.zone != Zone::Hand {
+        return false;
+    }
+    if state.priority_player != pid {
+        return false;
+    }
+    let Some(cost) = obj.definition.mana_cost.as_ref() else {
+        return false;
+    };
+    let player = match state.get_player(pid) {
+        Some(p) => p,
+        None => return false,
+    };
+    if greedy_payment_plan(cost, &player.mana_pool, player.life).is_none() {
+        return false;
+    }
+    let is_instant_speed = obj
+        .definition
+        .type_line
+        .card_types
+        .contains(&CardType::Instant)
+        || obj.has_keyword(StaticAbility::Flash);
+    if is_instant_speed {
+        return true;
+    }
+    // Sorcery-speed: must be active player, main phase, empty stack
+    state.active_player == pid
+        && matches!(state.step(), Step::PreCombatMain | Step::PostCombatMain)
+        && state.stack.is_empty()
 }
 
 fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
@@ -379,9 +432,9 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                         text: format_triggered_ability(t),
                         ignored_kind: None,
                     },
-                    OracleSpan::Parsed(Ability::SpellEffect(_)) => OracleSpanView {
+                    OracleSpan::Parsed(Ability::SpellEffect(steps)) => OracleSpanView {
                         kind: SpanKind::Parsed,
-                        text: String::new(),
+                        text: format_spell_effect(steps),
                         ignored_kind: None,
                     },
                     OracleSpan::Ignored(kind, t) => OracleSpanView {
@@ -416,6 +469,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
         can_block: state.step() == Step::DeclareBlockers
             && pid != state.active_player
             && obj.can_block(),
+        can_cast: compute_can_cast(state, pid, obj),
         activated_abilities: obj
             .definition
             .abilities
@@ -503,6 +557,7 @@ fn build_game_view(state: &GameState) -> GameView {
                             is_blocking: false,
                             can_attack: false,
                             can_block: false,
+                            can_cast: false,
                             activated_abilities: vec![],
                         }),
                     }
@@ -1210,6 +1265,104 @@ mod tests {
         assert!(
             !p2_c.can_block,
             "can_block is false outside DeclareBlockers"
+        );
+    }
+
+    #[test]
+    fn can_cast_true_for_instant_in_hand_with_mana_and_priority() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        use mecha_oracle::types::effect::EffectStep;
+        use mecha_oracle::types::mana::{ManaCost, ManaPip};
+        use mecha_oracle::types::{Ability, OracleSpan};
+        use mecha_oracle::types::{CardObject, Zone};
+
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        let def = CardDefinition {
+            name: "Cheap Instant".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(1)],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Draw a card.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(vec![
+                EffectStep::DrawCard(1),
+            ]))],
+            power: None,
+            toughness: None,
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, mecha_oracle::types::PlayerId(0), Zone::Hand);
+        gs.hands
+            .get_mut(&mecha_oracle::types::PlayerId(0))
+            .unwrap()
+            .push(id);
+        gs.add_object(obj);
+        gs.get_player_mut(mecha_oracle::types::PlayerId(0))
+            .unwrap()
+            .mana_pool
+            .colorless = 1;
+
+        let view = build_game_view(&gs);
+        let card = view
+            .p1
+            .hand
+            .iter()
+            .find(|c| c.name == "Cheap Instant")
+            .unwrap();
+        assert!(
+            card.can_cast,
+            "instant with mana in hand with priority should be castable"
+        );
+    }
+
+    #[test]
+    fn can_cast_false_for_creature_when_not_active_player() {
+        use mecha_oracle::types::{CardObject, Zone};
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        gs.active_player = mecha_oracle::types::PlayerId(1);
+        gs.priority_player = mecha_oracle::types::PlayerId(0);
+
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            mecha_oracle::types::PlayerId(0),
+            Zone::Hand,
+        );
+        gs.hands
+            .get_mut(&mecha_oracle::types::PlayerId(0))
+            .unwrap()
+            .push(id);
+        gs.add_object(obj);
+        gs.get_player_mut(mecha_oracle::types::PlayerId(0))
+            .unwrap()
+            .mana_pool
+            .green = 2;
+
+        let view = build_game_view(&gs);
+        let card = view
+            .p1
+            .hand
+            .iter()
+            .find(|c| c.name == "Grizzly Bears")
+            .unwrap();
+        assert!(
+            !card.can_cast,
+            "creature cannot be cast when player is not active"
         );
     }
 
