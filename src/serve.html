@@ -104,14 +104,31 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 .gy-card-pt   { font-size: 9px; color: #885555; text-align: right; margin-top: auto; padding-top: 2px; border-top: 1px solid #442222; }
 .gy-label { position: absolute; bottom: -14px; left: 0; right: 0; text-align: center; font-size: 9px; color: #555; text-transform: uppercase; }
 
-/* Turn tracker */
-#turn-tracker { background: #161b22; border-top: 1px solid #30363d; border-bottom: 1px solid #30363d; padding: 5px 12px; display: flex; align-items: center; gap: 4px; font-size: 11px; flex-shrink: 0; flex-wrap: wrap; }
+/* Action bar */
+#action-bar {
+  border-top: 1px solid #30363d; border-bottom: 1px solid #30363d;
+  padding: 0 12px; display: flex; align-items: center; gap: 4px;
+  font-size: 11px; flex-shrink: 0; height: 32px;
+}
+#action-bar.normal { background: #161b22; }
+#action-bar.combat { background: #161900; border-color: #404000; }
+.bar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.bar-hint { color: #444; font-size: 10px; }
+.bar-btn {
+  padding: 3px 12px; border-radius: 4px; font-size: 11px; cursor: pointer;
+  height: 22px; display: flex; align-items: center; border: 1px solid;
+}
+.bar-btn-pass { background: #1a2a1a; border-color: #4a8a4a; color: #7aaa7a; }
+.bar-btn-pass:hover { background: #243524; }
+.bar-btn-confirm { background: #262600; border-color: #6a6a00; color: #cccc44; }
+.bar-btn-confirm:hover { background: #333300; }
+.bar-btn-log { background: #1c2a3a; border: 1px solid #2a4a6a; border-radius: 3px; padding: 1px 8px; color: #7ab8e8; font-size: 10px; cursor: pointer; height: 22px; display: flex; align-items: center; }
+.bar-btn-log:hover { background: #243650; }
 .step-chip { padding: 2px 6px; border-radius: 3px; color: #555; }
 .step-chip.done { color: #555; }
 .step-chip.active { color: #ffd700; background: #2a2500; border: 1px solid #5a4a00; font-weight: bold; }
 .step-chip.upcoming { color: #444; }
 .step-sep { color: #333; }
-.active-label { margin-left: auto; font-size: 11px; color: #6a9a6a; }
 
 
 /* Game log */
@@ -252,7 +269,7 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
       <div class="zone-row"><span class="zone-label">Lands</span><div id="p2-lands" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
       <div class="zone-row"><span class="zone-label">Creatures</span><div id="p2-creatures" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
     </div>
-    <div id="turn-tracker"></div>
+    <div id="action-bar"></div>
     <div class="player-section p1" id="p1-section">
       <div class="zone-row"><span class="zone-label">Creatures</span><div id="p1-creatures" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
       <div class="zone-row"><span class="zone-label">Lands</span><div id="p1-lands" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>
@@ -438,7 +455,7 @@ function render(s) {
   document.getElementById('p1-creatures').innerHTML = s.p1.creatures.map(c => cardHTML(c)).join('');
   document.getElementById('p2-creatures').innerHTML = s.p2.creatures.map(c => cardHTML(c)).join('');
 
-  renderTurnTracker(s);
+  renderActionBar(s);
   renderStack(s.stack ?? []);
 }
 
@@ -530,17 +547,45 @@ function renderOracleText(spans) {
   }).join('<br>');
 }
 
-function renderTurnTracker(s) {
+function renderActionBar(s) {
+  const bar = document.getElementById('action-bar');
+  const isCombat = s.step === 'DeclareAttackers' || s.step === 'DeclareBlockers';
+
+  if (isCombat) {
+    renderActionBarCombat(s, bar);
+  } else {
+    renderActionBarNormal(s, bar);
+  }
+}
+
+function renderActionBarNormal(s, bar) {
+  bar.className = 'normal';
   const cur = STEP_ORDER.indexOf(s.step);
   const chips = STEP_ORDER.map((step, i) => {
     const cls = i < cur ? 'done' : i === cur ? 'active' : 'upcoming';
     return `<span class="step-chip ${cls}">${STEP_LABELS[step]}</span>`;
   }).join('<span class="step-sep">·</span>');
-  const ap = s.active_player === 0 ? 'Player 1' : 'Player 2';
-  document.getElementById('turn-tracker').innerHTML =
-    `<span style="color:#888;margin-right:4px">Turn ${s.turn}</span>${chips}` +
-    `<span class="active-label">Active: ${ap}</span>` +
-    `<button onclick="toggleLog()" style="margin-left:8px;background:#1c2a3a;border:1px solid #2a4a6a;border-radius:3px;padding:2px 8px;color:#7ab8e8;font-size:10px;cursor:pointer">Log</button>`;
+
+  const ap = s.active_player === 0 ? 'P1' : 'P2';
+  const pp = s.priority_player === 0 ? 'P1' : 'P2';
+  const passBlocked =
+    (s.step === 'DeclareAttackers' && !s.attackers_declared) ||
+    (s.step === 'DeclareBlockers'  && !s.blockers_declared);
+
+  bar.innerHTML =
+    `<span style="color:#555;margin-right:4px">Turn ${s.turn}</span>${chips}` +
+    `<div class="bar-right">` +
+      `<span class="bar-hint">${pp} priority · Space to pass</span>` +
+      `<button class="bar-btn bar-btn-pass"${passBlocked ? ' disabled style="opacity:0.35;cursor:not-allowed"' : ''}` +
+        ` onclick="sendAction({type:'advance_step'})">Pass Priority →</button>` +
+      `<button class="bar-btn-log" onclick="toggleLog()">Log</button>` +
+    `</div>`;
+}
+
+// renderActionBarCombat is added in Task 9.
+// For now, fall back to normal rendering during combat steps.
+function renderActionBarCombat(s, bar) {
+  renderActionBarNormal(s, bar);
 }
 
 function toggleLog() {
