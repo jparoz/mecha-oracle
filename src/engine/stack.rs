@@ -28,6 +28,54 @@ pub fn pass_priority(mut state: GameState, player_id: PlayerId) -> Result<GameSt
     }
 }
 
+// CR 608.2b: execute each effect step for the given controller.
+// Shared by instant/sorcery spell resolution and triggered/activated ability resolution.
+fn execute_effect_steps(
+    mut state: GameState,
+    controller: PlayerId,
+    steps: &[EffectStep],
+) -> GameState {
+    for step in steps {
+        match step {
+            EffectStep::DrawCard(n) => {
+                for _ in 0..*n {
+                    state = draw_card(state, controller);
+                }
+            }
+            EffectStep::GainLife(n) => {
+                if let Some(player) = state.get_player_mut(controller) {
+                    player.life += *n as i32;
+                }
+            }
+            EffectStep::Mill(n) => {
+                let to_mill =
+                    (*n as usize).min(state.libraries.get(&controller).map_or(0, |l| l.len()));
+                for _ in 0..to_mill {
+                    if let Some(card_id) = state
+                        .libraries
+                        .get_mut(&controller)
+                        .filter(|l| !l.is_empty())
+                        .map(|l| l.remove(0))
+                    {
+                        if let Some(gy) = state.graveyards.get_mut(&controller) {
+                            gy.push(card_id);
+                        }
+                        if let Some(obj) = state.objects.get_mut(&card_id) {
+                            obj.zone = Zone::Graveyard;
+                        }
+                    }
+                }
+            }
+            EffectStep::AddMana(_) => {
+                // Mana abilities never reach the stack (CR 405.6c).
+                unreachable!("AddMana in stack object");
+            }
+            EffectStep::Unimplemented(_) => {}
+        }
+    }
+    state
+}
+
 pub fn resolve_top(mut state: GameState) -> GameState {
     let stack_id = match state.stack.last().copied() {
         Some(id) => id,
@@ -43,21 +91,58 @@ pub fn resolve_top(mut state: GameState) -> GameState {
 
     match stack_obj.payload {
         StackPayload::Spell { card_id } => {
-            // Move card Stack → Battlefield
-            if let Some(obj) = state.objects.get_mut(&card_id) {
-                obj.zone = Zone::Battlefield;
-                obj.summoning_sick = true;
-            }
-            state.battlefield.push(card_id);
+            let controller = stack_obj.controller;
+            let is_permanent = state
+                .objects
+                .get(&card_id)
+                .map(|o| o.definition.type_line.is_permanent())
+                .unwrap_or(false);
 
-            // CR 603.3: collect ETB triggers and push onto stack (CR 405.3 APNAP order —
-            // for a single entering permanent, all triggers share the same controller
-            // so order is trivial; multi-permanent APNAP ordering is a future concern).
-            let triggers = collect_etb_triggers(&mut state, card_id);
-            for trigger in triggers {
-                let id = trigger.id;
-                state.stack.push(id);
-                state.stack_objects.insert(id, trigger);
+            if is_permanent {
+                // CR 608.3: permanent spells resolve by entering the battlefield.
+                if let Some(obj) = state.objects.get_mut(&card_id) {
+                    obj.zone = Zone::Battlefield;
+                    obj.summoning_sick = true;
+                }
+                state.battlefield.push(card_id);
+
+                // CR 603.3: collect ETB triggers and push onto stack (CR 405.3 APNAP order —
+                // for a single entering permanent, all triggers share the same controller
+                // so order is trivial; multi-permanent APNAP ordering is a future concern).
+                let triggers = collect_etb_triggers(&mut state, card_id);
+                for trigger in triggers {
+                    let id = trigger.id;
+                    state.stack.push(id);
+                    state.stack_objects.insert(id, trigger);
+                }
+            } else {
+                // CR 608.2b: instant/sorcery — execute effects, then move to graveyard.
+                let steps: Vec<EffectStep> = state
+                    .objects
+                    .get(&card_id)
+                    .map(|obj| {
+                        obj.definition
+                            .abilities
+                            .iter()
+                            .filter_map(|span| match span {
+                                crate::types::OracleSpan::Parsed(
+                                    crate::types::Ability::SpellEffect(steps),
+                                ) => Some(steps.clone()),
+                                _ => None,
+                            })
+                            .flatten()
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                state = execute_effect_steps(state, controller, &steps);
+
+                if let Some(obj) = state.objects.get_mut(&card_id) {
+                    obj.zone = Zone::Graveyard;
+                }
+                if let Some(gy) = state.graveyards.get_mut(&controller) {
+                    gy.push(card_id);
+                }
             }
 
             // CR 117.3b: after triggered abilities are put on the stack, active player
@@ -70,44 +155,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
         StackPayload::TriggeredAbility { effect, .. }
         | StackPayload::ActivatedAbility { effect, .. } => {
             let controller = stack_obj.controller;
-            for step in &effect {
-                match step {
-                    EffectStep::DrawCard(n) => {
-                        for _ in 0..*n {
-                            state = draw_card(state, controller);
-                        }
-                    }
-                    EffectStep::GainLife(n) => {
-                        if let Some(player) = state.get_player_mut(controller) {
-                            player.life += *n as i32;
-                        }
-                    }
-                    EffectStep::Mill(n) => {
-                        let to_mill = (*n as usize)
-                            .min(state.libraries.get(&controller).map_or(0, |l| l.len()));
-                        for _ in 0..to_mill {
-                            if let Some(card_id) = state
-                                .libraries
-                                .get_mut(&controller)
-                                .filter(|l| !l.is_empty())
-                                .map(|l| l.remove(0))
-                            {
-                                if let Some(gy) = state.graveyards.get_mut(&controller) {
-                                    gy.push(card_id);
-                                }
-                                if let Some(obj) = state.objects.get_mut(&card_id) {
-                                    obj.zone = Zone::Graveyard;
-                                }
-                            }
-                        }
-                    }
-                    EffectStep::AddMana(_) => {
-                        // Mana abilities never reach the stack (CR 405.6c).
-                        unreachable!("AddMana in stack object");
-                    }
-                    EffectStep::Unimplemented(_) => {}
-                }
-            }
+            state = execute_effect_steps(state, controller, &effect);
             state.consecutive_passes = 0;
             state.priority_player = state.active_player;
             check_and_apply_sbas(state)
@@ -119,9 +167,11 @@ pub fn resolve_top(mut state: GameState) -> GameState {
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
+    use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::effect::EffectStep;
+    use crate::types::mana::{ManaCost, ManaPip};
     use crate::types::stack::{StackObject, StackPayload};
-    use crate::types::{CardObject, ObjectId, Player, Step};
+    use crate::types::{Ability, CardObject, ObjectId, OracleSpan, Player, Step};
 
     fn make_state() -> GameState {
         let mut gs = GameState::new(vec![
@@ -161,7 +211,6 @@ mod tests {
     }
 
     fn put_in_library(state: &mut GameState, owner: PlayerId) -> ObjectId {
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
         let def = CardDefinition {
             name: "Dummy".into(),
             mana_cost: None,
@@ -348,12 +397,164 @@ mod tests {
         assert_eq!(gs2.consecutive_passes, 0);
     }
 
+    fn make_instant_obj(
+        state: &mut GameState,
+        owner: PlayerId,
+        steps: Vec<EffectStep>,
+    ) -> ObjectId {
+        let def = CardDefinition {
+            name: "Test Instant".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Blue],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(steps))],
+            power: None,
+            toughness: None,
+        };
+        let id = state.alloc_id();
+        let obj = CardObject::new(id, def, owner, Zone::Stack);
+        state.add_object(obj);
+        id
+    }
+
+    fn make_sorcery_obj(
+        state: &mut GameState,
+        owner: PlayerId,
+        steps: Vec<EffectStep>,
+    ) -> ObjectId {
+        let def = CardDefinition {
+            name: "Test Sorcery".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Blue],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Sorcery],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(steps))],
+            power: None,
+            toughness: None,
+        };
+        let id = state.alloc_id();
+        let obj = CardObject::new(id, def, owner, Zone::Stack);
+        state.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn instant_spell_resolves_to_graveyard() {
+        let mut gs = make_state();
+        let id = make_instant_obj(&mut gs, PlayerId(0), vec![]);
+        push_spell(&mut gs, id);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.objects[&id].zone, Zone::Graveyard);
+        assert!(gs.graveyards[&PlayerId(0)].contains(&id));
+        assert!(!gs.battlefield.contains(&id));
+        assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn instant_spell_draw_effect_executes_before_graveyard() {
+        let mut gs = make_state();
+        put_in_library(&mut gs, PlayerId(0));
+        let id = make_instant_obj(&mut gs, PlayerId(0), vec![EffectStep::DrawCard(1)]);
+        push_spell(&mut gs, id);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.objects[&id].zone, Zone::Graveyard);
+        assert_eq!(gs.hands[&PlayerId(0)].len(), 1);
+    }
+
+    #[test]
+    fn instant_draw_three_executes_fully() {
+        let mut gs = make_state();
+        put_in_library(&mut gs, PlayerId(0));
+        put_in_library(&mut gs, PlayerId(0));
+        put_in_library(&mut gs, PlayerId(0));
+        let id = make_instant_obj(&mut gs, PlayerId(0), vec![EffectStep::DrawCard(3)]);
+        push_spell(&mut gs, id);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.hands[&PlayerId(0)].len(), 3);
+        assert_eq!(gs.objects[&id].zone, Zone::Graveyard);
+    }
+
+    #[test]
+    fn unimplemented_steps_are_skipped_silently() {
+        let mut gs = make_state();
+        put_in_library(&mut gs, PlayerId(0));
+        let id = make_instant_obj(
+            &mut gs,
+            PlayerId(0),
+            vec![
+                EffectStep::DrawCard(1),
+                EffectStep::Unimplemented("scry 2".into()),
+            ],
+        );
+        push_spell(&mut gs, id);
+        let before_life = gs.get_player(PlayerId(0)).unwrap().life;
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.hands[&PlayerId(0)].len(), 1); // drew 1
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, before_life); // no life gain
+        assert_eq!(gs.objects[&id].zone, Zone::Graveyard);
+    }
+
+    #[test]
+    fn sorcery_with_no_parseable_effects_just_goes_to_graveyard() {
+        let mut gs = make_state();
+        let before_hand = gs.hands[&PlayerId(0)].len();
+        let id = make_sorcery_obj(
+            &mut gs,
+            PlayerId(0),
+            vec![EffectStep::Unimplemented("Counter target spell".into())],
+        );
+        push_spell(&mut gs, id);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.objects[&id].zone, Zone::Graveyard);
+        assert_eq!(gs.hands[&PlayerId(0)].len(), before_hand); // nothing happened
+    }
+
+    #[test]
+    fn creature_spell_still_resolves_to_battlefield() {
+        // Regression: permanents must still go to battlefield, not graveyard
+        let db = test_db();
+        let mut gs = make_state();
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Stack,
+        );
+        gs.add_object(obj);
+        push_spell(&mut gs, id);
+
+        let gs = resolve_top(gs);
+
+        assert!(gs.battlefield.contains(&id));
+        assert_eq!(gs.objects[&id].zone, Zone::Battlefield);
+        assert!(!gs.graveyards[&PlayerId(0)].contains(&id));
+    }
+
     #[test]
     fn resolve_top_spell_collects_etb_triggers_onto_stack() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::ability::{TriggerEvent, TriggeredAbility};
 
         let mut gs = make_state();
         put_in_library(&mut gs, PlayerId(0));
