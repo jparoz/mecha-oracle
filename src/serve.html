@@ -816,7 +816,7 @@ function getHandActions(card) {
 }
 
 function handleCardClick(cardId, pid, event) {
-  if (!currentState) return;
+  if (!currentState || pid < 0) return;
   closePopup();
 
   const s = currentState;
