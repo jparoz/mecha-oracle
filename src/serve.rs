@@ -681,6 +681,9 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             declare_blockers(state, defender, &pairs).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::AdvanceStep => {
+            if state.is_game_over() {
+                return Err("game is over".to_string());
+            }
             if state.step() == Step::DeclareAttackers && !state.combat.attackers_declared {
                 return Err("must declare attackers before passing priority".to_string());
             }
@@ -1055,6 +1058,18 @@ mod tests {
         assert!(!gs.combat.blockers_declared);
 
         // AdvanceStep must be rejected before blockers are declared
+        assert!(dispatch_action(gs, ActionRequest::AdvanceStep).is_err());
+    }
+
+    #[test]
+    fn advance_step_rejected_when_game_is_over() {
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        gs.game_over = true;
         assert!(dispatch_action(gs, ActionRequest::AdvanceStep).is_err());
     }
 

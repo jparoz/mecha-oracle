@@ -6,9 +6,10 @@
 # UI issues
 
 # Gameplay issues
-- I can still use spacebar to advance the steps after the game has finished; this should be forbidden.
-- Players should discard to hand size at the cleanup step (see 402.2)
-- Cards in hand are marked as summoning sick (maybe just a UI issue?)
+- Players should discard to hand size at the cleanup step (see CR 402.2)
+
+# Architecture / refactoring
+- `CardObject` mixes permanent-specific state (`summoning_sick`, `tapped`, `damage_marked`, `current_power`, `current_toughness`) with general card state. In Magic, these fields only apply to permanents on the battlefield (CR 110.1). Consider splitting into a `CardObject` (identity + definition, valid in any zone) and a `Permanent` wrapper that adds battlefield-specific state. Currently `summoning_sick` defaults to `true` for all new `CardObject`s regardless of zone, which causes spurious display artefacts (e.g. cards in hand showing "Summoning sickness" in the tooltip).
 
 
 
