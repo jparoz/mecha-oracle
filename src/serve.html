@@ -828,7 +828,7 @@ function renderStack(stack) {
 
   // Index existing DOM cards by stack id
   const existing = {};
-  container.querySelectorAll('.stack-card').forEach(el => {
+  container.querySelectorAll('.stack-card:not([data-leaving])').forEach(el => {
     existing[el.dataset.stackId] = el;
   });
 
@@ -838,9 +838,10 @@ function renderStack(stack) {
     if (!incomingIds.has(id)) {
       const savedX = el._stackX || 0;
       const savedY = el._stackY || 0;
+      el.dataset.leaving = '1';
       el.style.opacity = '0';
       el.style.transform = `translate(calc(-50% + ${savedX}px), calc(-50% + ${savedY - 12}px))`;
-      setTimeout(() => el.remove(), 220);
+      setTimeout(() => el.remove(), 260);
     }
   }
 
@@ -873,10 +874,12 @@ function renderStack(stack) {
       el._stackY = offsetY;
       container.appendChild(el);
 
-      requestAnimationFrame(() => {
-        el.style.opacity   = '1';
-        el.style.transform = `translate(calc(-50% + ${staggerX}px), calc(-50% + ${offsetY}px))`;
-      });
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          el.style.opacity   = '1';
+          el.style.transform = `translate(calc(-50% + ${staggerX}px), calc(-50% + ${offsetY}px))`;
+        })
+      );
     } else {
       // Existing card — slide to new position
       el._stackX = staggerX;
