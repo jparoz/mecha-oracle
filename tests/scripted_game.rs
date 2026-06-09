@@ -1,6 +1,6 @@
 use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::{
-    casting::{cast_creature, play_land},
+    casting::{cast_spell, play_land},
     combat::{deal_combat_damage, declare_attackers, declare_blockers},
     mana::tap_land_for_mana,
     turn::{advance_step, apply_step_start, draw_card},
@@ -175,7 +175,7 @@ fn scripted_game_runs_to_completion() {
         let gs = tap_all_lands_for_player(gs, PlayerId(0));
         let available = gs.get_player(PlayerId(0)).unwrap().mana_pool.total();
         if available >= cost.mana_value() {
-            cast_creature(gs, PlayerId(0), bear_id).unwrap()
+            cast_spell(gs, PlayerId(0), bear_id).unwrap()
         } else {
             gs
         }

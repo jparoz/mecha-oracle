@@ -6,7 +6,7 @@ use axum::{
 };
 use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
-use mecha_oracle::engine::casting::{cast_creature, play_land};
+use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::stack::pass_priority;
@@ -554,7 +554,7 @@ enum ActionRequest {
     PlayLand {
         object_id: u64,
     },
-    CastCreature {
+    CastSpell {
         object_id: u64,
     },
     DeclareAttackers {
@@ -608,9 +608,9 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             let player = state.priority_player;
             play_land(state, player, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
-        ActionRequest::CastCreature { object_id } => {
+        ActionRequest::CastSpell { object_id } => {
             let player = state.priority_player;
-            cast_creature(state, player, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
+            cast_spell(state, player, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::DeclareAttackers { attacker_ids } => {
             let ids: Vec<ObjectId> = attacker_ids.iter().map(|&id| ObjectId(id)).collect();
