@@ -2,6 +2,7 @@ pub mod activated;
 pub mod casting;
 pub mod combat;
 pub mod mana;
+pub mod stack;
 pub mod state_based_actions;
 pub mod triggered;
 pub mod turn;
@@ -25,4 +26,5 @@ pub enum EngineError {
     NoManaCheckpoint,
     AbilityIndexOutOfRange,
     InvalidPaymentPlan,
+    NotYourPriority,
 }
