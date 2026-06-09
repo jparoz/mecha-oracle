@@ -396,7 +396,11 @@ function isCardActionable(card, s, pid, zone) {
   // Battlefield cards (including lands)
   if (card.can_attack) return true;
   if (card.can_block) return true;
-  if (card.activated_abilities && card.activated_abilities.some(a => a.can_activate)) return true;
+  if (card.activated_abilities && card.activated_abilities.length > 0)
+    return card.activated_abilities.some(a => a.can_activate);
+  // Basic lands have no parsed activated_abilities; their intrinsic mana ability
+  // is available whenever the land is untapped (tap_land action path).
+  if (zone === 'bf' && card.type_line.includes('Land')) return !card.tapped;
 
   return false;
 }
@@ -764,8 +768,8 @@ function renderActionBarCombat(s, bar) {
     `<span style="color:#888">${label}</span>` +
     `<span style="color:#333;margin:0 4px">·</span>` +
     `<span style="color:#b8b840">${count} selected</span>` +
-    `<span style="color:#555;font-size:10px;margin-left:4px">· click creatures to toggle · Enter to confirm</span>` +
     `<div class="bar-right">` +
+      `<span class="bar-hint">click to toggle · Enter to confirm</span>` +
       `<button class="bar-btn bar-btn-confirm" onclick="${confirmFn}">Confirm ${noun} ✓</button>` +
       `<button class="bar-btn-log" onclick="toggleLog()">Log</button>` +
     `</div>`;
