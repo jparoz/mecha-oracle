@@ -6,6 +6,7 @@ pub mod game_state;
 pub mod ids;
 pub mod mana;
 pub mod player;
+pub mod stack;
 pub mod zone;
 
 pub use ability::{
@@ -19,4 +20,5 @@ pub use game_state::{CombatState, GameState, ManaCheckpoint, Phase, Step};
 pub use ids::{ObjectId, PlayerId};
 pub use mana::{ManaColor, ManaCost, ManaPip, ManaPool, PaymentPlan};
 pub use player::Player;
+pub use stack::{StackId, StackObject, StackPayload};
 pub use zone::Zone;
