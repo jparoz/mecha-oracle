@@ -732,6 +732,22 @@ function toggleLog() {
 
 // ── Card click dispatch ───────────────────────────────────────────────────────
 
+function getBattlefieldLandActions(card) {
+  // If the land has multiple parsed activated abilities, offer each as a popup option
+  if (card.activated_abilities && card.activated_abilities.length > 1) {
+    return card.activated_abilities.map(ab => ({
+      label: ab.label,
+      onClick: () => sendAction({ type: 'activate_ability', object_id: card.id, ability_index: ab.index }),
+    }));
+  }
+  if (card.activated_abilities && card.activated_abilities.length === 1) {
+    const ab = card.activated_abilities[0];
+    return [{ label: ab.label, onClick: () => sendAction({ type: 'activate_ability', object_id: card.id, ability_index: ab.index }) }];
+  }
+  // Fallback: intrinsic mana ability — use tap_land
+  return [{ label: 'Tap for mana', onClick: () => sendAction({ type: 'tap_land', object_id: card.id }) }];
+}
+
 function getHandActions(card) {
   if (card.type_line.includes('Land')) {
     return [{ label: 'Play land', onClick: () => sendAction({ type: 'play_land', object_id: card.id }) }];
@@ -755,7 +771,16 @@ function handleCardClick(cardId, pid, event) {
     return;
   }
 
-  // Battlefield dispatch — added in Tasks 7 and 8
+  // Battlefield lands
+  const land = playerData.lands.find(c => c.id === cardId);
+  if (land) {
+    const actions = getBattlefieldLandActions(land);
+    if (actions.length === 1) { actions[0].onClick(); return; }
+    openPopup(actions, event.currentTarget, 'Tap for mana');
+    return;
+  }
+
+  // Battlefield dispatch — added in Task 8
 }
 
 // ── Attacker / Blocker selection ──────────────────────────────────────────────
