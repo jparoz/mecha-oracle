@@ -699,7 +699,9 @@ function renderOracleText(spans) {
 
 function renderActionBar(s) {
   const bar = document.getElementById('action-bar');
-  const isCombat = s.step === 'DeclareAttackers' || s.step === 'DeclareBlockers';
+  const isCombat =
+    (s.step === 'DeclareAttackers' && !s.attackers_declared) ||
+    (s.step === 'DeclareBlockers'  && !s.blockers_declared);
 
   if (isCombat) {
     renderActionBarCombat(s, bar);
