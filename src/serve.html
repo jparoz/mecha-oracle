@@ -634,6 +634,7 @@ function cardHTML(card, s, pid) {
   }
 
   const wrap = card.tapped ? 'card-wrap tapped-wrap' : 'card-wrap';
+  const clickAttr = `onclick="handleCardClick(${card.id}, ${pid !== undefined ? pid : -1}, event)"`;
 
   const tags = [];
   if (card.tapped)         tags.push('<span class="tag tag-tapped">Tapped</span>');
@@ -657,7 +658,7 @@ function cardHTML(card, s, pid) {
     ? `<span class="card-pt${card.damage_marked > 0 ? ' damaged' : ''}">${card.power}/${card.toughness}</span>`
     : '';
 
-  return `<div class="${wrap}"><div class="${classes}" data-id="${card.id}">
+  return `<div class="${wrap}"><div class="${classes}" data-id="${card.id}" ${clickAttr}>
     <span class="card-name">${esc(card.name)}</span>
     ${card.mana_cost ? `<span class="card-cost">${esc(card.mana_cost)}</span>` : ''}
     <span class="card-type">${esc(card.type_line)}</span>
@@ -728,6 +729,34 @@ function toggleLog() {
   document.getElementById('log-drawer').classList.toggle('open');
 }
 
+
+// ── Card click dispatch ───────────────────────────────────────────────────────
+
+function getHandActions(card) {
+  if (card.type_line.includes('Land')) {
+    return [{ label: 'Play land', onClick: () => sendAction({ type: 'play_land', object_id: card.id }) }];
+  }
+  return [{ label: `Cast ${card.name}`, onClick: () => sendAction({ type: 'cast_spell', object_id: card.id }) }];
+}
+
+function handleCardClick(cardId, pid, event) {
+  if (!currentState) return;
+  closePopup();
+
+  const s = currentState;
+  const playerData = pid === 0 ? s.p1 : s.p2;
+
+  // Check hand
+  const handCard = playerData.hand.find(c => c.id === cardId);
+  if (handCard) {
+    const actions = getHandActions(handCard);
+    if (actions.length === 1) { actions[0].onClick(); return; }
+    openPopup(actions, event.currentTarget);
+    return;
+  }
+
+  // Battlefield dispatch — added in Tasks 7 and 8
+}
 
 // ── Attacker / Blocker selection ──────────────────────────────────────────────
 
