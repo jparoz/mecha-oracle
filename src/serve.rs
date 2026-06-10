@@ -320,6 +320,12 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
                 }
             }
             EffectStep::GainLife(n) => format!("Gain {n} life"),
+            EffectStep::BoostPermanentPT { target_id, delta } => {
+                format!(
+                    "Boost {:?} by {}/{}",
+                    target_id, delta.power, delta.toughness
+                )
+            }
             EffectStep::Unimplemented(s) => s.clone(),
         })
         .collect();
@@ -335,6 +341,12 @@ fn format_spell_effect(effect: &[EffectStep]) -> String {
             EffectStep::GainLife(n) => format!("Gain {n} life"),
             EffectStep::Mill(n) => format!("Mill {n}"),
             EffectStep::AddMana(pool) => format!("Add {}", format_mana_pool(pool)),
+            EffectStep::BoostPermanentPT { target_id, delta } => {
+                format!(
+                    "Boost {:?} by {}/{}",
+                    target_id, delta.power, delta.toughness
+                )
+            }
             EffectStep::Unimplemented(s) => s.clone(),
         })
         .collect::<Vec<_>>()
@@ -355,6 +367,12 @@ fn format_triggered_ability(t: &TriggeredAbility) -> String {
             EffectStep::GainLife(n) => format!("you gain {n} life"),
             EffectStep::AddMana(pool) => format!("add {}", format_mana_pool(pool)),
             EffectStep::Mill(n) => format!("mill {n}"),
+            EffectStep::BoostPermanentPT { target_id, delta } => {
+                format!(
+                    "boost {:?} by {}/{}",
+                    target_id, delta.power, delta.toughness
+                )
+            }
             EffectStep::Unimplemented(s) => s.to_string(),
         })
         .collect();

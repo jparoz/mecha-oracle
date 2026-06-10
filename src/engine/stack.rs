@@ -70,6 +70,12 @@ fn execute_effect_steps(
                 // Mana abilities never reach the stack (CR 405.6c).
                 unreachable!("AddMana in stack object");
             }
+            EffectStep::BoostPermanentPT { target_id, delta } => {
+                if let Some(perm) = state.battlefield.get_mut(target_id) {
+                    perm.pt_boost_until_eot.power += delta.power;
+                    perm.pt_boost_until_eot.toughness += delta.toughness;
+                }
+            }
             EffectStep::Unimplemented(_) => {}
         }
     }
@@ -598,6 +604,89 @@ mod tests {
 
         // Trigger resolved
         assert_eq!(gs.hands[&PlayerId(0)].len(), 1);
+        assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn boost_permanent_pt_effect_applies_delta() {
+        use crate::types::PTDelta;
+
+        let mut gs = make_state();
+        // Put a 2/2 creature on the battlefield.
+        let def = CardDefinition {
+            name: "Target".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
+        gs.add_object(obj);
+
+        // Push a BoostPermanentPT trigger onto the stack.
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::TriggeredAbility {
+                source_id: id,
+                effect: vec![EffectStep::BoostPermanentPT {
+                    target_id: id,
+                    delta: PTDelta {
+                        power: 1,
+                        toughness: 1,
+                    },
+                }],
+                label: "test boost".into(),
+            },
+            controller: PlayerId(0),
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.battlefield[&id].effective_power(), Some(3));
+        assert_eq!(gs.battlefield[&id].effective_toughness(), Some(3));
+        assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn boost_permanent_pt_noop_if_not_on_battlefield() {
+        use crate::types::PTDelta;
+
+        let mut gs = make_state();
+        let nonexistent_id = ObjectId(999);
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::TriggeredAbility {
+                source_id: nonexistent_id,
+                effect: vec![EffectStep::BoostPermanentPT {
+                    target_id: nonexistent_id,
+                    delta: PTDelta {
+                        power: 5,
+                        toughness: 5,
+                    },
+                }],
+                label: "noop boost".into(),
+            },
+            controller: PlayerId(0),
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        // Should not panic.
+        let gs = resolve_top(gs);
         assert!(gs.stack.is_empty());
     }
 }

@@ -1,5 +1,6 @@
 use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
+use super::permanent::PTDelta;
 
 /// Retained for the future targeting system (stack project).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,6 +15,7 @@ pub enum EffectStep {
     Mill(u32),
     DrawCard(u32),
     GainLife(u32),
+    BoostPermanentPT { target_id: ObjectId, delta: PTDelta },
     Unimplemented(String), // parsed but not yet executable; skipped at resolution
 }
 
