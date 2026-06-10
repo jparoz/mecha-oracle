@@ -1,4 +1,5 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
+use crate::engine::triggered::collect_attack_triggers;
 use crate::types::ability::StaticAbility;
 use crate::types::{GameState, ObjectId, PermanentState, PlayerId, Step};
 use std::collections::HashMap;
@@ -47,6 +48,18 @@ pub fn declare_attackers(
     state.combat.attackers = attacker_ids.to_vec();
     state.combat.blocking_map = attacker_ids.iter().map(|&id| (id, vec![])).collect();
     state.combat.attackers_declared = true;
+
+    // Collect attack-triggered abilities (Exalted, Melee) and push onto stack.
+    let triggers = collect_attack_triggers(&mut state);
+    for t in triggers {
+        let id = t.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, t);
+    }
+    if !state.stack.is_empty() {
+        state.consecutive_passes = 0;
+        state.priority_player = state.active_player;
+    }
 
     Ok(state)
 }
@@ -440,6 +453,48 @@ mod tests {
         state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
+    }
+
+    #[test]
+    fn declare_attackers_exalted_puts_trigger_on_stack() {
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::{CardObject, OracleSpan, PermanentState};
+
+        let mut gs = make_combat_state();
+        let plain_def = CardDefinition {
+            name: "Attacker".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let attacker_id = add_creature(&mut gs, PlayerId(0), plain_def);
+        let exalted_def = CardDefinition {
+            name: "Exalted Elf".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        add_creature(&mut gs, PlayerId(0), exalted_def);
+
+        let gs = declare_attackers(gs, PlayerId(0), &[attacker_id]).unwrap();
+
+        assert_eq!(gs.stack.len(), 1); // one Exalted trigger
+        assert_eq!(gs.consecutive_passes, 0);
     }
 
     #[test]

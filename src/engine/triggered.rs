@@ -108,6 +108,87 @@ pub fn collect_cast_triggers(
         .collect()
 }
 
+/// Collect triggered abilities that fire when creatures are declared as attackers.
+/// Handles: Exalted (CR 702.83b), Melee (CR 702.121b).
+pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
+    let attackers = state.combat.attackers.clone();
+    let attacking_player = state.active_player;
+    let mut result = Vec::new();
+
+    // Exalted (CR 702.83b): fires once per Exalted permanent when exactly one creature attacks.
+    if attackers.len() == 1 {
+        let attacker_id = attackers[0];
+        let exalted_sources: Vec<ObjectId> = state
+            .battlefield
+            .keys()
+            .filter(|&&id| {
+                state
+                    .objects
+                    .get(&id)
+                    .map(|o| o.controller == attacking_player)
+                    .unwrap_or(false)
+                    && state
+                        .battlefield
+                        .get(&id)
+                        .map(|p| p.has_keyword(StaticAbility::Exalted))
+                        .unwrap_or(false)
+            })
+            .copied()
+            .collect();
+        for source_id in exalted_sources {
+            let sid = state.alloc_stack_id();
+            result.push(StackObject {
+                id: sid,
+                payload: StackPayload::TriggeredAbility {
+                    source_id,
+                    effect: vec![EffectStep::BoostPermanentPT {
+                        target_id: attacker_id,
+                        delta: PTDelta {
+                            power: 1,
+                            toughness: 1,
+                        },
+                    }],
+                    label: "Exalted".into(),
+                },
+                controller: attacking_player,
+            });
+        }
+    }
+
+    // Melee (CR 702.121b): +1/+1 per opponent attacked; 2-player = always 1 opponent.
+    let melee_attackers: Vec<ObjectId> = attackers
+        .iter()
+        .filter(|&&id| {
+            state
+                .battlefield
+                .get(&id)
+                .map(|p| p.has_keyword(StaticAbility::Melee))
+                .unwrap_or(false)
+        })
+        .copied()
+        .collect();
+    for attacker_id in melee_attackers {
+        let sid = state.alloc_stack_id();
+        result.push(StackObject {
+            id: sid,
+            payload: StackPayload::TriggeredAbility {
+                source_id: attacker_id,
+                effect: vec![EffectStep::BoostPermanentPT {
+                    target_id: attacker_id,
+                    delta: PTDelta {
+                        power: 1,
+                        toughness: 1,
+                    },
+                }],
+                label: "Melee".into(),
+            },
+            controller: attacking_player,
+        });
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,6 +463,182 @@ mod tests {
         let triggers =
             collect_cast_triggers(&mut gs, PlayerId(0), spell_id, &CastFilter::noncreature());
         assert!(triggers.is_empty());
+    }
+
+    #[test]
+    fn collect_attack_triggers_exalted_single_attacker() {
+        use crate::engine::triggered::collect_attack_triggers;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
+
+        let mut gs = two_player_state();
+        // A 2/2 attacker (no Exalted).
+        let attacker_def = CardDefinition {
+            name: "Attacker".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let attacker_id = place_on_battlefield(&mut gs, attacker_def, PlayerId(0));
+        // An Exalted creature also controlled by P0.
+        let exalted_def = CardDefinition {
+            name: "Exalted Permanent".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        let _exalted_id = place_on_battlefield(&mut gs, exalted_def, PlayerId(0));
+        gs.combat.attackers = vec![attacker_id];
+
+        let triggers = collect_attack_triggers(&mut gs);
+
+        assert_eq!(triggers.len(), 1);
+        use crate::types::stack::StackPayload;
+        let StackPayload::TriggeredAbility { effect, .. } = &triggers[0].payload else {
+            panic!("expected TriggeredAbility");
+        };
+        use crate::types::{PTDelta, effect::EffectStep};
+        assert_eq!(
+            *effect,
+            vec![EffectStep::BoostPermanentPT {
+                target_id: attacker_id,
+                delta: PTDelta {
+                    power: 1,
+                    toughness: 1
+                },
+            }]
+        );
+    }
+
+    #[test]
+    fn collect_attack_triggers_exalted_multiple_attackers_no_trigger() {
+        use crate::engine::triggered::collect_attack_triggers;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
+
+        let mut gs = two_player_state();
+        let make_def = |name: &str| CardDefinition {
+            name: name.into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        let a = place_on_battlefield(&mut gs, make_def("A"), PlayerId(0));
+        let b = place_on_battlefield(&mut gs, make_def("B"), PlayerId(0));
+        gs.combat.attackers = vec![a, b]; // two attackers — not alone
+
+        let triggers = collect_attack_triggers(&mut gs);
+        assert!(triggers.is_empty());
+    }
+
+    #[test]
+    fn collect_attack_triggers_two_exalted_permanents_give_two_triggers() {
+        use crate::engine::triggered::collect_attack_triggers;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
+
+        let mut gs = two_player_state();
+        let plain_def = CardDefinition {
+            name: "Attacker".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let attacker_id = place_on_battlefield(&mut gs, plain_def, PlayerId(0));
+        let exalted_def = CardDefinition {
+            name: "Exalted".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        place_on_battlefield(&mut gs, exalted_def.clone(), PlayerId(0));
+        place_on_battlefield(&mut gs, exalted_def, PlayerId(0));
+        gs.combat.attackers = vec![attacker_id];
+
+        let triggers = collect_attack_triggers(&mut gs);
+        assert_eq!(triggers.len(), 2); // one per Exalted permanent
+    }
+
+    #[test]
+    fn collect_attack_triggers_melee_in_two_player_gives_one_boost() {
+        use crate::engine::triggered::collect_attack_triggers;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
+
+        let mut gs = two_player_state();
+        let melee_def = CardDefinition {
+            name: "Melee Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Melee))],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let attacker_id = place_on_battlefield(&mut gs, melee_def, PlayerId(0));
+        gs.combat.attackers = vec![attacker_id];
+
+        let triggers = collect_attack_triggers(&mut gs);
+
+        assert_eq!(triggers.len(), 1);
+        use crate::types::stack::StackPayload;
+        use crate::types::{PTDelta, effect::EffectStep};
+        let StackPayload::TriggeredAbility { effect, .. } = &triggers[0].payload else {
+            panic!();
+        };
+        assert_eq!(
+            *effect,
+            vec![EffectStep::BoostPermanentPT {
+                target_id: attacker_id,
+                delta: PTDelta {
+                    power: 1,
+                    toughness: 1
+                },
+            }]
+        );
     }
 
     #[test]
