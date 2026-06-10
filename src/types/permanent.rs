@@ -1,6 +1,9 @@
 use super::ability::{Ability, OracleSpan, StaticAbility};
 use super::card::CardDefinition;
 
+/// Temporary power/toughness modification accumulated from until-end-of-turn effects
+/// (e.g. Exalted, Prowess). Applied in `effective_power`/`effective_toughness` and
+/// cleared to zero in `cleanup_step` (CR 514.2).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PTDelta {
     pub power: i32,
@@ -56,11 +59,13 @@ impl PermanentState {
     }
 
     pub fn effective_power(&self) -> Option<i32> {
+        // MTG P/T values are small integers; plain addition cannot overflow i32 in practice.
         self.current_power
             .map(|p| p + self.pt_boost_until_eot.power)
     }
 
     pub fn effective_toughness(&self) -> Option<i32> {
+        // MTG P/T values are small integers; plain addition cannot overflow i32 in practice.
         self.current_toughness
             .map(|t| t + self.pt_boost_until_eot.toughness)
     }
