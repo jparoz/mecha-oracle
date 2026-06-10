@@ -21,21 +21,32 @@ All six keywords share a common dependency: **until-end-of-turn P/T modification
 
 ## 1. Until-EOT P/T Boost Infrastructure
 
+### `types/permanent.rs` — new `PTDelta` struct
+
+Add a named struct to replace raw tuples throughout:
+```rust
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PTDelta {
+    pub power: i32,
+    pub toughness: i32,
+}
+```
+
 ### `types/permanent.rs` — `PermanentState`
 
 Add field:
 ```rust
-pub pt_boost_until_eot: (i32, i32),  // (power_delta, toughness_delta), cleared at cleanup
+pub pt_boost_until_eot: PTDelta,  // cleared at cleanup step
 ```
-Initialize to `(0, 0)` in `PermanentState::new`.
+Initialize to `PTDelta::default()` (i.e. `{power: 0, toughness: 0}`) in `PermanentState::new`.
 
 Update accessors to apply the boost:
 ```rust
 pub fn effective_power(&self) -> Option<i32> {
-    self.current_power.map(|p| p + self.pt_boost_until_eot.0)
+    self.current_power.map(|p| p + self.pt_boost_until_eot.power)
 }
 pub fn effective_toughness(&self) -> Option<i32> {
-    self.current_toughness.map(|t| t + self.pt_boost_until_eot.1)
+    self.current_toughness.map(|t| t + self.pt_boost_until_eot.toughness)
 }
 ```
 
@@ -56,7 +67,7 @@ pub fn bushido_n(&self) -> Option<u32> {
 
 After clearing damage, also clear EOT boosts for all permanents:
 ```rust
-perm.pt_boost_until_eot = (0, 0);
+perm.pt_boost_until_eot = PTDelta::default();
 ```
 
 ---
@@ -66,17 +77,19 @@ perm.pt_boost_until_eot = (0, 0);
 ### `types/effect.rs`
 
 ```rust
-BoostPermanentPT { target_id: ObjectId, power_delta: i32, toughness_delta: i32 },
+BoostPermanentPT { target_id: ObjectId, delta: PTDelta },
 ```
+
+`PTDelta` is imported from `types/permanent.rs` (or moved to `types/mod.rs` for shared use).
 
 ### `engine/stack.rs` — `execute_effect_steps`
 
 Add match arm:
 ```rust
-EffectStep::BoostPermanentPT { target_id, power_delta, toughness_delta } => {
+EffectStep::BoostPermanentPT { target_id, delta } => {
     if let Some(perm) = state.battlefield.get_mut(target_id) {
-        perm.pt_boost_until_eot.0 += power_delta;
-        perm.pt_boost_until_eot.1 += toughness_delta;
+        perm.pt_boost_until_eot.power += delta.power;
+        perm.pt_boost_until_eot.toughness += delta.toughness;
     }
 }
 ```
@@ -122,19 +135,19 @@ Note: `StaticAbility` must derive `PartialEq`. `BushidoN(u32)` compares equal on
 
 Called from `declare_attackers` after `state.combat.attackers` is set.
 
-**Exalted (CR 702.83b):** If exactly one attacker, iterate all battlefield permanents controlled by the attacking player. For each one with `StaticAbility::Exalted`, generate a `TriggeredAbility` stack object: `BoostPermanentPT { target_id: attacker_id, power_delta: 1, toughness_delta: 1 }`.
+**Exalted (CR 702.83b):** If exactly one attacker, iterate all battlefield permanents controlled by the attacking player. For each one with `StaticAbility::Exalted`, generate a `TriggeredAbility` stack object: `BoostPermanentPT { target_id: attacker_id, delta: PTDelta { power: 1, toughness: 1 } }`.
 
-**Melee (CR 702.121b):** For each attacker with `StaticAbility::Melee`, generate one trigger per opponent attacked. In 2-player, this is always 1 opponent → `BoostPermanentPT { target_id: attacker_id, power_delta: 1, toughness_delta: 1 }`.
+**Melee (CR 702.121b):** For each attacker with `StaticAbility::Melee`, generate one trigger per opponent attacked. In 2-player, this is always 1 opponent → `BoostPermanentPT { target_id: attacker_id, delta: PTDelta { power: 1, toughness: 1 } }`.
 
 #### `collect_block_triggers`
 
 Called from `declare_blockers` after `state.combat.blocking_map` is set.
 
-**Flanking (CR 702.25b):** For each attacker with `StaticAbility::Flanking`, for each blocker of that attacker that does **not** have `StaticAbility::Flanking`, generate: `BoostPermanentPT { target_id: blocker_id, power_delta: -1, toughness_delta: -1 }`. Controller is the attacking player (controller of the Flanking creature).
+**Flanking (CR 702.25b):** For each attacker with `StaticAbility::Flanking`, for each blocker of that attacker that does **not** have `StaticAbility::Flanking`, generate: `BoostPermanentPT { target_id: blocker_id, delta: PTDelta { power: -1, toughness: -1 } }`. Controller is the attacking player (controller of the Flanking creature).
 
 **Bushido N (CR 702.45b):** 
-- For each attacker where `perm.bushido_n()` is `Some(n)` and the attacker has at least one blocker: `BoostPermanentPT { target_id: attacker_id, power_delta: n as i32, toughness_delta: n as i32 }`.
-- For each blocker where `perm.bushido_n()` is `Some(n)`: `BoostPermanentPT { target_id: blocker_id, power_delta: n as i32, toughness_delta: n as i32 }`.
+- For each attacker where `perm.bushido_n()` is `Some(n)` and the attacker has at least one blocker: `BoostPermanentPT { target_id: attacker_id, delta: PTDelta { power: n as i32, toughness: n as i32 } }`.
+- For each blocker where `perm.bushido_n()` is `Some(n)`: `BoostPermanentPT { target_id: blocker_id, delta: PTDelta { power: n as i32, toughness: n as i32 } }`.
 
 ### `engine/combat.rs` — wire up triggers
 
@@ -156,28 +169,66 @@ Same pattern in `declare_blockers` using `collect_block_triggers`.
 
 ---
 
-## 5. Prowess
+## 5. Prowess — General Cast-Triggered Ability Collection
 
-### `engine/triggered.rs` — `collect_prowess_triggers`
+### `types/ability.rs` — new `CastFilter` struct
 
 ```rust
-pub fn collect_prowess_triggers(
+/// Describes which spells satisfy the "whenever you cast a spell" trigger condition.
+/// An empty `excluded_card_types` means any spell qualifies (e.g. Extort).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CastFilter {
+    /// The cast spell must not have any of these card types for the trigger to fire.
+    pub excluded_card_types: Vec<CardType>,
+}
+
+impl CastFilter {
+    /// Matches any spell (no restrictions).
+    pub fn any() -> Self { Self::default() }
+
+    /// Matches only noncreature spells (Prowess).
+    pub fn noncreature() -> Self {
+        Self { excluded_card_types: vec![CardType::Creature] }
+    }
+
+    pub fn matches(&self, obj: &CardObject) -> bool {
+        self.excluded_card_types
+            .iter()
+            .all(|t| !obj.definition.type_line.card_types.contains(t))
+    }
+}
+```
+
+`CardType` is already in scope from `types/card.rs`.
+
+### `engine/triggered.rs` — `collect_cast_triggers`
+
+```rust
+pub fn collect_cast_triggers(
     state: &mut GameState,
     caster: PlayerId,
     spell_id: ObjectId,
+    filter: &CastFilter,
 ) -> Vec<StackObject>
 ```
 
-- Check `state.objects.get(&spell_id)` — if it is a creature type, return empty vec.
+- If the cast spell does not satisfy `filter.matches(obj)`, return empty vec immediately.
 - For each permanent on the battlefield controlled by `caster` where `perm.is_creature() && perm.has_keyword(StaticAbility::Prowess)`:
-  - Generate `TriggeredAbility`: `BoostPermanentPT { target_id: creature_id, power_delta: 1, toughness_delta: 1 }`.
+  - Generate `TriggeredAbility`: `BoostPermanentPT { target_id: creature_id, delta: PTDelta { power: 1, toughness: 1 } }`.
+
+The function is intentionally structured so that future cast-triggered abilities (e.g. Extort with `CastFilter::any()`) add a new `has_keyword` branch inside this function, without changing its signature.
 
 ### `engine/casting.rs` — `cast_spell`
 
-After pushing the spell onto the stack, call `collect_prowess_triggers` and push results:
+After pushing the spell onto the stack:
 ```rust
-let prowess_triggers = collect_prowess_triggers(&mut state, player_id, object_id);
-for t in prowess_triggers {
+let cast_triggers = collect_cast_triggers(
+    &mut state,
+    player_id,
+    object_id,
+    &CastFilter::noncreature(),
+);
+for t in cast_triggers {
     let id = t.id;
     state.stack.push(id);
     state.stack_objects.insert(id, t);
@@ -261,8 +312,8 @@ Type-cycling variants ("mountaincycling {2}", "basic landcycling {2}") don't sta
 ## 9. Tests
 
 ### Infrastructure
-- `pt_boost_until_eot` initializes to `(0, 0)` and `effective_power/toughness` reflect the boost
-- `cleanup_step` resets all `pt_boost_until_eot` to `(0, 0)`
+- `pt_boost_until_eot` initializes to `PTDelta::default()` and `effective_power/toughness` reflect the boost
+- `cleanup_step` resets all `pt_boost_until_eot` to `PTDelta::default()`
 - `BoostPermanentPT` effect step applies cumulatively; silently no-ops if permanent not found
 
 ### Exalted
