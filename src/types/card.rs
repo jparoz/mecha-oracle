@@ -1,7 +1,7 @@
 use super::ability::OracleSpan;
 use super::mana::ManaCost;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Supertype {
     Basic,
     Legendary,
@@ -9,7 +9,7 @@ pub enum Supertype {
     World,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CardType {
     Creature,
     Land,

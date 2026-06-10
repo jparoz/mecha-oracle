@@ -1,6 +1,7 @@
-use crate::types::ability::{Ability, TriggerEvent};
+use crate::types::ability::{Ability, CastFilter, StaticAbility, TriggerEvent};
+use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
-use crate::types::{GameState, ObjectId, OracleSpan, PlayerId};
+use crate::types::{GameState, ObjectId, OracleSpan, PTDelta, PlayerId};
 
 // CR 603.2: collect ETB triggers from `entering_id` into stack objects.
 // Returns Vec<StackObject> to be pushed onto the stack by the caller.
@@ -40,6 +41,66 @@ pub fn collect_etb_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec
                     source_id: entering_id,
                     effect,
                     label,
+                },
+                controller,
+            }
+        })
+        .collect()
+}
+
+/// CR 702.108b: collect triggered abilities that fire when a spell is cast.
+/// Currently handles: Prowess (noncreature filter → +1/+1 until EOT on each Prowess creature).
+/// Add additional StaticAbility branches here as new cast-triggered keywords are implemented.
+pub fn collect_cast_triggers(
+    state: &mut GameState,
+    caster: PlayerId,
+    spell_id: ObjectId,
+    filter: &CastFilter,
+) -> Vec<StackObject> {
+    // Check whether the cast spell satisfies the filter.
+    let spell_types: Vec<crate::types::card::CardType> = state
+        .objects
+        .get(&spell_id)
+        .map(|o| o.definition.type_line.card_types.clone())
+        .unwrap_or_default();
+    if !filter.matches(&spell_types) {
+        return vec![];
+    }
+
+    // Collect permanents that have cast-triggered abilities.
+    let prowess_creature_ids: Vec<(ObjectId, PlayerId)> = state
+        .battlefield
+        .keys()
+        .filter_map(|&id| {
+            let obj = state.objects.get(&id)?;
+            if obj.controller != caster {
+                return None;
+            }
+            let perm = state.battlefield.get(&id)?;
+            if perm.is_creature() && perm.has_keyword(StaticAbility::Prowess) {
+                Some((id, obj.controller))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    prowess_creature_ids
+        .into_iter()
+        .map(|(creature_id, controller)| {
+            let sid = state.alloc_stack_id();
+            StackObject {
+                id: sid,
+                payload: StackPayload::TriggeredAbility {
+                    source_id: creature_id,
+                    effect: vec![EffectStep::BoostPermanentPT {
+                        target_id: creature_id,
+                        delta: PTDelta {
+                            power: 1,
+                            toughness: 1,
+                        },
+                    }],
+                    label: "Prowess".into(),
                 },
                 controller,
             }
@@ -202,6 +263,124 @@ mod tests {
 
         let triggers = collect_etb_triggers(&mut gs, creature_id);
 
+        assert!(triggers.is_empty());
+    }
+
+    #[test]
+    fn collect_cast_triggers_prowess_fires_on_noncreature() {
+        use crate::engine::triggered::collect_cast_triggers;
+        use crate::types::ability::{Ability, CastFilter, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::mana::ManaCost;
+        use crate::types::{CardObject, OracleSpan, Zone};
+
+        let mut gs = two_player_state();
+
+        // A creature with Prowess on the battlefield.
+        let prowess_def = CardDefinition {
+            name: "Prowess Monk".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Prowess".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        let creature_id = place_on_battlefield(&mut gs, prowess_def, PlayerId(0));
+
+        // A noncreature spell on the stack (instant).
+        let instant_def = CardDefinition {
+            name: "Lightning Bolt".into(),
+            mana_cost: Some(ManaCost { pips: vec![] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: None,
+            toughness: None,
+        };
+        let spell_id = gs.alloc_id();
+        let spell_obj = CardObject::new(spell_id, instant_def, PlayerId(0), Zone::Stack);
+        gs.add_object(spell_obj);
+
+        let triggers =
+            collect_cast_triggers(&mut gs, PlayerId(0), spell_id, &CastFilter::noncreature());
+
+        assert_eq!(triggers.len(), 1);
+        assert_eq!(triggers[0].controller, PlayerId(0));
+        use crate::types::stack::StackPayload;
+        let StackPayload::TriggeredAbility {
+            source_id, effect, ..
+        } = &triggers[0].payload
+        else {
+            panic!("expected TriggeredAbility");
+        };
+        assert_eq!(source_id, &creature_id);
+        use crate::types::PTDelta;
+        use crate::types::effect::EffectStep;
+        assert_eq!(
+            *effect,
+            vec![EffectStep::BoostPermanentPT {
+                target_id: creature_id,
+                delta: PTDelta {
+                    power: 1,
+                    toughness: 1
+                },
+            }]
+        );
+    }
+
+    #[test]
+    fn collect_cast_triggers_prowess_silent_on_creature_spell() {
+        use crate::engine::triggered::collect_cast_triggers;
+        use crate::types::ability::{Ability, CastFilter, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::{CardObject, OracleSpan, Zone};
+
+        let mut gs = two_player_state();
+
+        let prowess_def = CardDefinition {
+            name: "Prowess Monk".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        place_on_battlefield(&mut gs, prowess_def, PlayerId(0));
+
+        // A creature spell.
+        let creature_spell_def = CardDefinition {
+            name: "Bear".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let spell_id = gs.alloc_id();
+        let spell_obj = CardObject::new(spell_id, creature_spell_def, PlayerId(0), Zone::Stack);
+        gs.add_object(spell_obj);
+
+        let triggers =
+            collect_cast_triggers(&mut gs, PlayerId(0), spell_id, &CastFilter::noncreature());
         assert!(triggers.is_empty());
     }
 

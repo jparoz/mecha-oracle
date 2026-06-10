@@ -1,3 +1,4 @@
+use super::card::CardType;
 use super::effect::Effect;
 use super::mana::ManaCost;
 
@@ -90,6 +91,33 @@ impl StaticAbility {
             Self::Melee => "Melee".to_string(),
             Self::Prowess => "Prowess".to_string(),
         }
+    }
+}
+
+/// Describes which cast spells activate "whenever you cast a spell" triggers.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CastFilter {
+    /// The spell must not have any of these card types for the trigger to fire.
+    pub excluded_card_types: Vec<CardType>,
+}
+
+impl CastFilter {
+    /// Matches any spell (e.g. Extort — no restriction).
+    pub fn any() -> Self {
+        Self::default()
+    }
+
+    /// Matches only noncreature spells (e.g. Prowess).
+    pub fn noncreature() -> Self {
+        Self {
+            excluded_card_types: vec![CardType::Creature],
+        }
+    }
+
+    pub fn matches(&self, card_types: &[CardType]) -> bool {
+        self.excluded_card_types
+            .iter()
+            .all(|t| !card_types.contains(t))
     }
 }
 

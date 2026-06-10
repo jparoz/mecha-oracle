@@ -3,7 +3,8 @@ use super::{
     mana::{greedy_payment_plan, pay_mana_cost},
     state_based_actions::check_and_apply_sbas,
 };
-use crate::types::ability::StaticAbility;
+use crate::engine::triggered::collect_cast_triggers;
+use crate::types::ability::{CastFilter, StaticAbility};
 use crate::types::card::CardType;
 use crate::types::{GameState, ObjectId, PermanentState, PlayerId, Step, Zone};
 
@@ -157,6 +158,15 @@ pub fn cast_spell(
     // CR 117.3c: caster retains priority after casting
     state.consecutive_passes = 0;
     state.priority_player = player_id;
+
+    // CR 702.108b: collect Prowess and other cast-triggered ability triggers.
+    let cast_triggers =
+        collect_cast_triggers(&mut state, player_id, object_id, &CastFilter::noncreature());
+    for t in cast_triggers {
+        let id = t.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, t);
+    }
 
     Ok(state)
 }
@@ -536,6 +546,48 @@ mod tests {
             play_land(gs, PlayerId(0), forest_id),
             Err(EngineError::NotYourPriority)
         ));
+    }
+
+    #[test]
+    fn cast_noncreature_with_prowess_creature_puts_boost_on_stack() {
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
+
+        let mut gs = make_state();
+        // Prowess creature on battlefield.
+        let prowess_def = CardDefinition {
+            name: "Monk".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        let monk_id = gs.alloc_id();
+        let obj = CardObject::new(monk_id, prowess_def, PlayerId(0), Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(monk_id, perm);
+        gs.add_object(obj);
+
+        // Cast an instant.
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 1;
+        let spell_id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            make_instant_def("Opt", vec![ManaPip::Blue]),
+        );
+        let gs = cast_spell(gs, PlayerId(0), spell_id).unwrap();
+
+        // Spell on stack + 1 Prowess trigger on stack = 2 items.
+        assert_eq!(gs.stack.len(), 2);
     }
 
     #[test]

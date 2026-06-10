@@ -11,8 +11,8 @@ pub mod stack;
 pub mod zone;
 
 pub use ability::{
-    Ability, ActivatedAbility, ActivationCost, CardFilter, CostComponent, IgnoredKind, OracleSpan,
-    PermanentFilter, StaticAbility, TriggerEvent, TriggeredAbility,
+    Ability, ActivatedAbility, ActivationCost, CardFilter, CastFilter, CostComponent, IgnoredKind,
+    OracleSpan, PermanentFilter, StaticAbility, TriggerEvent, TriggeredAbility,
 };
 pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;
