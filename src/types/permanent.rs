@@ -1,6 +1,12 @@
 use super::ability::{Ability, OracleSpan, StaticAbility};
 use super::card::CardDefinition;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PTDelta {
+    pub power: i32,
+    pub toughness: i32,
+}
+
 #[derive(Debug, Clone)]
 pub struct PermanentState {
     /// Cloned from CardObject on enter-battlefield.
@@ -17,6 +23,7 @@ pub struct PermanentState {
     pub damage_marked: u32,
     /// CR 704.5h — flagged when deathtouch damage lands; cleared by SBAs.
     pub damaged_by_deathtouch: bool,
+    pub pt_boost_until_eot: PTDelta,
 }
 
 impl PermanentState {
@@ -29,6 +36,7 @@ impl PermanentState {
             summoning_sick: true,
             damage_marked: 0,
             damaged_by_deathtouch: false,
+            pt_boost_until_eot: PTDelta::default(),
         }
     }
 
@@ -49,10 +57,12 @@ impl PermanentState {
 
     pub fn effective_power(&self) -> Option<i32> {
         self.current_power
+            .map(|p| p + self.pt_boost_until_eot.power)
     }
 
     pub fn effective_toughness(&self) -> Option<i32> {
         self.current_toughness
+            .map(|t| t + self.pt_boost_until_eot.toughness)
     }
 
     /// CR 302.5a — a creature can attack if untapped, not summoning sick (unless Haste),
@@ -117,5 +127,41 @@ mod tests {
     fn damaged_by_deathtouch_initialises_false() {
         let perm = grizzly_bears_perm();
         assert!(!perm.damaged_by_deathtouch);
+    }
+
+    #[test]
+    fn pt_delta_default_is_zero() {
+        let delta = PTDelta::default();
+        assert_eq!(delta.power, 0);
+        assert_eq!(delta.toughness, 0);
+    }
+
+    #[test]
+    fn pt_boost_until_eot_initialises_to_zero() {
+        let perm = grizzly_bears_perm();
+        assert_eq!(perm.pt_boost_until_eot.power, 0);
+        assert_eq!(perm.pt_boost_until_eot.toughness, 0);
+    }
+
+    #[test]
+    fn effective_power_includes_eot_boost() {
+        let mut perm = grizzly_bears_perm();
+        perm.summoning_sick = false;
+        perm.pt_boost_until_eot.power = 3;
+        assert_eq!(perm.effective_power(), Some(5)); // 2 base + 3
+    }
+
+    #[test]
+    fn effective_toughness_includes_eot_boost() {
+        let mut perm = grizzly_bears_perm();
+        perm.pt_boost_until_eot.toughness = -1;
+        assert_eq!(perm.effective_toughness(), Some(1)); // 2 base - 1
+    }
+
+    #[test]
+    fn effective_power_with_negative_boost_does_not_panic() {
+        let mut perm = grizzly_bears_perm();
+        perm.pt_boost_until_eot.power = -5;
+        assert_eq!(perm.effective_power(), Some(-3)); // 2 base - 5
     }
 }

@@ -20,7 +20,7 @@ pub use effect::{Effect, EffectStep, EffectTarget};
 pub use game_state::{CombatState, GameState, ManaCheckpoint, Phase, Step};
 pub use ids::{ObjectId, PlayerId};
 pub use mana::{ManaColor, ManaCost, ManaPip, ManaPool, PaymentPlan};
-pub use permanent::PermanentState;
+pub use permanent::{PTDelta, PermanentState};
 pub use player::Player;
 pub use stack::{StackId, StackObject, StackPayload};
 pub use zone::Zone;
