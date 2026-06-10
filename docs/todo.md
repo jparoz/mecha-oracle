@@ -28,13 +28,9 @@ Grouped roughly by complexity of implementation.
 - **Toxic N** (702.164): gives poison counters on combat damage — requires poison counter tracking
 
 ## Combat triggers (triggered ability system required)
-- **Exalted** (702.83): attacking alone gives +1/+1 until end of turn
-- **Flanking** (702.25): blockers without flanking get -1/-1 until end of turn
 - **Battle Cry** (702.91): attacking creatures get +1/+0
-- **Melee** (702.121): gets +1/+1 for each opponent attacked
 - **Provoke** (702.39): force a creature to block
 - **Annihilator N** (702.86): sacrifice N permanents when attacker attacks
-- **Bushido N** (702.45): +N/+N when blocked or blocking
 
 ## Graveyard / recursion (zone change + timing systems required)
 - **Persist** (702.79): returns from graveyard with -1/-1 counter if no -1/-1 counter
@@ -48,7 +44,6 @@ Grouped roughly by complexity of implementation.
 ## Alternative casting (casting system extensions)
 - **Morph [cost]** (702.37): cast face-down as 2/2 for {3}
 - **Kicker [cost]** (702.33): additional optional cost
-- **Cycling [cost]** (702.29): discard to draw a card
 - **Dash [cost]** (702.109): alternative cost, returns at end of turn
 - **Evoke [cost]** (702.74): alternative cost, sacrifice on ETB
 - **Bestow [cost]** (702.103): cast as Aura or creature
@@ -58,7 +53,6 @@ Grouped roughly by complexity of implementation.
 - **Foretell [cost]** (702.143): exile face-down, cast later for reduced cost
 
 ## Other triggered / activated (triggered ability system required)
-- **Prowess** (702.108): +1/+1 until end of turn when you cast non-creature spell
 - **Evolve** (702.100): put +1/+1 counter when creature with greater power/toughness enters
 - **Training** (702.149): put +1/+1 counter when attacking with greater-power creature
 - **Soulbond** (702.95): pair with another creature for mutual ability
