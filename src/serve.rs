@@ -459,9 +459,9 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                             text: format_spell_effect(steps),
                             ignored_kind: None,
                         },
-                        OracleSpan::Parsed(Ability::Cycling(_)) => OracleSpanView {
+                        OracleSpan::Parsed(Ability::Cycling(cost)) => OracleSpanView {
                             kind: SpanKind::Parsed,
-                            text: "Cycling".to_string(),
+                            text: format!("Cycling {}", format_mana_cost(cost)),
                             ignored_kind: None,
                         },
                         OracleSpan::Ignored(kind, t) => OracleSpanView {
@@ -483,8 +483,8 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     .collect()
             },
             mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
-            power: perm.and_then(|p| p.current_power),
-            toughness: perm.and_then(|p| p.current_toughness),
+            power: perm.and_then(|p| p.effective_power()),
+            toughness: perm.and_then(|p| p.effective_toughness()),
             tapped: perm.map(|p| p.tapped).unwrap_or(false),
             summoning_sick: perm.map(|p| p.summoning_sick).unwrap_or(false),
             damage_marked: perm.map(|p| p.damage_marked).unwrap_or(0),
