@@ -110,6 +110,7 @@ pub enum Ability {
     Triggered(TriggeredAbility),
     Activated(ActivatedAbility),
     SpellEffect(Effect),
+    Cycling(ManaCost),
 }
 
 /// A typed span of oracle text.

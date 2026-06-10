@@ -459,6 +459,11 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                             text: format_spell_effect(steps),
                             ignored_kind: None,
                         },
+                        OracleSpan::Parsed(Ability::Cycling(_)) => OracleSpanView {
+                            kind: SpanKind::Parsed,
+                            text: "Cycling".to_string(),
+                            ignored_kind: None,
+                        },
                         OracleSpan::Ignored(kind, t) => OracleSpanView {
                             kind: SpanKind::Ignored,
                             text: t.clone(),

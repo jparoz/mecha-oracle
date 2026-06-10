@@ -50,6 +50,17 @@ impl PermanentState {
             .any(|span| matches!(span, OracleSpan::Parsed(Ability::Static(k)) if *k == kw))
     }
 
+    /// Returns the Bushido parameter N if this permanent has Bushido N, otherwise None.
+    pub fn bushido_n(&self) -> Option<u32> {
+        self.definition.abilities.iter().find_map(|span| {
+            if let OracleSpan::Parsed(Ability::Static(StaticAbility::BushidoN(n))) = span {
+                Some(*n)
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn is_creature(&self) -> bool {
         self.definition.type_line.is_creature()
     }
@@ -168,5 +179,33 @@ mod tests {
         let mut perm = grizzly_bears_perm();
         perm.pt_boost_until_eot.power = -5;
         assert_eq!(perm.effective_power(), Some(-3)); // 2 base - 5
+    }
+
+    #[test]
+    fn bushido_n_returns_some_for_bushido_creature() {
+        use crate::types::{Ability, OracleSpan, ability::StaticAbility};
+        let mut def = test_db().get("Grizzly Bears").unwrap().clone();
+        def.abilities = vec![OracleSpan::Parsed(Ability::Static(
+            StaticAbility::BushidoN(3),
+        ))];
+        let perm = PermanentState::new(&def);
+        assert_eq!(perm.bushido_n(), Some(3));
+    }
+
+    #[test]
+    fn bushido_n_returns_none_for_vanilla_creature() {
+        let perm = grizzly_bears_perm();
+        assert_eq!(perm.bushido_n(), None);
+    }
+
+    #[test]
+    fn ability_cycling_roundtrips() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::{Ability, OracleSpan};
+        let cost = ManaCost {
+            pips: vec![ManaPip::Generic(2)],
+        };
+        let span = OracleSpan::Parsed(Ability::Cycling(cost.clone()));
+        assert_eq!(span, OracleSpan::Parsed(Ability::Cycling(cost)));
     }
 }
