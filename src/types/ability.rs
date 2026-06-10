@@ -20,6 +20,11 @@ pub enum StaticAbility {
     Skulk,
     Decayed,
     Flash,
+    Exalted,
+    Flanking,
+    BushidoN(u32),
+    Melee,
+    Prowess,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,25 +65,30 @@ pub struct PermanentFilter;
 pub struct CardFilter;
 
 impl StaticAbility {
-    pub fn display_name(&self) -> &'static str {
+    pub fn display_name(&self) -> String {
         match self {
-            Self::Flying => "Flying",
-            Self::Reach => "Reach",
-            Self::Trample => "Trample",
-            Self::FirstStrike => "First strike",
-            Self::DoubleStrike => "Double strike",
-            Self::Vigilance => "Vigilance",
-            Self::Haste => "Haste",
-            Self::Lifelink => "Lifelink",
-            Self::Deathtouch => "Deathtouch",
-            Self::Menace => "Menace",
-            Self::Indestructible => "Indestructible",
-            Self::Defender => "Defender",
-            Self::Shadow => "Shadow",
-            Self::Horsemanship => "Horsemanship",
-            Self::Skulk => "Skulk",
-            Self::Decayed => "Decayed",
-            Self::Flash => "Flash",
+            Self::Flying => "Flying".to_string(),
+            Self::Reach => "Reach".to_string(),
+            Self::Trample => "Trample".to_string(),
+            Self::FirstStrike => "First strike".to_string(),
+            Self::DoubleStrike => "Double strike".to_string(),
+            Self::Vigilance => "Vigilance".to_string(),
+            Self::Haste => "Haste".to_string(),
+            Self::Lifelink => "Lifelink".to_string(),
+            Self::Deathtouch => "Deathtouch".to_string(),
+            Self::Menace => "Menace".to_string(),
+            Self::Indestructible => "Indestructible".to_string(),
+            Self::Defender => "Defender".to_string(),
+            Self::Shadow => "Shadow".to_string(),
+            Self::Horsemanship => "Horsemanship".to_string(),
+            Self::Skulk => "Skulk".to_string(),
+            Self::Decayed => "Decayed".to_string(),
+            Self::Flash => "Flash".to_string(),
+            Self::Exalted => "Exalted".to_string(),
+            Self::Flanking => "Flanking".to_string(),
+            Self::BushidoN(n) => format!("Bushido {n}"),
+            Self::Melee => "Melee".to_string(),
+            Self::Prowess => "Prowess".to_string(),
         }
     }
 }
@@ -166,5 +176,14 @@ mod tests {
     fn cost_component_unimplemented_round_trips() {
         let c = CostComponent::Unimplemented("Sacrifice a creature".to_string());
         assert!(matches!(c, CostComponent::Unimplemented(_)));
+    }
+
+    #[test]
+    fn display_name_new_keywords() {
+        assert_eq!(StaticAbility::Exalted.display_name(), "Exalted");
+        assert_eq!(StaticAbility::Flanking.display_name(), "Flanking");
+        assert_eq!(StaticAbility::BushidoN(2).display_name(), "Bushido 2");
+        assert_eq!(StaticAbility::Melee.display_name(), "Melee");
+        assert_eq!(StaticAbility::Prowess.display_name(), "Prowess");
     }
 }

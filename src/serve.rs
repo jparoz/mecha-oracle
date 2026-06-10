@@ -441,7 +441,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     .map(|span| match span {
                         OracleSpan::Parsed(Ability::Static(kw)) => OracleSpanView {
                             kind: SpanKind::Parsed,
-                            text: kw.display_name().to_string(),
+                            text: kw.display_name(),
                             ignored_kind: None,
                         },
                         OracleSpan::Parsed(Ability::Activated(a)) => OracleSpanView {
