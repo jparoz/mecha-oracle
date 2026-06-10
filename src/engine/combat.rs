@@ -1,5 +1,5 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
-use crate::engine::triggered::collect_attack_triggers;
+use crate::engine::triggered::{collect_attack_triggers, collect_block_triggers};
 use crate::types::ability::StaticAbility;
 use crate::types::{GameState, ObjectId, PermanentState, PlayerId, Step};
 use std::collections::HashMap;
@@ -191,6 +191,19 @@ pub fn declare_blockers(
 
     state.mana_checkpoint = None;
     state.combat.blockers_declared = true;
+
+    // Collect block-triggered abilities (Flanking, Bushido N) and push onto stack.
+    let triggers = collect_block_triggers(&mut state);
+    for t in triggers {
+        let id = t.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, t);
+    }
+    if !state.stack.is_empty() {
+        state.consecutive_passes = 0;
+        state.priority_player = state.active_player;
+    }
+
     Ok(state)
 }
 
@@ -939,6 +952,52 @@ mod tests {
         let gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
 
         assert!(gs.mana_checkpoint.is_none());
+    }
+
+    #[test]
+    fn declare_blockers_flanking_attacker_puts_trigger_on_stack() {
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::{CardObject, OracleSpan, PermanentState};
+
+        let mut gs = make_combat_state();
+        let flanking_def = CardDefinition {
+            name: "Flanking Attacker".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking))],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let plain_def = CardDefinition {
+            name: "Blocker".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let attacker = add_creature(&mut gs, PlayerId(0), flanking_def);
+        let blocker = add_creature(&mut gs, PlayerId(1), plain_def);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        // Clear any attack triggers so we can verify blockers trigger separately.
+        gs.stack.clear();
+        gs.stack_objects.clear();
+        gs.step = crate::types::Step::DeclareBlockers;
+
+        let gs = declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).unwrap();
+
+        assert_eq!(gs.stack.len(), 1); // Flanking trigger
     }
 
     #[test]
