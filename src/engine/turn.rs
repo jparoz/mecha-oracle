@@ -1,7 +1,9 @@
 use super::combat::deal_combat_damage;
 use super::state_based_actions::move_to_graveyard;
 use crate::types::ability::StaticAbility;
-use crate::types::{CombatState, GameState, ObjectId, PermanentState, PlayerId, Step, Zone};
+use crate::types::{
+    CombatState, GameState, ObjectId, PTDelta, PermanentState, PlayerId, Step, Zone,
+};
 
 /// Apply the automatic rules for the start of the current step/phase.
 pub fn apply_step_start(state: GameState) -> GameState {
@@ -146,6 +148,7 @@ fn cleanup_step(mut state: GameState) -> GameState {
     for perm in state.battlefield.values_mut() {
         perm.damage_marked = 0;
         perm.damaged_by_deathtouch = false;
+        perm.pt_boost_until_eot = PTDelta::default();
     }
     // CR 514.1: discard to hand size — not enforced in Phase 1 (scripted game stays under 7).
     state
@@ -495,5 +498,32 @@ mod tests {
         let gs = apply_step_start(gs);
 
         assert!(gs.battlefield.contains_key(&id));
+    }
+
+    #[test]
+    fn cleanup_step_clears_pt_boost_until_eot() {
+        use crate::types::{CardObject, PTDelta, PermanentState, Zone};
+        let db = test_db();
+        let mut gs = make_state();
+        gs.step = Step::Cleanup;
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.pt_boost_until_eot = PTDelta {
+            power: 3,
+            toughness: 3,
+        };
+        gs.battlefield.insert(id, perm);
+        gs.add_object(obj);
+
+        let gs = apply_step_start(gs);
+
+        assert_eq!(gs.battlefield[&id].pt_boost_until_eot, PTDelta::default());
+        assert_eq!(gs.battlefield[&id].effective_power(), Some(2)); // back to 2/2 base
     }
 }
