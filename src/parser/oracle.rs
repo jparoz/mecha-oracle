@@ -329,7 +329,25 @@ fn match_keyword(kw: &str) -> OracleSpan {
         "skulk" => return parsed!(Skulk),
         "decayed" => return parsed!(Decayed),
         "flash" => return parsed!(Flash),
+        "exalted" => return parsed!(Exalted),
+        "flanking" => return parsed!(Flanking),
+        "melee" => return parsed!(Melee),
+        "prowess" => return parsed!(Prowess),
         _ => {}
+    }
+
+    // BushidoN: "bushido N"
+    if let Some(rest) = s.strip_prefix("bushido ") {
+        if let Some(n) = parse_number_word(rest.trim()) {
+            return OracleSpan::Parsed(Ability::Static(StaticAbility::BushidoN(n)));
+        }
+    }
+
+    // Plain cycling (not type-cycling variants like mountaincycling):
+    if let Some(cost_str) = s.strip_prefix("cycling ") {
+        if let Some(cost) = try_parse_mana_cost(cost_str.trim()) {
+            return OracleSpan::Parsed(Ability::Cycling(cost));
+        }
     }
 
     // ── CR 702 recognised-but-unimplemented keywords ──────────────────────────
@@ -1019,10 +1037,8 @@ mod tests {
 
     #[test]
     fn parameterised_keyword_emits_parsed_unimplemented() {
-        assert_eq!(
-            parse_permanent("Cycling {2}", ""),
-            vec![unimplemented("Cycling {2}")]
-        );
+        // Cycling {2} is now promoted to Parsed(Ability::Cycling(...))
+        // See parse_cycling_keyword test for its new behavior.
         assert_eq!(
             parse_permanent("Kicker {1}{U}", ""),
             vec![unimplemented("Kicker {1}{U}")]
@@ -1632,5 +1648,77 @@ mod tests {
             result,
             vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flash))]
         );
+    }
+
+    #[test]
+    fn parse_exalted_keyword() {
+        let spans = parse_permanent("Exalted", "");
+        assert_eq!(spans, vec![parsed(StaticAbility::Exalted)]);
+    }
+
+    #[test]
+    fn parse_flanking_keyword() {
+        let spans = parse_permanent("Flanking", "");
+        assert_eq!(spans, vec![parsed(StaticAbility::Flanking)]);
+    }
+
+    #[test]
+    fn parse_bushido_n_keyword() {
+        use crate::types::ability::StaticAbility;
+        let spans = parse_permanent("Bushido 2", "");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::BushidoN(2)
+            ))]
+        );
+    }
+
+    #[test]
+    fn parse_melee_keyword() {
+        let spans = parse_permanent("Melee", "");
+        assert_eq!(spans, vec![parsed(StaticAbility::Melee)]);
+    }
+
+    #[test]
+    fn parse_prowess_keyword() {
+        let spans = parse_permanent("Prowess", "");
+        assert_eq!(spans, vec![parsed(StaticAbility::Prowess)]);
+    }
+
+    #[test]
+    fn parse_cycling_keyword() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let spans = parse_permanent("Cycling {2}", "");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
+                pips: vec![ManaPip::Generic(2)],
+            }))]
+        );
+    }
+
+    #[test]
+    fn parse_cycling_with_reminder_text() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let spans = parse_permanent("Cycling {2} ({2}, Discard this card: Draw a card.)", "");
+        // First span is the cycling ability; second is reminder text (ignored).
+        assert_eq!(spans.len(), 2);
+        assert_eq!(
+            spans[0],
+            OracleSpan::Parsed(Ability::Cycling(ManaCost {
+                pips: vec![ManaPip::Generic(2)],
+            }))
+        );
+        assert!(matches!(
+            &spans[1],
+            OracleSpan::Ignored(crate::types::ability::IgnoredKind::ReminderText, _)
+        ));
+    }
+
+    #[test]
+    fn mountaincycling_stays_parsed_unimplemented() {
+        let spans = parse_permanent("Mountaincycling {2}", "");
+        assert!(matches!(&spans[0], OracleSpan::ParsedUnimplemented(_)));
     }
 }
