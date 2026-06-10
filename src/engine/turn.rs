@@ -1,7 +1,7 @@
 use super::combat::deal_combat_damage;
 use super::state_based_actions::move_to_graveyard;
 use crate::types::ability::StaticAbility;
-use crate::types::{CombatState, GameState, ObjectId, PlayerId, Step, Zone};
+use crate::types::{CombatState, GameState, ObjectId, PermanentState, PlayerId, Step, Zone};
 
 /// Apply the automatic rules for the start of the current step/phase.
 pub fn apply_step_start(state: GameState) -> GameState {
@@ -23,9 +23,9 @@ fn end_of_combat_step(mut state: GameState) -> GameState {
         .iter()
         .filter(|&&id| {
             state
-                .objects
+                .battlefield
                 .get(&id)
-                .map(|o| o.has_keyword(StaticAbility::Decayed) && o.zone == Zone::Battlefield)
+                .map(|p| p.has_keyword(StaticAbility::Decayed))
                 .unwrap_or(false)
         })
         .copied()
@@ -80,7 +80,7 @@ fn untap_step(mut state: GameState) -> GameState {
     // CR 502: untap all permanents the active player controls; clear summoning sickness.
     let to_untap: Vec<ObjectId> = state
         .battlefield
-        .iter()
+        .keys()
         .filter(|&&id| {
             state
                 .objects
@@ -91,9 +91,9 @@ fn untap_step(mut state: GameState) -> GameState {
         .copied()
         .collect();
     for id in to_untap {
-        if let Some(obj) = state.objects.get_mut(&id) {
-            obj.tapped = false;
-            obj.summoning_sick = false;
+        if let Some(perm) = state.battlefield.get_mut(&id) {
+            perm.tapped = false;
+            perm.summoning_sick = false;
         }
     }
     state.lands_played_this_turn = 0;
@@ -143,9 +143,9 @@ pub fn skip_to_first_main(mut state: GameState) -> GameState {
 
 fn cleanup_step(mut state: GameState) -> GameState {
     // CR 514.2: remove damage from all permanents and clear deathtouch flag.
-    for obj in state.objects.values_mut() {
-        obj.damage_marked = 0;
-        obj.damaged_by_deathtouch = false;
+    for perm in state.battlefield.values_mut() {
+        perm.damage_marked = 0;
+        perm.damaged_by_deathtouch = false;
     }
     // CR 514.1: discard to hand size — not enforced in Phase 1 (scripted game stays under 7).
     state
@@ -167,7 +167,7 @@ fn start_next_turn(mut state: GameState) -> GameState {
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::{CardObject, Phase, Player, Zone};
+    use crate::types::{CardObject, PermanentState, Phase, Player, Zone};
 
     fn make_state() -> GameState {
         GameState::new(vec![
@@ -179,15 +179,16 @@ mod tests {
     fn add_land_to_battlefield(state: &mut GameState, owner: PlayerId) -> ObjectId {
         let db = test_db();
         let id = state.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Forest").unwrap().clone(),
             owner,
             Zone::Battlefield,
         );
-        obj.tapped = true;
-        obj.summoning_sick = false;
-        state.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.tapped = true;
+        perm.summoning_sick = false;
+        state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
     }
@@ -208,22 +209,22 @@ mod tests {
     fn untap_step_untaps_active_player_permanents() {
         let mut gs = make_state();
         let forest_id = add_land_to_battlefield(&mut gs, PlayerId(0));
-        assert!(gs.objects[&forest_id].tapped);
+        assert!(gs.battlefield[&forest_id].tapped);
 
         let gs = apply_step_start(gs);
 
-        assert!(!gs.objects[&forest_id].tapped);
+        assert!(!gs.battlefield[&forest_id].tapped);
     }
 
     #[test]
     fn untap_step_does_not_untap_opponents_permanents() {
         let mut gs = make_state();
         let forest_id = add_land_to_battlefield(&mut gs, PlayerId(1)); // opponent's land
-        assert!(gs.objects[&forest_id].tapped);
+        assert!(gs.battlefield[&forest_id].tapped);
 
         let gs = apply_step_start(gs); // active player is PlayerId(0)
 
-        assert!(gs.objects[&forest_id].tapped); // stays tapped
+        assert!(gs.battlefield[&forest_id].tapped); // stays tapped
     }
 
     #[test]
@@ -231,19 +232,19 @@ mod tests {
         let db = test_db();
         let mut gs = make_state();
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Grizzly Bears").unwrap().clone(),
             PlayerId(0),
             Zone::Battlefield,
         );
-        obj.summoning_sick = true;
-        gs.battlefield.push(id);
+        let perm = PermanentState::new(&obj.definition); // summoning_sick = true by default
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
 
         let gs = apply_step_start(gs);
 
-        assert!(!gs.objects[&id].summoning_sick);
+        assert!(!gs.battlefield[&id].summoning_sick);
     }
 
     #[test]
@@ -282,20 +283,21 @@ mod tests {
         let mut gs = make_state();
         gs.step = Step::Cleanup;
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Grizzly Bears").unwrap().clone(),
             PlayerId(0),
             Zone::Battlefield,
         );
-        obj.damage_marked = 1;
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.damage_marked = 1;
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
 
         let gs = apply_step_start(gs);
 
-        assert_eq!(gs.objects[&id].damage_marked, 0);
+        assert_eq!(gs.battlefield[&id].damage_marked, 0);
     }
 
     #[test]
@@ -390,7 +392,7 @@ mod tests {
         gs.step = Step::PreCombatMain;
         // add_land_to_battlefield creates a tapped land; untap it.
         let forest_id = add_land_to_battlefield(&mut gs, PlayerId(0));
-        gs.objects.get_mut(&forest_id).unwrap().tapped = false;
+        gs.battlefield.get_mut(&forest_id).unwrap().tapped = false;
 
         let gs = tap_land_for_mana(gs, forest_id).unwrap();
         assert!(gs.mana_checkpoint.is_some());
@@ -419,14 +421,15 @@ mod tests {
 
         // Put an unblocked 2/2 attacker for P0
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Grizzly Bears").unwrap().clone(),
             PlayerId(0),
             Zone::Battlefield,
         );
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         gs.combat.attackers = vec![id];
         gs.combat.blocking_map.insert(id, vec![]);
@@ -458,15 +461,16 @@ mod tests {
             power: Some(2),
             toughness: Some(2),
         };
-        let mut obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         gs.combat.attackers = vec![id];
 
         let gs = apply_step_start(gs);
 
-        assert!(!gs.battlefield.contains(&id));
+        assert!(!gs.battlefield.contains_key(&id));
         assert!(gs.graveyards[&PlayerId(0)].contains(&id));
     }
 
@@ -476,19 +480,20 @@ mod tests {
         let mut gs = make_state();
         gs.step = Step::EndOfCombat;
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Grizzly Bears").unwrap().clone(),
             PlayerId(0),
             Zone::Battlefield,
         );
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         gs.combat.attackers = vec![id];
 
         let gs = apply_step_start(gs);
 
-        assert!(gs.battlefield.contains(&id));
+        assert!(gs.battlefield.contains_key(&id));
     }
 }

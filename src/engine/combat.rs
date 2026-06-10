@@ -1,6 +1,6 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
 use crate::types::ability::StaticAbility;
-use crate::types::{GameState, ObjectId, PlayerId, Step};
+use crate::types::{GameState, ObjectId, PermanentState, PlayerId, Step};
 use std::collections::HashMap;
 
 /// Declare attackers: tap them and record in CombatState (CR 508).
@@ -18,14 +18,18 @@ pub fn declare_attackers(
         if obj.controller != player_id {
             return Err(EngineError::NotYourCard);
         }
-        if obj.summoning_sick && !obj.has_keyword(StaticAbility::Haste) {
-            return Err(EngineError::SummoningSick);
-        }
-        if obj.tapped {
-            return Err(EngineError::CreatureTapped);
-        }
         if !obj.is_creature() {
             return Err(EngineError::NotACreature);
+        }
+        let perm = state
+            .battlefield
+            .get(&id)
+            .ok_or(EngineError::CardNotFound)?;
+        if perm.summoning_sick && !perm.has_keyword(StaticAbility::Haste) {
+            return Err(EngineError::SummoningSick);
+        }
+        if perm.tapped {
+            return Err(EngineError::CreatureTapped);
         }
     }
 
@@ -37,7 +41,7 @@ pub fn declare_attackers(
             .unwrap()
             .has_keyword(StaticAbility::Vigilance)
         {
-            state.objects.get_mut(&id).unwrap().tapped = true;
+            state.battlefield.get_mut(&id).unwrap().tapped = true;
         }
     }
     state.combat.attackers = attacker_ids.to_vec();
@@ -67,11 +71,15 @@ pub fn declare_blockers(
         if obj.controller != player_id {
             return Err(EngineError::NotYourCard);
         }
-        if obj.tapped {
-            return Err(EngineError::CreatureTapped);
-        }
         if !obj.is_creature() {
             return Err(EngineError::NotACreature);
+        }
+        let perm = state
+            .battlefield
+            .get(&blocker_id)
+            .ok_or(EngineError::CardNotFound)?;
+        if perm.tapped {
+            return Err(EngineError::CreatureTapped);
         }
         if !state.combat.attackers.contains(&attacker_id) {
             return Err(EngineError::CannotCastNow);
@@ -120,11 +128,16 @@ pub fn declare_blockers(
             .unwrap_or(false)
         {
             let attacker_power = state
-                .objects
+                .battlefield
                 .get(&attacker_id)
-                .and_then(|a| a.effective_power())
+                .and_then(|p| p.effective_power())
                 .unwrap_or(0);
-            if obj.effective_power().unwrap_or(0) > attacker_power {
+            let blocker_power = state
+                .battlefield
+                .get(&blocker_id)
+                .and_then(|p| p.effective_power())
+                .unwrap_or(0);
+            if blocker_power > attacker_power {
                 return Err(EngineError::InvalidBlocker);
             }
         }
@@ -233,8 +246,14 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                 Some(o) => o,
                 None => continue,
             };
+            let power = state
+                .battlefield
+                .get(&attacker_id)
+                .and_then(|p| p.effective_power())
+                .map(|p| p.max(0) as u32)
+                .unwrap_or(0);
             (
-                obj.effective_power().map(|p| p.max(0) as u32).unwrap_or(0),
+                power,
                 obj.has_keyword(StaticAbility::Trample),
                 obj.has_keyword(StaticAbility::Deathtouch),
                 obj.has_keyword(StaticAbility::Lifelink),
@@ -259,17 +278,14 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                     1u32
                 } else {
                     state
-                        .objects
+                        .battlefield
                         .get(&blocker_id)
-                        .and_then(|o| o.effective_toughness())
-                        .map(|t| {
-                            (t.max(0) as u32).saturating_sub(
-                                state
-                                    .objects
-                                    .get(&blocker_id)
-                                    .map(|o| o.damage_marked)
-                                    .unwrap_or(0),
-                            )
+                        .map(|p| {
+                            let toughness = p
+                                .effective_toughness()
+                                .map(|t| t.max(0) as u32)
+                                .unwrap_or(0);
+                            toughness.saturating_sub(p.damage_marked)
                         })
                         .unwrap_or(0)
                         .max(1)
@@ -311,8 +327,14 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                     Some(o) => o,
                     None => continue,
                 };
+                let power = state
+                    .battlefield
+                    .get(&blocker_id)
+                    .and_then(|p| p.effective_power())
+                    .map(|p| p.max(0) as u32)
+                    .unwrap_or(0);
                 (
-                    obj.effective_power().map(|p| p.max(0) as u32).unwrap_or(0),
+                    power,
                     obj.has_keyword(StaticAbility::Deathtouch),
                     obj.has_keyword(StaticAbility::Lifelink),
                     obj.controller,
@@ -337,13 +359,13 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
         }
     }
     for (oid, dmg) in damage_to_objects {
-        if let Some(obj) = state.objects.get_mut(&oid) {
-            obj.damage_marked += dmg;
+        if let Some(perm) = state.battlefield.get_mut(&oid) {
+            perm.damage_marked += dmg;
         }
     }
     for oid in deathtouch_targets {
-        if let Some(obj) = state.objects.get_mut(&oid) {
-            obj.damaged_by_deathtouch = true;
+        if let Some(perm) = state.battlefield.get_mut(&oid) {
+            perm.damaged_by_deathtouch = true;
         }
     }
     for (pid, gain) in lifelink_gain {
@@ -359,7 +381,7 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::{CardObject, Player, Zone};
+    use crate::types::{CardObject, PermanentState, Player, Zone};
 
     fn make_combat_state() -> GameState {
         let mut gs = GameState::new(vec![
@@ -376,9 +398,10 @@ mod tests {
         def: crate::types::CardDefinition,
     ) -> ObjectId {
         let id = state.alloc_id();
-        let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
-        obj.summoning_sick = false;
-        state.battlefield.push(id);
+        let obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
     }
@@ -411,9 +434,10 @@ mod tests {
             power: Some(power),
             toughness: Some(toughness),
         };
-        let mut obj = crate::types::CardObject::new(id, def, owner, Zone::Battlefield);
-        obj.summoning_sick = false;
-        state.battlefield.push(id);
+        let obj = crate::types::CardObject::new(id, def, owner, Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
     }
@@ -440,7 +464,7 @@ mod tests {
         let mut gs = make_combat_state();
         let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Vigilance]);
         let gs = declare_attackers(gs, PlayerId(0), &[id]).unwrap();
-        assert!(!gs.objects[&id].tapped); // vigilance: does not tap when attacking
+        assert!(!gs.battlefield[&id].tapped); // vigilance: does not tap when attacking
     }
 
     #[test]
@@ -448,7 +472,7 @@ mod tests {
         use crate::types::ability::StaticAbility;
         let mut gs = make_combat_state();
         let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Haste]);
-        gs.objects.get_mut(&id).unwrap().summoning_sick = true; // still sick
+        gs.battlefield.get_mut(&id).unwrap().summoning_sick = true; // still sick
         // Should be able to declare it as attacker
         let gs = declare_attackers(gs, PlayerId(0), &[id]).unwrap();
         assert!(gs.combat.attackers.contains(&id));
@@ -495,8 +519,8 @@ mod tests {
         let gs = deal_combat_damage(gs);
 
         // Both take lethal damage and go to graveyard.
-        assert!(!gs.battlefield.contains(&attacker));
-        assert!(!gs.battlefield.contains(&blocker));
+        assert!(!gs.battlefield.contains_key(&attacker));
+        assert!(!gs.battlefield.contains_key(&blocker));
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 20); // no damage to player
     }
 
@@ -517,9 +541,9 @@ mod tests {
 
         let gs = deal_combat_damage(gs);
 
-        assert!(gs.battlefield.contains(&giant)); // 3/3 survives 2 damage
-        assert!(!gs.battlefield.contains(&bear)); // 2/2 dies to 3 damage
-        assert_eq!(gs.objects[&giant].damage_marked, 2);
+        assert!(gs.battlefield.contains_key(&giant)); // 3/3 survives 2 damage
+        assert!(!gs.battlefield.contains_key(&bear)); // 2/2 dies to 3 damage
+        assert_eq!(gs.battlefield[&giant].damage_marked, 2);
     }
 
     #[test]
@@ -531,7 +555,7 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        gs.objects.get_mut(&bear_id).unwrap().summoning_sick = true;
+        gs.battlefield.get_mut(&bear_id).unwrap().summoning_sick = true;
 
         assert!(matches!(
             declare_attackers(gs, PlayerId(0), &[bear_id]),
@@ -554,7 +578,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
-        gs.objects.get_mut(&blocker).unwrap().tapped = true;
+        gs.battlefield.get_mut(&blocker).unwrap().tapped = true;
         gs.step = Step::DeclareBlockers;
 
         assert!(matches!(
@@ -573,7 +597,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
         let gs = declare_attackers(gs, PlayerId(0), &[bear_id]).unwrap();
-        assert!(gs.objects[&bear_id].tapped);
+        assert!(gs.battlefield[&bear_id].tapped);
     }
 
     #[test]
@@ -677,8 +701,8 @@ mod tests {
         let gs = deal_combat_damage(gs);
 
         // Blocker should be dead; attacker should be undamaged
-        assert!(!gs.battlefield.contains(&blocker));
-        assert_eq!(gs.objects[&attacker].damage_marked, 0);
+        assert!(!gs.battlefield.contains_key(&blocker));
+        assert_eq!(gs.battlefield[&attacker].damage_marked, 0);
         // A second CombatDamage step should be queued
         assert!(!gs.extra_steps.is_empty());
 
@@ -687,7 +711,7 @@ mod tests {
         let gs = deal_combat_damage(gs);
 
         // No blockers left — attacker still undamaged; player untouched (attacker was blocked)
-        assert_eq!(gs.objects[&attacker].damage_marked, 0);
+        assert_eq!(gs.battlefield[&attacker].damage_marked, 0);
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 20);
     }
 
@@ -714,8 +738,8 @@ mod tests {
 
         // Round 1: only double striker deals damage
         let gs = deal_combat_damage(gs);
-        assert_eq!(gs.objects[&blocker].damage_marked, 2);
-        assert_eq!(gs.objects[&attacker].damage_marked, 0); // blocker hasn't dealt yet
+        assert_eq!(gs.battlefield[&blocker].damage_marked, 2);
+        assert_eq!(gs.battlefield[&attacker].damage_marked, 0); // blocker hasn't dealt yet
 
         // Round 2: double striker AND non-first-strikers (none; blocker is vanilla) deal damage
         let gs = advance_step(gs);
@@ -723,8 +747,8 @@ mod tests {
         let gs = deal_combat_damage(gs);
 
         // Both die
-        assert!(!gs.battlefield.contains(&blocker));
-        assert!(!gs.battlefield.contains(&attacker));
+        assert!(!gs.battlefield.contains_key(&blocker));
+        assert!(!gs.battlefield.contains_key(&attacker));
     }
 
     #[test]
@@ -750,8 +774,8 @@ mod tests {
         let gs = deal_combat_damage(gs);
 
         // Both die; no extra step queued
-        assert!(!gs.battlefield.contains(&attacker));
-        assert!(!gs.battlefield.contains(&blocker));
+        assert!(!gs.battlefield.contains_key(&attacker));
+        assert!(!gs.battlefield.contains_key(&blocker));
         assert!(gs.extra_steps.is_empty());
     }
 
@@ -769,7 +793,7 @@ mod tests {
 
         let gs = deal_combat_damage(gs);
 
-        assert!(!gs.battlefield.contains(&blocker));
+        assert!(!gs.battlefield.contains_key(&blocker));
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 17); // 20 - 3
     }
 
@@ -794,7 +818,7 @@ mod tests {
 
         let gs = deal_combat_damage(gs);
 
-        assert!(!gs.battlefield.contains(&blocker)); // 1 deathtouch damage kills 4/4
+        assert!(!gs.battlefield.contains_key(&blocker)); // 1 deathtouch damage kills 4/4
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 16); // 20 - 4 trample
     }
 
@@ -831,9 +855,9 @@ mod tests {
         let gs = deal_combat_damage(gs);
 
         // 4/4 received deathtouch damage → SBAs already ran → it should be dead
-        assert!(!gs.battlefield.contains(&blocker));
+        assert!(!gs.battlefield.contains_key(&blocker));
         // 1/1 received 4 damage (lethal) → also dead
-        assert!(!gs.battlefield.contains(&attacker));
+        assert!(!gs.battlefield.contains_key(&attacker));
     }
 
     #[test]
@@ -893,8 +917,8 @@ mod tests {
         giant_def.power = Some(5);
         giant_def.toughness = Some(5);
         let attacker = add_creature(&mut gs, PlayerId(0), giant_def);
-        gs.objects.get_mut(&attacker).unwrap().current_power = Some(5);
-        gs.objects.get_mut(&attacker).unwrap().current_toughness = Some(5);
+        gs.battlefield.get_mut(&attacker).unwrap().current_power = Some(5);
+        gs.battlefield.get_mut(&attacker).unwrap().current_toughness = Some(5);
 
         let block1 = add_creature(
             &mut gs,
@@ -915,10 +939,10 @@ mod tests {
         let gs = deal_combat_damage(gs);
 
         // Both blockers should die. Attacker takes 2+2=4 damage, survives (5/5 with 4 damage).
-        assert!(!gs.battlefield.contains(&block1));
-        assert!(!gs.battlefield.contains(&block2));
-        assert!(gs.battlefield.contains(&attacker));
-        assert_eq!(gs.objects[&attacker].damage_marked, 4);
+        assert!(!gs.battlefield.contains_key(&block1));
+        assert!(!gs.battlefield.contains_key(&block2));
+        assert!(gs.battlefield.contains_key(&attacker));
+        assert_eq!(gs.battlefield[&attacker].damage_marked, 4);
     }
 
     #[test]

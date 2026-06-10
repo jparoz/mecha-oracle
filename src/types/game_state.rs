@@ -1,6 +1,7 @@
 use super::card_object::CardObject;
 use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
+use super::permanent::PermanentState;
 use super::player::Player;
 use super::stack::{StackId, StackObject};
 use std::collections::{HashMap, VecDeque};
@@ -94,7 +95,7 @@ pub struct GameState {
     pub libraries: HashMap<PlayerId, Vec<ObjectId>>,
     pub hands: HashMap<PlayerId, Vec<ObjectId>>,
     pub graveyards: HashMap<PlayerId, Vec<ObjectId>>,
-    pub battlefield: Vec<ObjectId>,
+    pub battlefield: HashMap<ObjectId, PermanentState>,
     pub stack: Vec<StackId>,
     pub stack_objects: HashMap<StackId, StackObject>,
     pub next_stack_id: u64,
@@ -133,7 +134,7 @@ impl GameState {
             libraries,
             hands,
             graveyards,
-            battlefield: vec![],
+            battlefield: HashMap::new(),
             stack: vec![],
             stack_objects: HashMap::new(),
             next_stack_id: 1,

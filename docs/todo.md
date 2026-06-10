@@ -7,8 +7,7 @@
 
 # Gameplay issues
 - I can still use spacebar to advance the steps after the game has finished; this should be forbidden.
-- Players should discard to hand size at the cleanup step (see 402.2)
-- Cards in hand are marked as summoning sick (maybe just a UI issue?)
+- Players should discard to hand size at the cleanup step (see CR 402.2)
 
 
 

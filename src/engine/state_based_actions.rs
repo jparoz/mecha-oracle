@@ -33,16 +33,13 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     // CR 704.5h: creature with damage ≥ toughness → graveyard.
     // CR 704.5h (deathtouch): creature dealt any deathtouch damage → graveyard.
     // CR 702.12b: Indestructible creatures are exempt from both 704.5g and 704.5h.
-    for &id in &state.battlefield {
-        if let Some(obj) = state.objects.get(&id)
-            && obj.is_creature()
-            && !obj.has_keyword(StaticAbility::Indestructible)
-        {
-            let lethal_damage = obj
+    for (&id, perm) in &state.battlefield {
+        if perm.is_creature() && !perm.has_keyword(StaticAbility::Indestructible) {
+            let lethal_damage = perm
                 .effective_toughness()
-                .map(|t| t <= 0 || obj.damage_marked as i32 >= t)
+                .map(|t| t <= 0 || perm.damage_marked as i32 >= t)
                 .unwrap_or(false);
-            if lethal_damage || obj.damaged_by_deathtouch {
+            if lethal_damage || perm.damaged_by_deathtouch {
                 sbas.push(Sba::MoveToGraveyard(id));
             }
         }
@@ -69,13 +66,10 @@ fn apply_sbas(mut state: GameState, sbas: Vec<Sba>) -> GameState {
 }
 
 pub fn move_to_graveyard(mut state: GameState, object_id: ObjectId) -> GameState {
-    state.battlefield.retain(|&id| id != object_id);
+    state.battlefield.remove(&object_id);
     if let Some(obj) = state.objects.get_mut(&object_id) {
         let owner = obj.owner;
         obj.zone = Zone::Graveyard;
-        obj.damage_marked = 0;
-        obj.damaged_by_deathtouch = false;
-        obj.tapped = false;
         if let Some(gy) = state.graveyards.get_mut(&owner) {
             gy.push(object_id);
         }
@@ -87,7 +81,7 @@ pub fn move_to_graveyard(mut state: GameState, object_id: ObjectId) -> GameState
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::{CardObject, Player, Zone};
+    use crate::types::{CardObject, PermanentState, Player, Zone};
 
     fn make_state() -> GameState {
         GameState::new(vec![
@@ -102,9 +96,10 @@ mod tests {
         def: crate::types::CardDefinition,
     ) -> ObjectId {
         let id = state.alloc_id();
-        let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
-        obj.summoning_sick = false;
-        state.battlefield.push(id);
+        let obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
     }
@@ -118,11 +113,11 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        gs.objects.get_mut(&bear_id).unwrap().damage_marked = 2; // toughness = 2, lethal
+        gs.battlefield.get_mut(&bear_id).unwrap().damage_marked = 2; // toughness = 2, lethal
 
         let gs = check_and_apply_sbas(gs);
 
-        assert!(!gs.battlefield.contains(&bear_id));
+        assert!(!gs.battlefield.contains_key(&bear_id));
         assert!(gs.graveyards[&PlayerId(0)].contains(&bear_id));
         assert_eq!(gs.objects[&bear_id].zone, Zone::Graveyard);
     }
@@ -136,11 +131,11 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        gs.objects.get_mut(&bear_id).unwrap().damage_marked = 1; // toughness = 2, survives
+        gs.battlefield.get_mut(&bear_id).unwrap().damage_marked = 1; // toughness = 2, survives
 
         let gs = check_and_apply_sbas(gs);
 
-        assert!(gs.battlefield.contains(&bear_id));
+        assert!(gs.battlefield.contains_key(&bear_id));
     }
 
     #[test]
@@ -189,9 +184,10 @@ mod tests {
             power: Some(power),
             toughness: Some(toughness),
         };
-        let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
-        obj.summoning_sick = false;
-        state.battlefield.push(id);
+        let obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
     }
@@ -207,11 +203,11 @@ mod tests {
             2,
             vec![StaticAbility::Indestructible],
         );
-        gs.objects.get_mut(&id).unwrap().damage_marked = 5; // more than toughness
+        gs.battlefield.get_mut(&id).unwrap().damage_marked = 5; // more than toughness
 
         let gs = check_and_apply_sbas(gs);
 
-        assert!(gs.battlefield.contains(&id)); // survives
+        assert!(gs.battlefield.contains_key(&id)); // survives
     }
 
     #[test]
@@ -223,11 +219,11 @@ mod tests {
             PlayerId(0),
             db.get("Hill Giant").unwrap().clone(),
         );
-        gs.objects.get_mut(&id).unwrap().damaged_by_deathtouch = true;
+        gs.battlefield.get_mut(&id).unwrap().damaged_by_deathtouch = true;
 
         let gs = check_and_apply_sbas(gs);
 
-        assert!(!gs.battlefield.contains(&id));
+        assert!(!gs.battlefield.contains_key(&id));
     }
 
     #[test]
@@ -241,11 +237,11 @@ mod tests {
             2,
             vec![StaticAbility::Indestructible],
         );
-        gs.objects.get_mut(&id).unwrap().damaged_by_deathtouch = true;
+        gs.battlefield.get_mut(&id).unwrap().damaged_by_deathtouch = true;
 
         let gs = check_and_apply_sbas(gs);
 
-        assert!(gs.battlefield.contains(&id)); // indestructible ignores both 704.5g and 704.5h
+        assert!(gs.battlefield.contains_key(&id)); // indestructible ignores both 704.5g and 704.5h
     }
 
     #[test]
@@ -262,8 +258,8 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        gs.objects.get_mut(&bear1).unwrap().damage_marked = 5;
-        gs.objects.get_mut(&bear2).unwrap().damage_marked = 5;
+        gs.battlefield.get_mut(&bear1).unwrap().damage_marked = 5;
+        gs.battlefield.get_mut(&bear2).unwrap().damage_marked = 5;
 
         let gs = check_and_apply_sbas(gs);
 

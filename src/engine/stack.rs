@@ -6,7 +6,7 @@ use super::{
 };
 use crate::types::effect::EffectStep;
 use crate::types::stack::StackPayload;
-use crate::types::{GameState, PlayerId, Zone};
+use crate::types::{GameState, PermanentState, PlayerId, Zone};
 
 // CR 405.5: when all players pass in succession, top of stack resolves;
 // if stack is empty, current step/phase ends.
@@ -100,11 +100,13 @@ pub fn resolve_top(mut state: GameState) -> GameState {
 
             if is_permanent {
                 // CR 608.3: permanent spells resolve by entering the battlefield.
+                let def = state.objects.get(&card_id).map(|o| o.definition.clone());
                 if let Some(obj) = state.objects.get_mut(&card_id) {
                     obj.zone = Zone::Battlefield;
-                    obj.summoning_sick = true;
                 }
-                state.battlefield.push(card_id);
+                if let Some(def) = def {
+                    state.battlefield.insert(card_id, PermanentState::new(&def));
+                }
 
                 // CR 603.3: collect ETB triggers and push onto stack (CR 405.3 APNAP order —
                 // for a single entering permanent, all triggers share the same controller
@@ -278,7 +280,7 @@ mod tests {
         let gs = pass_priority(gs, PlayerId(0)).unwrap();
         let gs = pass_priority(gs, PlayerId(1)).unwrap();
 
-        assert!(gs.battlefield.contains(&id));
+        assert!(gs.battlefield.contains_key(&id));
         assert_eq!(gs.objects[&id].zone, Zone::Battlefield);
         assert!(gs.stack.is_empty());
     }
@@ -383,9 +385,9 @@ mod tests {
 
         let gs = resolve_top(gs);
 
-        assert!(gs.battlefield.contains(&id));
+        assert!(gs.battlefield.contains_key(&id));
         assert_eq!(gs.objects[&id].zone, Zone::Battlefield);
-        assert!(gs.objects[&id].summoning_sick);
+        assert!(gs.battlefield[&id].summoning_sick);
         assert!(gs.stack.is_empty());
     }
 
@@ -459,7 +461,7 @@ mod tests {
 
         assert_eq!(gs.objects[&id].zone, Zone::Graveyard);
         assert!(gs.graveyards[&PlayerId(0)].contains(&id));
-        assert!(!gs.battlefield.contains(&id));
+        assert!(!gs.battlefield.contains_key(&id));
         assert!(gs.stack.is_empty());
     }
 
@@ -547,7 +549,7 @@ mod tests {
 
         let gs = resolve_top(gs);
 
-        assert!(gs.battlefield.contains(&id));
+        assert!(gs.battlefield.contains_key(&id));
         assert_eq!(gs.objects[&id].zone, Zone::Battlefield);
         assert!(!gs.graveyards[&PlayerId(0)].contains(&id));
     }
@@ -587,7 +589,7 @@ mod tests {
         let gs = resolve_top(gs);
 
         // Creature on battlefield, ETB trigger waiting on stack
-        assert!(gs.battlefield.contains(&id));
+        assert!(gs.battlefield.contains_key(&id));
         assert_eq!(gs.stack.len(), 1);
         // Card not yet drawn — trigger hasn't resolved
         assert!(gs.hands[&PlayerId(0)].is_empty());

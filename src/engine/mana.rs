@@ -17,11 +17,15 @@ pub fn tap_land_for_mana(
         if obj.zone != Zone::Battlefield {
             return Err(EngineError::CardNotOnBattlefield);
         }
-        if obj.tapped {
-            return Err(EngineError::AlreadyTapped);
-        }
         if !obj.is_land() {
             return Err(EngineError::NotALand);
+        }
+        let perm = state
+            .battlefield
+            .get(&object_id)
+            .ok_or(EngineError::CardNotFound)?;
+        if perm.tapped {
+            return Err(EngineError::AlreadyTapped);
         }
         let is_snow = obj
             .definition
@@ -54,7 +58,7 @@ pub fn tap_land_for_mana(
         .tapped_lands
         .push(object_id);
 
-    state.objects.get_mut(&object_id).unwrap().tapped = true;
+    state.battlefield.get_mut(&object_id).unwrap().tapped = true;
     let player = state.get_player_mut(controller).unwrap();
     if is_snow {
         player.mana_pool.add_snow(color, 1);
@@ -78,8 +82,8 @@ pub fn reset_mana(mut state: GameState) -> Result<GameState, EngineError> {
         }
     }
     for &id in &checkpoint.tapped_lands {
-        if let Some(obj) = state.objects.get_mut(&id) {
-            obj.tapped = false;
+        if let Some(perm) = state.battlefield.get_mut(&id) {
+            perm.tapped = false;
         }
     }
     Ok(state)
@@ -536,7 +540,9 @@ pub fn pay_mana_cost(
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::{CardObject, ManaColor, ManaCost, ManaPip, ManaPool, PaymentPlan, Player};
+    use crate::types::{
+        CardObject, ManaColor, ManaCost, ManaPip, ManaPool, PaymentPlan, PermanentState, Player,
+    };
 
     fn make_state() -> GameState {
         GameState::new(vec![
@@ -551,9 +557,9 @@ mod tests {
         def: crate::types::CardDefinition,
     ) -> ObjectId {
         let id = state.alloc_id();
-        let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
-        obj.summoning_sick = false;
-        state.battlefield.push(id);
+        let obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        let perm = PermanentState::new(&obj.definition);
+        state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
     }
@@ -566,7 +572,7 @@ mod tests {
 
         let gs = tap_land_for_mana(gs, forest_id).unwrap();
 
-        assert!(gs.objects[&forest_id].tapped);
+        assert!(gs.battlefield[&forest_id].tapped);
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
     }
 
@@ -575,7 +581,7 @@ mod tests {
         let db = test_db();
         let mut gs = make_state();
         let forest_id = add_land(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
-        gs.objects.get_mut(&forest_id).unwrap().tapped = true;
+        gs.battlefield.get_mut(&forest_id).unwrap().tapped = true;
 
         assert!(matches!(
             tap_land_for_mana(gs, forest_id),
@@ -740,12 +746,15 @@ mod tests {
         let forest_id = add_land(&mut gs, PlayerId(0), db.get("Forest").unwrap().clone());
 
         let gs = tap_land_for_mana(gs, forest_id).unwrap();
-        assert!(gs.objects[&forest_id].tapped);
+        assert!(gs.battlefield[&forest_id].tapped);
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
 
         let gs = reset_mana(gs).unwrap();
 
-        assert!(!gs.objects[&forest_id].tapped, "land untapped after reset");
+        assert!(
+            !gs.battlefield[&forest_id].tapped,
+            "land untapped after reset"
+        );
         assert!(
             gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty(),
             "pool restored"
