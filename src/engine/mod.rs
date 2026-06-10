@@ -1,6 +1,7 @@
 pub mod activated;
 pub mod casting;
 pub mod combat;
+pub mod cycling;
 pub mod mana;
 pub mod stack;
 pub mod state_based_actions;
