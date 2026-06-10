@@ -5,7 +5,9 @@ use mecha_oracle::engine::{
     mana::tap_land_for_mana,
     turn::{advance_step, apply_step_start, draw_card},
 };
-use mecha_oracle::types::{CardObject, GameState, ObjectId, Phase, Player, PlayerId, Step, Zone};
+use mecha_oracle::types::{
+    CardObject, GameState, ObjectId, PermanentState, Phase, Player, PlayerId, Step, Zone,
+};
 use std::path::Path;
 
 fn card_db() -> CardDatabase {
@@ -77,11 +79,11 @@ fn tap_all_lands_for_player(mut gs: GameState, player_id: PlayerId) -> GameState
     let land_ids: Vec<ObjectId> = gs
         .battlefield
         .iter()
-        .copied()
-        .filter(|&id| {
-            let obj = &gs.objects[&id];
-            obj.controller == player_id && obj.is_land() && !obj.tapped
+        .filter(|(id, perm)| {
+            let obj = &gs.objects[id];
+            obj.controller == player_id && obj.is_land() && !perm.tapped
         })
+        .map(|(id, _)| *id)
         .collect();
     for id in land_ids {
         gs = tap_land_for_mana(gs, id).unwrap();
@@ -208,7 +210,7 @@ fn scripted_game_runs_to_completion() {
 
     let alice_bear = gs
         .battlefield
-        .iter()
+        .keys()
         .copied()
         .find(|&id| gs.objects[&id].is_creature() && gs.objects[&id].controller == PlayerId(0));
 
@@ -219,7 +221,8 @@ fn scripted_game_runs_to_completion() {
     // We are now at Combat,DeclareAttackers
 
     let bear_can_attack = alice_bear
-        .map(|id| gs.objects[&id].can_attack())
+        .and_then(|id| gs.battlefield.get(&id))
+        .map(|p| p.can_attack())
         .unwrap_or(false);
 
     let gs = if bear_can_attack {
@@ -268,14 +271,15 @@ fn player_dies_at_zero_life_ends_game() {
     // Set up a 3/3 attacker
     let db = card_db();
     let id = gs.alloc_id();
-    let mut obj = CardObject::new(
+    let obj = CardObject::new(
         id,
         db.get("Hill Giant").unwrap().clone(),
         PlayerId(0),
         Zone::Battlefield,
     );
-    obj.summoning_sick = false;
-    gs.battlefield.push(id);
+    let mut perm = PermanentState::new(&obj.definition);
+    perm.summoning_sick = false;
+    gs.battlefield.insert(id, perm);
     gs.add_object(obj);
     gs.combat.attackers = vec![id];
     gs.combat.blocking_map.insert(id, vec![]);
@@ -341,27 +345,29 @@ fn first_striker_kills_blocker_and_survives_unscathed() {
 
     let bodyguard_id = {
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Anaba Bodyguard").unwrap().clone(),
             PlayerId(0),
             Zone::Battlefield,
         );
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
     };
     let bears_id = {
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Grizzly Bears").unwrap().clone(),
             PlayerId(1),
             Zone::Battlefield,
         );
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
     };
@@ -375,11 +381,11 @@ fn first_striker_kills_blocker_and_survives_unscathed() {
     // Round 1: first strike
     let gs = deal_combat_damage(gs);
     assert!(
-        !gs.battlefield.contains(&bears_id),
+        !gs.battlefield.contains_key(&bears_id),
         "Bears should be dead after round 1"
     );
     assert_eq!(
-        gs.objects[&bodyguard_id].damage_marked, 0,
+        gs.battlefield[&bodyguard_id].damage_marked, 0,
         "Bodyguard takes no damage in round 1"
     );
 
@@ -388,7 +394,10 @@ fn first_striker_kills_blocker_and_survives_unscathed() {
     assert_eq!(gs.step(), Step::CombatDamage);
     let gs = deal_combat_damage(gs);
 
-    assert!(gs.battlefield.contains(&bodyguard_id), "Bodyguard survives");
+    assert!(
+        gs.battlefield.contains_key(&bodyguard_id),
+        "Bodyguard survives"
+    );
     assert_eq!(
         gs.get_player(PlayerId(1)).unwrap().life,
         20,
@@ -429,22 +438,24 @@ fn trample_excess_kills_player() {
 
     let trampler_id = {
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(id, trampler_def, PlayerId(0), Zone::Battlefield);
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let obj = CardObject::new(id, trampler_def, PlayerId(0), Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
     };
     let blocker_id = {
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Grizzly Bears").unwrap().clone(), // 2/2
             PlayerId(1),
             Zone::Battlefield,
         );
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
     };
@@ -456,7 +467,10 @@ fn trample_excess_kills_player() {
     let gs = advance_step(gs); // → CombatDamage
     let gs = deal_combat_damage(gs);
 
-    assert!(!gs.battlefield.contains(&blocker_id), "2/2 blocker dies");
+    assert!(
+        !gs.battlefield.contains_key(&blocker_id),
+        "2/2 blocker dies"
+    );
     assert_eq!(
         gs.get_player(PlayerId(1)).unwrap().life,
         17,
@@ -476,27 +490,29 @@ fn deathtouch_rat_kills_hill_giant() {
 
     let rats_id = {
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Typhoid Rats").unwrap().clone(),
             PlayerId(0),
             Zone::Battlefield,
         );
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
     };
     let giant_id = {
         let id = gs.alloc_id();
-        let mut obj = CardObject::new(
+        let obj = CardObject::new(
             id,
             db.get("Hill Giant").unwrap().clone(),
             PlayerId(1),
             Zone::Battlefield,
         );
-        obj.summoning_sick = false;
-        gs.battlefield.push(id);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
     };
@@ -509,11 +525,11 @@ fn deathtouch_rat_kills_hill_giant() {
     let gs = deal_combat_damage(gs);
 
     assert!(
-        !gs.battlefield.contains(&giant_id),
+        !gs.battlefield.contains_key(&giant_id),
         "Hill Giant killed by deathtouch"
     );
     assert!(
-        !gs.battlefield.contains(&rats_id),
+        !gs.battlefield.contains_key(&rats_id),
         "Typhoid Rats killed by 3 damage"
     );
     assert_eq!(

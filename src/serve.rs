@@ -16,7 +16,9 @@ use mecha_oracle::types::ability::{
 };
 use mecha_oracle::types::effect::EffectStep;
 use mecha_oracle::types::stack::StackPayload;
-use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
+use mecha_oracle::types::{
+    CardObject, GameState, ObjectId, PermanentState, Player, PlayerId, Step, Zone,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
@@ -408,88 +410,91 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
         .copied()
         .collect();
 
-    let to_card_view = |obj: &mecha_oracle::types::CardObject| CardView {
-        id: obj.id,
-        name: obj.definition.name.clone(),
-        type_line: format_type_line(&obj.definition.type_line),
-        oracle_text: {
-            obj.definition
+    let to_card_view = |obj: &mecha_oracle::types::CardObject| {
+        let perm = state.battlefield.get(&obj.id);
+        CardView {
+            id: obj.id,
+            name: obj.definition.name.clone(),
+            type_line: format_type_line(&obj.definition.type_line),
+            oracle_text: {
+                obj.definition
+                    .abilities
+                    .iter()
+                    .map(|span| match span {
+                        OracleSpan::Parsed(Ability::Static(kw)) => OracleSpanView {
+                            kind: SpanKind::Parsed,
+                            text: kw.display_name().to_string(),
+                            ignored_kind: None,
+                        },
+                        OracleSpan::Parsed(Ability::Activated(a)) => OracleSpanView {
+                            kind: SpanKind::Parsed,
+                            text: format_activated_ability(a),
+                            ignored_kind: None,
+                        },
+                        OracleSpan::Parsed(Ability::Triggered(t)) => OracleSpanView {
+                            kind: SpanKind::Parsed,
+                            text: format_triggered_ability(t),
+                            ignored_kind: None,
+                        },
+                        OracleSpan::Parsed(Ability::SpellEffect(steps)) => OracleSpanView {
+                            kind: SpanKind::Parsed,
+                            text: format_spell_effect(steps),
+                            ignored_kind: None,
+                        },
+                        OracleSpan::Ignored(kind, t) => OracleSpanView {
+                            kind: SpanKind::Ignored,
+                            text: t.clone(),
+                            ignored_kind: Some(kind.clone()),
+                        },
+                        OracleSpan::ParsedUnimplemented(t) => OracleSpanView {
+                            kind: SpanKind::ParsedUnimplemented,
+                            text: t.clone(),
+                            ignored_kind: None,
+                        },
+                        OracleSpan::Unparsed(t) => OracleSpanView {
+                            kind: SpanKind::Unparsed,
+                            text: t.clone(),
+                            ignored_kind: None,
+                        },
+                    })
+                    .collect()
+            },
+            mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
+            power: perm.and_then(|p| p.current_power),
+            toughness: perm.and_then(|p| p.current_toughness),
+            tapped: perm.map(|p| p.tapped).unwrap_or(false),
+            summoning_sick: perm.map(|p| p.summoning_sick).unwrap_or(false),
+            damage_marked: perm.map(|p| p.damage_marked).unwrap_or(0),
+            is_attacking: state.combat.attackers.contains(&obj.id),
+            is_blocking: all_blockers.contains(&obj.id),
+            can_attack: state.step() == Step::DeclareAttackers
+                && pid == state.active_player
+                && perm.map(|p| p.can_attack()).unwrap_or(false),
+            can_block: state.step() == Step::DeclareBlockers
+                && pid != state.active_player
+                && perm.map(|p| p.can_block()).unwrap_or(false),
+            can_cast: compute_can_cast(state, pid, obj),
+            activated_abilities: obj
+                .definition
                 .abilities
                 .iter()
-                .map(|span| match span {
-                    OracleSpan::Parsed(Ability::Static(kw)) => OracleSpanView {
-                        kind: SpanKind::Parsed,
-                        text: kw.display_name().to_string(),
-                        ignored_kind: None,
-                    },
-                    OracleSpan::Parsed(Ability::Activated(a)) => OracleSpanView {
-                        kind: SpanKind::Parsed,
-                        text: format_activated_ability(a),
-                        ignored_kind: None,
-                    },
-                    OracleSpan::Parsed(Ability::Triggered(t)) => OracleSpanView {
-                        kind: SpanKind::Parsed,
-                        text: format_triggered_ability(t),
-                        ignored_kind: None,
-                    },
-                    OracleSpan::Parsed(Ability::SpellEffect(steps)) => OracleSpanView {
-                        kind: SpanKind::Parsed,
-                        text: format_spell_effect(steps),
-                        ignored_kind: None,
-                    },
-                    OracleSpan::Ignored(kind, t) => OracleSpanView {
-                        kind: SpanKind::Ignored,
-                        text: t.clone(),
-                        ignored_kind: Some(kind.clone()),
-                    },
-                    OracleSpan::ParsedUnimplemented(t) => OracleSpanView {
-                        kind: SpanKind::ParsedUnimplemented,
-                        text: t.clone(),
-                        ignored_kind: None,
-                    },
-                    OracleSpan::Unparsed(t) => OracleSpanView {
-                        kind: SpanKind::Unparsed,
-                        text: t.clone(),
-                        ignored_kind: None,
-                    },
+                .filter_map(|span| match span {
+                    OracleSpan::Parsed(Ability::Activated(a)) => Some(a),
+                    _ => None,
                 })
-                .collect()
-        },
-        mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
-        power: obj.current_power,
-        toughness: obj.current_toughness,
-        tapped: obj.tapped,
-        summoning_sick: obj.summoning_sick,
-        damage_marked: obj.damage_marked,
-        is_attacking: state.combat.attackers.contains(&obj.id),
-        is_blocking: all_blockers.contains(&obj.id),
-        can_attack: state.step() == Step::DeclareAttackers
-            && pid == state.active_player
-            && obj.can_attack(),
-        can_block: state.step() == Step::DeclareBlockers
-            && pid != state.active_player
-            && obj.can_block(),
-        can_cast: compute_can_cast(state, pid, obj),
-        activated_abilities: obj
-            .definition
-            .abilities
-            .iter()
-            .filter_map(|span| match span {
-                OracleSpan::Parsed(Ability::Activated(a)) => Some(a),
-                _ => None,
-            })
-            .enumerate()
-            .map(|(i, ability)| ActivatedAbilityView {
-                index: i,
-                label: format_activated_ability(ability),
-                can_activate: can_pay_cost(state, obj.id, ability, pid),
-            })
-            .collect(),
+                .enumerate()
+                .map(|(i, ability)| ActivatedAbilityView {
+                    index: i,
+                    label: format_activated_ability(ability),
+                    can_activate: can_pay_cost(state, obj.id, ability, pid),
+                })
+                .collect(),
+        }
     };
 
     let bf_objects: Vec<_> = state
         .battlefield
-        .iter()
+        .keys()
         .filter_map(|id| state.objects.get(id))
         .filter(|obj| obj.controller == pid)
         .collect();
@@ -548,8 +553,8 @@ fn build_game_view(state: &GameState) -> GameView {
                             type_line: format_type_line(&c.definition.type_line),
                             oracle_text: vec![],
                             mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost),
-                            power: c.current_power,
-                            toughness: c.current_toughness,
+                            power: c.definition.power,
+                            toughness: c.definition.toughness,
                             tapped: false,
                             summoning_sick: false,
                             damage_marked: 0,
@@ -1152,7 +1157,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(gs.objects[&land_id].tapped);
+        assert!(gs.battlefield[&land_id].tapped);
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
         assert!(gs.mana_checkpoint.is_some());
         let view = build_game_view(&gs);
@@ -1161,7 +1166,7 @@ mod tests {
         // Reset mana.
         gs = dispatch_action(gs, ActionRequest::ResetMana).unwrap();
 
-        assert!(!gs.objects[&land_id].tapped, "land untapped");
+        assert!(!gs.battlefield[&land_id].tapped, "land untapped");
         assert!(
             gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty(),
             "pool empty"
@@ -1223,27 +1228,29 @@ mod tests {
         // Place one untapped, non-sick creature for each player.
         let p1_id = {
             let id = gs.alloc_id();
-            let mut obj = CardObject::new(
+            let obj = CardObject::new(
                 id,
                 db.get("Grizzly Bears").unwrap().clone(),
                 PlayerId(0),
                 Zone::Battlefield,
             );
-            obj.summoning_sick = false;
-            gs.battlefield.push(id);
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.summoning_sick = false;
+            gs.battlefield.insert(id, perm);
             gs.add_object(obj);
             id.0
         };
         let p2_id = {
             let id = gs.alloc_id();
-            let mut obj = CardObject::new(
+            let obj = CardObject::new(
                 id,
                 db.get("Grizzly Bears").unwrap().clone(),
                 PlayerId(1),
                 Zone::Battlefield,
             );
-            obj.summoning_sick = false;
-            gs.battlefield.push(id);
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.summoning_sick = false;
+            gs.battlefield.insert(id, perm);
             gs.add_object(obj);
             id.0
         };
@@ -1393,27 +1400,29 @@ mod tests {
 
         let p1_id = {
             let id = gs.alloc_id();
-            let mut obj = CardObject::new(
+            let obj = CardObject::new(
                 id,
                 db.get("Grizzly Bears").unwrap().clone(),
                 PlayerId(0),
                 Zone::Battlefield,
             );
-            obj.summoning_sick = false;
-            gs.battlefield.push(id);
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.summoning_sick = false;
+            gs.battlefield.insert(id, perm);
             gs.add_object(obj);
             id.0
         };
         let p2_id = {
             let id = gs.alloc_id();
-            let mut obj = CardObject::new(
+            let obj = CardObject::new(
                 id,
                 db.get("Grizzly Bears").unwrap().clone(),
                 PlayerId(1),
                 Zone::Battlefield,
             );
-            obj.summoning_sick = false;
-            gs.battlefield.push(id);
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.summoning_sick = false;
+            gs.battlefield.insert(id, perm);
             gs.add_object(obj);
             id.0
         };

@@ -54,7 +54,9 @@ mod tests {
     use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::effect::EffectStep;
     use crate::types::mana::ManaCost;
-    use crate::types::{CardObject, GameState, ObjectId, OracleSpan, Player, PlayerId, Zone};
+    use crate::types::{
+        CardObject, GameState, ObjectId, OracleSpan, PermanentState, Player, PlayerId, Zone,
+    };
 
     fn two_player_state() -> GameState {
         GameState::new(vec![
@@ -70,7 +72,9 @@ mod tests {
     ) -> ObjectId {
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Battlefield);
-        state.battlefield.push(id);
+        state
+            .battlefield
+            .insert(id, PermanentState::new(&obj.definition));
         state.add_object(obj);
         id
     }

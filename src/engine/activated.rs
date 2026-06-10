@@ -46,11 +46,13 @@ pub fn activate_ability(
     for component in &ability.cost {
         match component {
             CostComponent::Tap => {
-                let obj = state.objects.get(&object_id).unwrap();
-                if obj.tapped {
+                let perm = state.battlefield.get(&object_id).unwrap();
+                if perm.tapped {
                     return Err(EngineError::AlreadyTapped);
                 }
-                if obj.is_creature() && obj.summoning_sick && !obj.has_keyword(StaticAbility::Haste)
+                if perm.is_creature()
+                    && perm.summoning_sick
+                    && !perm.has_keyword(StaticAbility::Haste)
                 {
                     return Err(EngineError::SummoningSick);
                 }
@@ -96,7 +98,7 @@ pub fn activate_ability(
                         .tapped_lands
                         .push(object_id);
                 }
-                state.objects.get_mut(&object_id).unwrap().tapped = true;
+                state.battlefield.get_mut(&object_id).unwrap().tapped = true;
             }
             CostComponent::Mana(cost) => {
                 let plan = match &payment_plan {
@@ -215,14 +217,16 @@ pub fn can_pay_cost(
     for component in &ability.cost {
         match component {
             CostComponent::Tap => {
-                let obj = match state.objects.get(&object_id) {
-                    Some(o) if o.zone == Zone::Battlefield => o,
-                    _ => return false,
+                let perm = match state.battlefield.get(&object_id) {
+                    Some(p) => p,
+                    None => return false,
                 };
-                if obj.tapped {
+                if perm.tapped {
                     return false;
                 }
-                if obj.is_creature() && obj.summoning_sick && !obj.has_keyword(StaticAbility::Haste)
+                if perm.is_creature()
+                    && perm.summoning_sick
+                    && !perm.has_keyword(StaticAbility::Haste)
                 {
                     return false;
                 }
@@ -249,7 +253,7 @@ mod tests {
     use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::effect::EffectStep;
     use crate::types::mana::{ManaCost, ManaPip, ManaPool};
-    use crate::types::{CardObject, Player};
+    use crate::types::{CardObject, PermanentState, Player};
 
     fn two_player_state() -> GameState {
         GameState::new(vec![
@@ -328,9 +332,10 @@ mod tests {
         owner: PlayerId,
     ) -> ObjectId {
         let id = state.alloc_id();
-        let mut obj = CardObject::new(id, def, owner, Zone::Battlefield);
-        obj.summoning_sick = false;
-        state.battlefield.push(id);
+        let obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.summoning_sick = false;
+        state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
     }
@@ -361,7 +366,7 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
-        assert!(gs.objects[&id].tapped);
+        assert!(gs.battlefield[&id].tapped);
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
     }
 
@@ -378,7 +383,7 @@ mod tests {
     fn already_tapped_returns_error() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        gs.objects.get_mut(&id).unwrap().tapped = true;
+        gs.battlefield.get_mut(&id).unwrap().tapped = true;
         assert!(matches!(
             activate_ability(gs, id, 0, PlayerId(0), None, None),
             Err(EngineError::AlreadyTapped)
@@ -389,7 +394,7 @@ mod tests {
     fn summoning_sick_creature_with_tap_cost_returns_error() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        gs.objects.get_mut(&id).unwrap().summoning_sick = true;
+        gs.battlefield.get_mut(&id).unwrap().summoning_sick = true;
         assert!(matches!(
             activate_ability(gs, id, 0, PlayerId(0), None, None),
             Err(EngineError::SummoningSick)
@@ -559,7 +564,7 @@ mod tests {
     fn can_pay_cost_false_when_tapped() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        gs.objects.get_mut(&id).unwrap().tapped = true;
+        gs.battlefield.get_mut(&id).unwrap().tapped = true;
         let ability = ActivatedAbility {
             cost: vec![CostComponent::Tap],
             effect: vec![],
