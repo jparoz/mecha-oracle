@@ -343,9 +343,10 @@ fn match_keyword(kw: &str) -> OracleSpan {
         }
     }
 
-    // Plain cycling (not type-cycling variants like mountaincycling):
-    if let Some(cost_str) = s.strip_prefix("cycling ") {
-        if let Some(cost) = try_parse_mana_cost(cost_str.trim()) {
+    // Plain cycling (not type-cycling variants like mountaincycling).
+    // Use original `kw` for the cost slice so mana symbols stay uppercase ({U} not {u}).
+    if s.starts_with("cycling ") {
+        if let Some(cost) = try_parse_mana_cost(kw["cycling ".len()..].trim()) {
             return OracleSpan::Parsed(Ability::Cycling(cost));
         }
     }
@@ -1714,6 +1715,26 @@ mod tests {
             &spans[1],
             OracleSpan::Ignored(crate::types::ability::IgnoredKind::ReminderText, _)
         ));
+    }
+
+    #[test]
+    fn parse_cycling_colored_cost() {
+        // Regression: mana symbols in cycling costs must preserve case for try_parse_mana_cost.
+        use crate::types::mana::{ManaCost, ManaPip};
+        let spans = parse_permanent("Cycling {U}", "");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
+                pips: vec![ManaPip::Blue],
+            }))]
+        );
+        let spans = parse_permanent("Cycling {1}{W}", "");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
+                pips: vec![ManaPip::Generic(1), ManaPip::White],
+            }))]
+        );
     }
 
     #[test]

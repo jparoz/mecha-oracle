@@ -385,6 +385,7 @@ let popupDismissHandler = null;
 // Returns true if this card has at least one available action right now.
 // Used for visual state only — clicking is always allowed regardless.
 function isCardActionable(card, s, pid, zone) {
+  if (card.can_cycle) return true;
   // Hand lands: only playable at sorcery speed when the land-drop is available
   if (zone === 'hand' && card.type_line.includes('Land')) {
     return s.active_player === pid &&
@@ -866,11 +867,22 @@ function getBattlefieldLandActions(card) {
   return [{ label: 'Tap for mana', onClick: () => sendAction({ type: 'tap_land', object_id: card.id }) }];
 }
 
-function getHandActions(card) {
+function getHandActions(card, s, pid) {
+  const actions = [];
   if (card.type_line.includes('Land')) {
-    return [{ label: 'Play land', onClick: () => sendAction({ type: 'play_land', object_id: card.id }) }];
+    const canPlay = s.active_player === pid &&
+      s.lands_played_this_turn === 0 &&
+      (s.step === 'PreCombatMain' || s.step === 'PostCombatMain');
+    if (canPlay) {
+      actions.push({ label: 'Play land', onClick: () => sendAction({ type: 'play_land', object_id: card.id }) });
+    }
+  } else {
+    actions.push({ label: `Cast ${card.name}`, onClick: () => sendAction({ type: 'cast_spell', object_id: card.id }) });
   }
-  return [{ label: `Cast ${card.name}`, onClick: () => sendAction({ type: 'cast_spell', object_id: card.id }) }];
+  if (card.can_cycle) {
+    actions.push({ label: `Cycle (${card.cycling_cost})`, onClick: () => sendAction({ type: 'cycle_card', object_id: card.id }) });
+  }
+  return actions;
 }
 
 function handleCardClick(cardId, pid, event) {
@@ -883,7 +895,7 @@ function handleCardClick(cardId, pid, event) {
   // Check hand
   const handCard = playerData.hand.find(c => c.id === cardId);
   if (handCard) {
-    const actions = getHandActions(handCard);
+    const actions = getHandActions(handCard, s, pid);
     if (actions.length === 1) { actions[0].onClick(); return; }
     openPopup(actions, event.currentTarget);
     return;

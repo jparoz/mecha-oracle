@@ -8,7 +8,10 @@ use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
 use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
-use mecha_oracle::engine::mana::{greedy_payment_plan, reset_mana, tap_land_for_mana};
+use mecha_oracle::engine::cycling::cycle_card;
+use mecha_oracle::engine::mana::{
+    can_pay_mana, greedy_payment_plan, reset_mana, tap_land_for_mana,
+};
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
@@ -162,6 +165,8 @@ struct CardView {
     can_block: bool,
     can_cast: bool,
     activated_abilities: Vec<ActivatedAbilityView>,
+    cycling_cost: Option<String>,
+    can_cycle: bool,
 }
 
 #[derive(Serialize)]
@@ -512,6 +517,23 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     can_activate: can_pay_cost(state, obj.id, ability, pid),
                 })
                 .collect(),
+            cycling_cost: obj.definition.abilities.iter().find_map(|span| {
+                if let OracleSpan::Parsed(Ability::Cycling(cost)) = span {
+                    Some(format_mana_cost_braced(cost))
+                } else {
+                    None
+                }
+            }),
+            can_cycle: obj.definition.abilities.iter().any(|span| {
+                if let OracleSpan::Parsed(Ability::Cycling(cost)) = span {
+                    obj.zone == Zone::Hand && state.priority_player == pid && {
+                        let player = state.get_player(pid).unwrap();
+                        can_pay_mana(cost, &player.mana_pool, player.life)
+                    }
+                } else {
+                    false
+                }
+            }),
         }
     };
 
@@ -587,6 +609,8 @@ fn build_game_view(state: &GameState) -> GameView {
                             can_block: false,
                             can_cast: false,
                             activated_abilities: vec![],
+                            cycling_cost: None,
+                            can_cycle: false,
                         }),
                     }
                 }
@@ -658,6 +682,9 @@ enum ActionRequest {
         x_value: Option<u32>,
         #[serde(default)]
         payment_plan: Option<mecha_oracle::types::mana::PaymentPlan>,
+    },
+    CycleCard {
+        object_id: u64,
     },
 }
 
@@ -765,6 +792,10 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
                 payment_plan,
             )
             .map_err(|e| format!("{e:?}"))
+        }
+        ActionRequest::CycleCard { object_id } => {
+            let player = state.priority_player;
+            cycle_card(state, ObjectId(object_id), player, None).map_err(|e| format!("{e:?}"))
         }
     }
 }
