@@ -51,7 +51,7 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
         .iter()
         .any(|t| matches!(t, CardType::Instant | CardType::Sorcery))
     {
-        parse_instant_or_sorcery(&oracle_text)
+        parse_instant_or_sorcery(&oracle_text, &name)
     } else {
         parse_permanent(&oracle_text, &name)
     };

@@ -217,6 +217,33 @@ fn try_parse_effect_step(s: &str) -> Option<EffectStep> {
             return Some(EffectStep::GainLife(n));
         }
     }
+    // "gets +N/+M until end of turn"
+    if let Some(rest) = lower.strip_prefix("gets ")
+        && let Some(boost_str) = rest.strip_suffix(" until end of turn")
+    {
+        let boost_str = boost_str.trim();
+        if boost_str.starts_with('+') || boost_str.starts_with('-') {
+            let parts: Vec<&str> = boost_str.splitn(2, '/').collect();
+            if parts.len() == 2 {
+                let power_s = parts[0].trim_start_matches('+');
+                let toughness_s = parts[1].trim_start_matches('+');
+                if let (Ok(p), Ok(t)) = (power_s.parse::<i32>(), toughness_s.parse::<i32>()) {
+                    use crate::types::PTDelta;
+                    return Some(EffectStep::BoostPermanentPT(PTDelta {
+                        power: p,
+                        toughness: t,
+                    }));
+                }
+            }
+        }
+    }
+    // "deals N damage"
+    if let Some(rest) = lower.strip_prefix("deals ")
+        && let Some(damage_str) = rest.strip_suffix(" damage")
+        && let Ok(n) = damage_str.trim().parse::<u32>()
+    {
+        return Some(EffectStep::DealDamage(n));
+    }
     None
 }
 
@@ -875,22 +902,83 @@ pub fn parse_permanent(text: &str, card_name: &str) -> Vec<OracleSpan> {
     spans
 }
 
+/// Detects targeting patterns in a spell paragraph and returns a SpellAbility.
+///
+/// Pattern A (target at front): "Target creature ..." → Creature filter; strip prefix.
+/// Pattern B (card name damage): "CardName deals N damage to any target" → Any filter.
+///
+/// All prefix/suffix lengths are computed on the lowercase form then applied at the
+/// same byte offset on the original because every prefix/suffix is pure ASCII.
+fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::ability::SpellAbility {
+    use crate::types::ability::{SpellAbility, TargetFilter};
+    let lc = paragraph.trim_end_matches('.').to_lowercase();
+
+    // Pattern A — "target creature " prefix
+    {
+        const PREFIX: &str = "target creature ";
+        if lc.starts_with(PREFIX) {
+            let effective = paragraph[PREFIX.len()..].trim_end_matches('.');
+            let steps = parse_spell_effect(effective);
+            return SpellAbility {
+                target_requirements: vec![TargetFilter::Creature],
+                steps,
+            };
+        }
+    }
+    // Pattern A — "target player " prefix
+    {
+        const PREFIX: &str = "target player ";
+        if lc.starts_with(PREFIX) {
+            let effective = paragraph[PREFIX.len()..].trim_end_matches('.');
+            let steps = parse_spell_effect(effective);
+            return SpellAbility {
+                target_requirements: vec![TargetFilter::Player],
+                steps,
+            };
+        }
+    }
+    // Pattern B — "<CardName> deals N damage to any target"
+    {
+        let card_lower = card_name.to_lowercase();
+        let prefix = format!("{} ", card_lower);
+        if !card_lower.is_empty() && lc.starts_with(prefix.as_str()) {
+            let rest_lc = &lc[prefix.len()..];
+            if let Some(damage_part) = rest_lc.strip_suffix(" to any target") {
+                let steps = parse_spell_effect(damage_part);
+                return SpellAbility {
+                    target_requirements: vec![TargetFilter::Any],
+                    steps,
+                };
+            }
+            if let Some(damage_part) = rest_lc.strip_suffix(" to target creature") {
+                let steps = parse_spell_effect(damage_part);
+                return SpellAbility {
+                    target_requirements: vec![TargetFilter::Creature],
+                    steps,
+                };
+            }
+        }
+    }
+    // No targeting pattern found — untargeted spell
+    SpellAbility {
+        target_requirements: vec![],
+        steps: parse_spell_effect(paragraph),
+    }
+}
+
 /// Parse the oracle text of an instant or sorcery.
 /// Each paragraph becomes one SpellEffect span containing parsed and
 /// unimplemented effect steps in written order (CR 609).
-pub fn parse_instant_or_sorcery(text: &str) -> Vec<OracleSpan> {
-    use crate::types::ability::{Ability, SpellAbility};
+pub fn parse_instant_or_sorcery(text: &str, card_name: &str) -> Vec<OracleSpan> {
+    use crate::types::ability::Ability;
     let mut spans = Vec::new();
     for paragraph in text.split('\n') {
         let paragraph = paragraph.trim();
         if paragraph.is_empty() {
             continue;
         }
-        let steps = parse_spell_effect(paragraph);
-        spans.push(OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
-            target_requirements: vec![],
-            steps,
-        })));
+        let spell_ability = parse_spell_paragraph(paragraph, card_name);
+        spans.push(OracleSpan::Parsed(Ability::SpellEffect(spell_ability)));
     }
     spans
 }
@@ -1570,7 +1658,7 @@ mod tests {
 
     #[test]
     fn instant_draw_one_card() {
-        let result = parse_instant_or_sorcery("Draw a card.");
+        let result = parse_instant_or_sorcery("Draw a card.", "");
         assert_eq!(result, vec![spell_effect(vec![EffectStep::DrawCard(1)])]);
     }
 
@@ -1579,6 +1667,7 @@ mod tests {
         // ", then " splits intra-sentence; DrawCard(3) is parseable, the rest is not
         let result = parse_instant_or_sorcery(
             "Draw three cards, then put two cards from your hand on top of your library in any order.",
+            "",
         );
         assert_eq!(
             result,
@@ -1592,7 +1681,7 @@ mod tests {
     #[test]
     fn opt_period_then_draw() {
         // ". " splits sentences; first sentence unimplemented, second parseable
-        let result = parse_instant_or_sorcery("Scry 1. Draw a card.");
+        let result = parse_instant_or_sorcery("Scry 1. Draw a card.", "");
         assert_eq!(
             result,
             vec![spell_effect(vec![
@@ -1605,7 +1694,7 @@ mod tests {
     #[test]
     fn serum_visions_draw_then_scry() {
         // "Draw a card, then scry 2." — draw is parsed, scry is unimplemented
-        let result = parse_instant_or_sorcery("Draw a card, then scry 2.");
+        let result = parse_instant_or_sorcery("Draw a card, then scry 2.", "");
         assert_eq!(
             result,
             vec![spell_effect(vec![
@@ -1617,7 +1706,7 @@ mod tests {
 
     #[test]
     fn counterspell_fully_unimplemented() {
-        let result = parse_instant_or_sorcery("Counter target spell.");
+        let result = parse_instant_or_sorcery("Counter target spell.", "");
         assert_eq!(
             result,
             vec![spell_effect(vec![unimpl("Counter target spell"),])]
@@ -1629,6 +1718,7 @@ mod tests {
         // One paragraph; three sentences; first has ", then " inside it
         let result = parse_instant_or_sorcery(
             "Look at the top three cards of your library, then put them back in any order. You may shuffle. Draw a card.",
+            "",
         );
         assert_eq!(
             result,
@@ -1643,8 +1733,59 @@ mod tests {
 
     #[test]
     fn empty_oracle_text_returns_empty() {
-        let result = parse_instant_or_sorcery("");
+        let result = parse_instant_or_sorcery("", "");
         assert_eq!(result, vec![]);
+    }
+
+    // ── Targeted spell parsing ─────────────────────────────────────────────────
+
+    #[test]
+    fn parse_giant_growth_effect() {
+        use crate::types::PTDelta;
+        use crate::types::ability::TargetFilter;
+        use crate::types::effect::EffectStep;
+        let result = parse_instant_or_sorcery(
+            "Target creature gets +3/+3 until end of turn.",
+            "Giant Growth",
+        );
+        assert_eq!(result.len(), 1);
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect, got {:?}", result[0]);
+        };
+        assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
+        assert_eq!(
+            sa.steps,
+            vec![EffectStep::BoostPermanentPT(PTDelta {
+                power: 3,
+                toughness: 3
+            })]
+        );
+    }
+
+    #[test]
+    fn parse_lightning_bolt_effect() {
+        use crate::types::ability::TargetFilter;
+        use crate::types::effect::EffectStep;
+        let result = parse_instant_or_sorcery(
+            "Lightning Bolt deals 3 damage to any target.",
+            "Lightning Bolt",
+        );
+        assert_eq!(result.len(), 1);
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect, got {:?}", result[0]);
+        };
+        assert_eq!(sa.target_requirements, vec![TargetFilter::Any]);
+        assert_eq!(sa.steps, vec![EffectStep::DealDamage(3)]);
+    }
+
+    #[test]
+    fn parse_draw_a_card_spell_is_untargeted() {
+        let result = parse_instant_or_sorcery("Draw a card.", "Opt");
+        assert_eq!(result.len(), 1);
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect");
+        };
+        assert!(sa.target_requirements.is_empty());
     }
 
     #[test]
