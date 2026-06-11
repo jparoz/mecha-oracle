@@ -250,11 +250,6 @@ fn giant_growth_fizzles_when_target_leaves() {
         !gs.battlefield.contains_key(&bears_id),
         "Target creature should still be off the battlefield"
     );
-    // No boost should have been applied (creature is gone).
-    assert!(
-        !gs.battlefield.contains_key(&bears_id),
-        "Target creature was already removed before resolution"
-    );
 }
 
 // CR 702.18a: Shroud prevents a permanent from being the target of any spell or ability.
