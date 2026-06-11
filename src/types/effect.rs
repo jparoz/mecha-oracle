@@ -17,7 +17,8 @@ pub enum EffectStep {
     Mill(u32),
     DrawCard(u32),
     GainLife(u32),
-    BoostPermanentPT { target_id: ObjectId, delta: PTDelta },
+    BoostPermanentPT(PTDelta),
+    DealDamage(u32),
     Unimplemented(String), // parsed but not yet executable; skipped at resolution
 }
 

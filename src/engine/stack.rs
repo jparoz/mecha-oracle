@@ -34,7 +34,9 @@ fn execute_effect_steps(
     mut state: GameState,
     controller: PlayerId,
     steps: &[EffectStep],
+    targets: &[crate::types::effect::EffectTarget],
 ) -> GameState {
+    use crate::types::effect::EffectTarget;
     for step in steps {
         match step {
             EffectStep::DrawCard(n) => {
@@ -70,12 +72,27 @@ fn execute_effect_steps(
                 // Mana abilities never reach the stack (CR 405.6c).
                 unreachable!("AddMana in stack object");
             }
-            EffectStep::BoostPermanentPT { target_id, delta } => {
-                if let Some(perm) = state.battlefield.get_mut(target_id) {
+            EffectStep::BoostPermanentPT(delta) => {
+                if let Some(EffectTarget::Object { id }) = targets.first()
+                    && let Some(perm) = state.battlefield.get_mut(id)
+                {
                     perm.pt_boost_until_eot.power += delta.power;
                     perm.pt_boost_until_eot.toughness += delta.toughness;
                 }
             }
+            EffectStep::DealDamage(n) => match targets.first() {
+                Some(EffectTarget::Object { id }) => {
+                    if let Some(perm) = state.battlefield.get_mut(id) {
+                        perm.damage_marked += n;
+                    }
+                }
+                Some(EffectTarget::Player { id }) => {
+                    if let Some(player) = state.get_player_mut(*id) {
+                        player.life -= *n as i32;
+                    }
+                }
+                None => {}
+            },
             EffectStep::Unimplemented(_) => {}
         }
     }
@@ -94,6 +111,8 @@ pub fn resolve_top(mut state: GameState) -> GameState {
             unreachable!("stack id {stack_id:?} missing from stack_objects; invariant violated")
         }
     };
+
+    let targets = stack_obj.targets.clone();
 
     match stack_obj.payload {
         StackPayload::Spell { card_id } => {
@@ -143,7 +162,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     })
                     .unwrap_or_default();
 
-                state = execute_effect_steps(state, controller, &steps);
+                state = execute_effect_steps(state, controller, &steps, &targets);
 
                 if let Some(obj) = state.objects.get_mut(&card_id) {
                     obj.zone = Zone::Graveyard;
@@ -163,7 +182,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
         StackPayload::TriggeredAbility { effect, .. }
         | StackPayload::ActivatedAbility { effect, .. } => {
             let controller = stack_obj.controller;
-            state = execute_effect_steps(state, controller, &effect);
+            state = execute_effect_steps(state, controller, &effect, &targets);
             state.consecutive_passes = 0;
             state.priority_player = state.active_player;
             check_and_apply_sbas(state)
@@ -639,21 +658,19 @@ mod tests {
 
         // Push a BoostPermanentPT trigger onto the stack.
         let stack_id = gs.alloc_stack_id();
+        use crate::types::effect::EffectTarget;
         let stack_obj = StackObject {
             id: stack_id,
             payload: StackPayload::TriggeredAbility {
                 source_id: id,
-                effect: vec![EffectStep::BoostPermanentPT {
-                    target_id: id,
-                    delta: PTDelta {
-                        power: 1,
-                        toughness: 1,
-                    },
-                }],
+                effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                    power: 1,
+                    toughness: 1,
+                })],
                 label: "test boost".into(),
             },
             controller: PlayerId(0),
-            targets: vec![],
+            targets: vec![EffectTarget::Object { id }],
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -672,27 +689,95 @@ mod tests {
         let mut gs = make_state();
         let nonexistent_id = ObjectId(999);
         let stack_id = gs.alloc_stack_id();
+        use crate::types::effect::EffectTarget;
         let stack_obj = StackObject {
             id: stack_id,
             payload: StackPayload::TriggeredAbility {
                 source_id: nonexistent_id,
-                effect: vec![EffectStep::BoostPermanentPT {
-                    target_id: nonexistent_id,
-                    delta: PTDelta {
-                        power: 5,
-                        toughness: 5,
-                    },
-                }],
+                effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                    power: 5,
+                    toughness: 5,
+                })],
                 label: "noop boost".into(),
             },
             controller: PlayerId(0),
-            targets: vec![],
+            targets: vec![EffectTarget::Object { id: nonexistent_id }],
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
 
         // Should not panic.
         let gs = resolve_top(gs);
+        assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn deal_damage_to_creature_marks_damage() {
+        let mut gs = make_state();
+        // Toughness 4 so 3 damage is sub-lethal and the creature survives SBAs.
+        let def = CardDefinition {
+            name: "Target Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(2),
+            toughness: Some(4),
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, PlayerId(1), Zone::Battlefield);
+        gs.battlefield
+            .insert(id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let stack_id = gs.alloc_stack_id();
+        use crate::types::effect::EffectTarget;
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::TriggeredAbility {
+                source_id: ObjectId(99),
+                effect: vec![EffectStep::DealDamage(3)],
+                label: "test damage".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![EffectTarget::Object { id }],
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.battlefield[&id].damage_marked, 3);
+        assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn deal_damage_to_player_reduces_life() {
+        let mut gs = make_state();
+        let before_life = gs.get_player(PlayerId(1)).unwrap().life;
+
+        let stack_id = gs.alloc_stack_id();
+        use crate::types::effect::EffectTarget;
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::TriggeredAbility {
+                source_id: ObjectId(99),
+                effect: vec![EffectStep::DealDamage(3)],
+                label: "test damage".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![EffectTarget::Player { id: PlayerId(1) }],
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life - 3);
         assert!(gs.stack.is_empty());
     }
 }

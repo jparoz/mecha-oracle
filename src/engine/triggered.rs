@@ -90,21 +90,19 @@ pub fn collect_cast_triggers(
         .into_iter()
         .map(|(creature_id, controller)| {
             let sid = state.alloc_stack_id();
+            use crate::types::effect::EffectTarget;
             StackObject {
                 id: sid,
                 payload: StackPayload::TriggeredAbility {
                     source_id: creature_id,
-                    effect: vec![EffectStep::BoostPermanentPT {
-                        target_id: creature_id,
-                        delta: PTDelta {
-                            power: 1,
-                            toughness: 1,
-                        },
-                    }],
+                    effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                        power: 1,
+                        toughness: 1,
+                    })],
                     label: "Prowess".into(),
                 },
                 controller,
-                targets: vec![],
+                targets: vec![EffectTarget::Object { id: creature_id }],
             }
         })
         .collect()
@@ -139,21 +137,19 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
                     .unwrap_or(false);
                 if !blocker_has_flanking {
                     let sid = state.alloc_stack_id();
+                    use crate::types::effect::EffectTarget;
                     result.push(StackObject {
                         id: sid,
                         payload: StackPayload::TriggeredAbility {
                             source_id: *attacker_id,
-                            effect: vec![EffectStep::BoostPermanentPT {
-                                target_id: blocker_id,
-                                delta: PTDelta {
-                                    power: -1,
-                                    toughness: -1,
-                                },
-                            }],
+                            effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                                power: -1,
+                                toughness: -1,
+                            })],
                             label: "Flanking".into(),
                         },
                         controller: attacking_player,
-                        targets: vec![],
+                        targets: vec![EffectTarget::Object { id: blocker_id }],
                     });
                 }
             }
@@ -167,21 +163,19 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
             && !blockers.is_empty()
         {
             let sid = state.alloc_stack_id();
+            use crate::types::effect::EffectTarget;
             result.push(StackObject {
                 id: sid,
                 payload: StackPayload::TriggeredAbility {
                     source_id: *attacker_id,
-                    effect: vec![EffectStep::BoostPermanentPT {
-                        target_id: *attacker_id,
-                        delta: PTDelta {
-                            power: n as i32,
-                            toughness: n as i32,
-                        },
-                    }],
+                    effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                        power: n as i32,
+                        toughness: n as i32,
+                    })],
                     label: format!("Bushido {n}"),
                 },
                 controller: attacking_player,
-                targets: vec![],
+                targets: vec![EffectTarget::Object { id: *attacker_id }],
             });
         }
 
@@ -193,21 +187,19 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
                 .and_then(|p| p.bushido_n())
             {
                 let sid = state.alloc_stack_id();
+                use crate::types::effect::EffectTarget;
                 result.push(StackObject {
                     id: sid,
                     payload: StackPayload::TriggeredAbility {
                         source_id: blocker_id,
-                        effect: vec![EffectStep::BoostPermanentPT {
-                            target_id: blocker_id,
-                            delta: PTDelta {
-                                power: n as i32,
-                                toughness: n as i32,
-                            },
-                        }],
+                        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                            power: n as i32,
+                            toughness: n as i32,
+                        })],
                         label: format!("Bushido {n}"),
                     },
                     controller: defending_player,
-                    targets: vec![],
+                    targets: vec![EffectTarget::Object { id: blocker_id }],
                 });
             }
         }
@@ -245,21 +237,19 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
             .collect();
         for source_id in exalted_sources {
             let sid = state.alloc_stack_id();
+            use crate::types::effect::EffectTarget;
             result.push(StackObject {
                 id: sid,
                 payload: StackPayload::TriggeredAbility {
                     source_id,
-                    effect: vec![EffectStep::BoostPermanentPT {
-                        target_id: attacker_id,
-                        delta: PTDelta {
-                            power: 1,
-                            toughness: 1,
-                        },
-                    }],
+                    effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                        power: 1,
+                        toughness: 1,
+                    })],
                     label: "Exalted".into(),
                 },
                 controller: attacking_player,
-                targets: vec![],
+                targets: vec![EffectTarget::Object { id: attacker_id }],
             });
         }
     }
@@ -278,21 +268,19 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
         .collect();
     for attacker_id in melee_attackers {
         let sid = state.alloc_stack_id();
+        use crate::types::effect::EffectTarget;
         result.push(StackObject {
             id: sid,
             payload: StackPayload::TriggeredAbility {
                 source_id: attacker_id,
-                effect: vec![EffectStep::BoostPermanentPT {
-                    target_id: attacker_id,
-                    delta: PTDelta {
-                        power: 1,
-                        toughness: 1,
-                    },
-                }],
+                effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                    power: 1,
+                    toughness: 1,
+                })],
                 label: "Melee".into(),
             },
             controller: attacking_player,
-            targets: vec![],
+            targets: vec![EffectTarget::Object { id: attacker_id }],
         });
     }
 
@@ -515,16 +503,17 @@ mod tests {
         };
         assert_eq!(source_id, &creature_id);
         use crate::types::PTDelta;
-        use crate::types::effect::EffectStep;
+        use crate::types::effect::{EffectStep, EffectTarget};
         assert_eq!(
             *effect,
-            vec![EffectStep::BoostPermanentPT {
-                target_id: creature_id,
-                delta: PTDelta {
-                    power: 1,
-                    toughness: 1
-                },
-            }]
+            vec![EffectStep::BoostPermanentPT(PTDelta {
+                power: 1,
+                toughness: 1
+            })]
+        );
+        assert_eq!(
+            triggers[0].targets,
+            vec![EffectTarget::Object { id: creature_id }]
         );
     }
 
@@ -622,16 +611,20 @@ mod tests {
         let StackPayload::TriggeredAbility { effect, .. } = &triggers[0].payload else {
             panic!("expected TriggeredAbility");
         };
-        use crate::types::{PTDelta, effect::EffectStep};
+        use crate::types::{
+            PTDelta,
+            effect::{EffectStep, EffectTarget},
+        };
         assert_eq!(
             *effect,
-            vec![EffectStep::BoostPermanentPT {
-                target_id: attacker_id,
-                delta: PTDelta {
-                    power: 1,
-                    toughness: 1
-                },
-            }]
+            vec![EffectStep::BoostPermanentPT(PTDelta {
+                power: 1,
+                toughness: 1
+            })]
+        );
+        assert_eq!(
+            triggers[0].targets,
+            vec![EffectTarget::Object { id: attacker_id }]
         );
     }
 
@@ -735,19 +728,23 @@ mod tests {
 
         assert_eq!(triggers.len(), 1);
         use crate::types::stack::StackPayload;
-        use crate::types::{PTDelta, effect::EffectStep};
+        use crate::types::{
+            PTDelta,
+            effect::{EffectStep, EffectTarget},
+        };
         let StackPayload::TriggeredAbility { effect, .. } = &triggers[0].payload else {
             panic!();
         };
         assert_eq!(
             *effect,
-            vec![EffectStep::BoostPermanentPT {
-                target_id: attacker_id,
-                delta: PTDelta {
-                    power: 1,
-                    toughness: 1
-                },
-            }]
+            vec![EffectStep::BoostPermanentPT(PTDelta {
+                power: 1,
+                toughness: 1
+            })]
+        );
+        assert_eq!(
+            triggers[0].targets,
+            vec![EffectTarget::Object { id: attacker_id }]
         );
     }
 
@@ -795,19 +792,23 @@ mod tests {
 
         assert_eq!(triggers.len(), 1);
         use crate::types::stack::StackPayload;
-        use crate::types::{PTDelta, effect::EffectStep};
+        use crate::types::{
+            PTDelta,
+            effect::{EffectStep, EffectTarget},
+        };
         let StackPayload::TriggeredAbility { effect, .. } = &triggers[0].payload else {
             panic!();
         };
         assert_eq!(
             *effect,
-            vec![EffectStep::BoostPermanentPT {
-                target_id: blocker_id,
-                delta: PTDelta {
-                    power: -1,
-                    toughness: -1,
-                },
-            }]
+            vec![EffectStep::BoostPermanentPT(PTDelta {
+                power: -1,
+                toughness: -1,
+            })]
+        );
+        assert_eq!(
+            triggers[0].targets,
+            vec![EffectTarget::Object { id: blocker_id }]
         );
     }
 
@@ -888,7 +889,10 @@ mod tests {
         assert_eq!(triggers.len(), 2); // one for attacker (Bushido 2), one for blocker (Bushido 1)
 
         use crate::types::stack::StackPayload;
-        use crate::types::{PTDelta, effect::EffectStep};
+        use crate::types::{
+            PTDelta,
+            effect::{EffectStep, EffectTarget},
+        };
         let effects: Vec<_> = triggers
             .iter()
             .map(|t| {
@@ -898,20 +902,21 @@ mod tests {
                 effect.clone()
             })
             .collect();
-        assert!(effects.contains(&vec![EffectStep::BoostPermanentPT {
-            target_id: attacker_id,
-            delta: PTDelta {
+        let all_targets: Vec<_> = triggers.iter().map(|t| t.targets.clone()).collect();
+        assert!(
+            effects.contains(&vec![EffectStep::BoostPermanentPT(PTDelta {
                 power: 2,
                 toughness: 2,
-            },
-        }]));
-        assert!(effects.contains(&vec![EffectStep::BoostPermanentPT {
-            target_id: blocker_id,
-            delta: PTDelta {
+            })])
+        );
+        assert!(
+            effects.contains(&vec![EffectStep::BoostPermanentPT(PTDelta {
                 power: 1,
                 toughness: 1,
-            },
-        }]));
+            })])
+        );
+        assert!(all_targets.contains(&vec![EffectTarget::Object { id: attacker_id }]));
+        assert!(all_targets.contains(&vec![EffectTarget::Object { id: blocker_id }]));
     }
 
     #[test]
