@@ -889,4 +889,37 @@ mod tests {
         assert!(gs.graveyards[&PlayerId(0)].contains(&gg_id));
         // No crash; game continues normally
     }
+
+    #[test]
+    fn targeted_activated_ability_fizzles_when_player_target_loses() {
+        // Discriminating fizzle test: activated DealDamage targeting a player who has_lost=true
+        // would apply damage without the fizzle check (player still exists in state via get_player_mut).
+        // Triggered abilities don't fizzle; activated abilities do (CR 608.2b).
+        use crate::types::effect::EffectTarget;
+        let mut gs = make_state();
+        let before_life = gs.get_player(PlayerId(1)).unwrap().life;
+
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::ActivatedAbility {
+                source_id: ObjectId(99),
+                effect: vec![EffectStep::DealDamage(3)],
+                label: "test damage".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![EffectTarget::Player { id: PlayerId(1) }],
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        // Player 1 "loses" before resolution — target becomes illegal
+        gs.get_player_mut(PlayerId(1)).unwrap().has_lost = true;
+
+        let gs = resolve_top(gs);
+
+        // Fizzle: damage NOT applied (player is illegal target)
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life);
+        assert!(gs.stack.is_empty());
+    }
 }
