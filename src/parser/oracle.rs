@@ -333,6 +333,8 @@ fn match_keyword(kw: &str) -> OracleSpan {
         "flanking" => return parsed!(Flanking),
         "melee" => return parsed!(Melee),
         "prowess" => return parsed!(Prowess),
+        "shroud" => return OracleSpan::Parsed(Ability::Static(StaticAbility::Shroud)),
+        "hexproof" => return OracleSpan::Parsed(Ability::Static(StaticAbility::Hexproof)),
         _ => {}
     }
 
@@ -369,12 +371,10 @@ fn is_cr702_keyword(s: &str) -> bool {
     matches!(
         s,
         // 702.3 Defender is implemented; listed here for documentation completeness.
-        // 702.11
-        "hexproof" |
+        // 702.11 hexproof — implemented
         // 702.13
         "intimidate" |
-        // 702.18
-        "shroud" |
+        // 702.18 shroud — implemented
         // 702.22
         "banding" |
         // 702.25
@@ -847,6 +847,7 @@ pub fn parse_permanent(text: &str, card_name: &str) -> Vec<OracleSpan> {
                 if let Some(effect) = parse_ability_effect(effect_str) {
                     spans.push(OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
                         cost,
+                        target_requirements: vec![],
                         effect,
                     })));
                 } else {
@@ -878,7 +879,7 @@ pub fn parse_permanent(text: &str, card_name: &str) -> Vec<OracleSpan> {
 /// Each paragraph becomes one SpellEffect span containing parsed and
 /// unimplemented effect steps in written order (CR 609).
 pub fn parse_instant_or_sorcery(text: &str) -> Vec<OracleSpan> {
-    use crate::types::ability::Ability;
+    use crate::types::ability::{Ability, SpellAbility};
     let mut spans = Vec::new();
     for paragraph in text.split('\n') {
         let paragraph = paragraph.trim();
@@ -886,7 +887,10 @@ pub fn parse_instant_or_sorcery(text: &str) -> Vec<OracleSpan> {
             continue;
         }
         let steps = parse_spell_effect(paragraph);
-        spans.push(OracleSpan::Parsed(Ability::SpellEffect(steps)));
+        spans.push(OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            target_requirements: vec![],
+            steps,
+        })));
     }
     spans
 }
@@ -1026,10 +1030,6 @@ mod tests {
 
     #[test]
     fn bare_unimplemented_keyword_emits_parsed_unimplemented() {
-        assert_eq!(
-            parse_permanent("Hexproof", ""),
-            vec![unimplemented("Hexproof")]
-        );
         assert_eq!(
             parse_permanent("Cascade", ""),
             vec![unimplemented("Cascade")]
@@ -1352,6 +1352,7 @@ mod tests {
             OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
                 cost,
                 effect,
+                ..
             })) if cost == &vec![CostComponent::Tap]
                 && effect == &vec![EffectStep::AddMana(ManaPool { green: 1, ..Default::default() })]
         ));
@@ -1414,7 +1415,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Activated(ActivatedAbility { cost, effect }))
+            OracleSpan::Parsed(Ability::Activated(ActivatedAbility { cost, effect, .. }))
             if cost == &vec![CostComponent::Tap]
             && effect == &vec![EffectStep::Mill(2)]
         ));
@@ -1440,7 +1441,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Activated(ActivatedAbility { cost, effect }))
+            OracleSpan::Parsed(Ability::Activated(ActivatedAbility { cost, effect, .. }))
             if cost == &vec![CostComponent::Unimplemented("Sacrifice a creature".to_string())]
             && effect == &vec![EffectStep::AddMana(ManaPool { green: 2, ..Default::default() })]
         ));
@@ -1557,7 +1558,11 @@ mod tests {
     // ── parse_instant_or_sorcery ─────────────────────────────────────────────────
 
     fn spell_effect(steps: Vec<EffectStep>) -> OracleSpan {
-        OracleSpan::Parsed(Ability::SpellEffect(steps))
+        use crate::types::ability::SpellAbility;
+        OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            target_requirements: vec![],
+            steps,
+        }))
     }
     fn unimpl(s: &str) -> EffectStep {
         EffectStep::Unimplemented(s.to_string())
@@ -1741,5 +1746,23 @@ mod tests {
     fn mountaincycling_stays_parsed_unimplemented() {
         let spans = parse_permanent("Mountaincycling {2}", "");
         assert!(matches!(&spans[0], OracleSpan::ParsedUnimplemented(_)));
+    }
+
+    #[test]
+    fn parse_shroud_keyword() {
+        use crate::types::ability::StaticAbility;
+        assert_eq!(
+            parse_permanent("Shroud", ""),
+            vec![parsed(StaticAbility::Shroud)]
+        );
+    }
+
+    #[test]
+    fn parse_hexproof_keyword() {
+        use crate::types::ability::StaticAbility;
+        assert_eq!(
+            parse_permanent("Hexproof", ""),
+            vec![parsed(StaticAbility::Hexproof)]
+        );
     }
 }

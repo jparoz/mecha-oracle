@@ -26,6 +26,8 @@ pub enum StaticAbility {
     BushidoN(u32),
     Melee,
     Prowess,
+    Shroud,   // CR 702.18
+    Hexproof, // CR 702.11
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +44,7 @@ pub struct TriggeredAbility {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivatedAbility {
     pub cost: ActivationCost,
+    pub target_requirements: Vec<TargetFilter>,
     pub effect: Effect,
 }
 
@@ -90,6 +93,8 @@ impl StaticAbility {
             Self::BushidoN(n) => format!("Bushido {n}"),
             Self::Melee => "Melee".to_string(),
             Self::Prowess => "Prowess".to_string(),
+            Self::Shroud => "Shroud".to_string(),
+            Self::Hexproof => "Hexproof".to_string(),
         }
     }
 }
@@ -121,6 +126,22 @@ impl CastFilter {
     }
 }
 
+/// Describes what kind of permanent or player can be targeted (CR 115.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetFilter {
+    Creature,
+    Player,
+    Any, // CR 115.4: creature, player, planeswalker, battle
+}
+
+/// A spell ability — the text of an instant or sorcery that takes effect when it resolves.
+/// Wraps effect steps and any targeting requirements.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpellAbility {
+    pub target_requirements: Vec<TargetFilter>, // empty for untargeted spells
+    pub steps: Effect,
+}
+
 /// Classifies oracle text that has no rules effect and is rendered in italics.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -137,7 +158,7 @@ pub enum Ability {
     Static(StaticAbility),
     Triggered(TriggeredAbility),
     Activated(ActivatedAbility),
-    SpellEffect(Effect),
+    SpellEffect(SpellAbility),
     Cycling(ManaCost),
 }
 
@@ -191,6 +212,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let ability = ActivatedAbility {
             cost: vec![CostComponent::Tap],
+            target_requirements: vec![],
             effect: vec![EffectStep::AddMana(ManaPool {
                 green: 1,
                 ..Default::default()

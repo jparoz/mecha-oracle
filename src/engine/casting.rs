@@ -184,6 +184,7 @@ mod tests {
     use crate::types::{CardObject, Player, Step};
 
     fn make_instant_def(name: &str, cost_pips: Vec<ManaPip>) -> CardDefinition {
+        use crate::types::ability::SpellAbility;
         CardDefinition {
             name: name.into(),
             mana_cost: Some(ManaCost { pips: cost_pips }),
@@ -193,9 +194,10 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(vec![
-                EffectStep::DrawCard(1),
-            ]))],
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![],
+                steps: vec![EffectStep::DrawCard(1)],
+            }))],
             power: None,
             toughness: None,
         }

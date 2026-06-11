@@ -155,8 +155,8 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                             .iter()
                             .filter_map(|span| match span {
                                 crate::types::OracleSpan::Parsed(
-                                    crate::types::Ability::SpellEffect(steps),
-                                ) => Some(steps.clone()),
+                                    crate::types::Ability::SpellEffect(spell_ability),
+                                ) => Some(spell_ability.steps.clone()),
                                 _ => None,
                             })
                             .flatten()
@@ -435,6 +435,7 @@ mod tests {
         owner: PlayerId,
         steps: Vec<EffectStep>,
     ) -> ObjectId {
+        use crate::types::ability::SpellAbility;
         let def = CardDefinition {
             name: "Test Instant".into(),
             mana_cost: Some(ManaCost {
@@ -446,7 +447,10 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(steps))],
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![],
+                steps,
+            }))],
             power: None,
             toughness: None,
         };
@@ -461,6 +465,7 @@ mod tests {
         owner: PlayerId,
         steps: Vec<EffectStep>,
     ) -> ObjectId {
+        use crate::types::ability::SpellAbility;
         let def = CardDefinition {
             name: "Test Sorcery".into(),
             mana_cost: Some(ManaCost {
@@ -472,7 +477,10 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(steps))],
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![],
+                steps,
+            }))],
             power: None,
             toughness: None,
         };

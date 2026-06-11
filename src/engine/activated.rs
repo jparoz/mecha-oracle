@@ -277,6 +277,7 @@ mod tests {
             oracle_text: "{T}: Add {G}.".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
+                target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(ManaPool {
                     green: 1,
                     ..Default::default()
@@ -299,6 +300,7 @@ mod tests {
             oracle_text: "{T}: Mill 2.".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
+                target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
             }))],
             power: None,
@@ -320,6 +322,7 @@ mod tests {
                 cost: vec![CostComponent::Mana(ManaCost {
                     pips: vec![ManaPip::Generic(1)],
                 })],
+                target_requirements: vec![],
                 effect: vec![EffectStep::DrawCard(1)],
             }))],
             power: None,
@@ -522,6 +525,7 @@ mod tests {
             oracle_text: "Sacrifice a creature: Mill 2.".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Unimplemented("Sacrifice a creature".into())],
+                target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
             }))],
             power: None,
@@ -556,6 +560,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         let ability = ActivatedAbility {
             cost: vec![CostComponent::Tap],
+            target_requirements: vec![],
             effect: vec![EffectStep::AddMana(ManaPool::default())],
         };
         assert!(can_pay_cost(&gs, id, &ability, PlayerId(0)));
@@ -568,6 +573,7 @@ mod tests {
         gs.battlefield.get_mut(&id).unwrap().tapped = true;
         let ability = ActivatedAbility {
             cost: vec![CostComponent::Tap],
+            target_requirements: vec![],
             effect: vec![],
         };
         assert!(!can_pay_cost(&gs, id, &ability, PlayerId(0)));
@@ -589,6 +595,7 @@ mod tests {
             oracle_text: "{T}: Add {G}.".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
+                target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(ManaPool {
                     green: 1,
                     ..Default::default()

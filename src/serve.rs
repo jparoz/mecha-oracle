@@ -451,9 +451,9 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                             text: format_triggered_ability(t),
                             ignored_kind: None,
                         },
-                        OracleSpan::Parsed(Ability::SpellEffect(steps)) => OracleSpanView {
+                        OracleSpan::Parsed(Ability::SpellEffect(spell_ability)) => OracleSpanView {
                             kind: SpanKind::Parsed,
-                            text: format_spell_effect(steps),
+                            text: format_spell_effect(&spell_ability.steps),
                             ignored_kind: None,
                         },
                         OracleSpan::Parsed(Ability::Cycling(cost)) => OracleSpanView {
@@ -1350,6 +1350,7 @@ mod tests {
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
+        use mecha_oracle::types::ability::SpellAbility;
         let def = CardDefinition {
             name: "Cheap Instant".into(),
             mana_cost: Some(ManaCost {
@@ -1361,9 +1362,10 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(vec![
-                EffectStep::DrawCard(1),
-            ]))],
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![],
+                steps: vec![EffectStep::DrawCard(1)],
+            }))],
             power: None,
             toughness: None,
         };
