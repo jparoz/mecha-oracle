@@ -114,6 +114,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
         }
     };
 
+    let is_activated = matches!(stack_obj.payload, StackPayload::ActivatedAbility { .. });
     let targets = stack_obj.targets.clone();
 
     match stack_obj.payload {
@@ -164,6 +165,22 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     })
                     .unwrap_or_default();
 
+                // CR 608.2b: if all targets are illegal at resolution, spell is countered
+                // by the rules (instant/sorcery still moves to graveyard, effects not applied).
+                if !targets.is_empty()
+                    && !crate::engine::targeting::targets_still_legal(&state, &targets)
+                {
+                    if let Some(obj) = state.objects.get_mut(&card_id) {
+                        obj.zone = Zone::Graveyard;
+                    }
+                    if let Some(gy) = state.graveyards.get_mut(&controller) {
+                        gy.push(card_id);
+                    }
+                    state.consecutive_passes = 0;
+                    state.priority_player = state.active_player;
+                    return check_and_apply_sbas(state);
+                }
+
                 state = execute_effect_steps(state, controller, &steps, &targets);
 
                 if let Some(obj) = state.objects.get_mut(&card_id) {
@@ -184,6 +201,16 @@ pub fn resolve_top(mut state: GameState) -> GameState {
         StackPayload::TriggeredAbility { effect, .. }
         | StackPayload::ActivatedAbility { effect, .. } => {
             let controller = stack_obj.controller;
+            // CR 608.2b: non-mana activated abilities with all-illegal targets fizzle.
+            // Triggered abilities don't fizzle — they just silently have no effect.
+            if is_activated
+                && !targets.is_empty()
+                && !crate::engine::targeting::targets_still_legal(&state, &targets)
+            {
+                state.consecutive_passes = 0;
+                state.priority_player = state.active_player;
+                return check_and_apply_sbas(state);
+            }
             state = execute_effect_steps(state, controller, &effect, &targets);
             state.consecutive_passes = 0;
             state.priority_player = state.active_player;
@@ -789,5 +816,77 @@ mod tests {
 
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life - 3);
         assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn targeted_spell_fizzles_when_target_leaves_before_resolution() {
+        use crate::types::PTDelta;
+        use crate::types::ability::{SpellAbility, TargetFilter};
+        use crate::types::effect::EffectTarget;
+
+        let mut gs = make_state();
+
+        // Put a creature on battlefield as target
+        let def = CardDefinition {
+            name: "Target".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(1),
+            toughness: Some(1),
+        };
+        let creature_id = gs.alloc_id();
+        let creature_obj = CardObject::new(creature_id, def, PlayerId(1), Zone::Battlefield);
+        gs.battlefield
+            .insert(creature_id, PermanentState::new(&creature_obj.definition));
+        gs.add_object(creature_obj);
+
+        // Put a Giant Growth targeting that creature on the stack
+        let gg_def = CardDefinition {
+            name: "Giant Growth".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Green],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![TargetFilter::Creature],
+                steps: vec![EffectStep::BoostPermanentPT(PTDelta {
+                    power: 3,
+                    toughness: 3,
+                })],
+            }))],
+            power: None,
+            toughness: None,
+        };
+        let gg_id = gs.alloc_id();
+        let gg_obj = CardObject::new(gg_id, gg_def, PlayerId(0), Zone::Stack);
+        gs.add_object(gg_obj);
+        push_spell(&mut gs, gg_id);
+        // Set the target on the stack object
+        let stack_id = *gs.stack.last().unwrap();
+        gs.stack_objects.get_mut(&stack_id).unwrap().targets =
+            vec![EffectTarget::Object { id: creature_id }];
+
+        // Remove creature from battlefield BEFORE resolution
+        gs.battlefield.remove(&creature_id);
+        gs.objects.get_mut(&creature_id).unwrap().zone = Zone::Graveyard;
+
+        let gs = resolve_top(gs);
+
+        // Spell fizzled: no boost applied (creature is gone), spell moved to graveyard
+        assert!(gs.stack.is_empty());
+        assert!(!gs.battlefield.contains_key(&creature_id));
+        assert!(gs.graveyards[&PlayerId(0)].contains(&gg_id));
+        // No crash; game continues normally
     }
 }
