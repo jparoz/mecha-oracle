@@ -676,6 +676,8 @@ enum ActionRequest {
         x_value: Option<u32>,
         #[serde(default)]
         payment_plan: Option<mecha_oracle::types::mana::PaymentPlan>,
+        #[serde(default)]
+        targets: Vec<mecha_oracle::types::effect::EffectTarget>,
     },
     CycleCard {
         object_id: u64,
@@ -775,6 +777,7 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             ability_index,
             x_value,
             payment_plan,
+            targets,
         } => {
             let player = state.priority_player;
             activate_ability(
@@ -784,6 +787,7 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
                 player,
                 x_value,
                 payment_plan,
+                targets,
             )
             .map_err(|e| format!("{e:?}"))
         }

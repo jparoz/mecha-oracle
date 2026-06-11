@@ -12,6 +12,7 @@ pub fn activate_ability(
     activating_player: PlayerId,
     x_value: Option<u32>,
     payment_plan: Option<PaymentPlan>,
+    declared_targets: Vec<crate::types::effect::EffectTarget>,
 ) -> Result<GameState, EngineError> {
     // Validate object
     {
@@ -42,6 +43,27 @@ pub fn activate_ability(
         .nth(ability_index)
         .ok_or(EngineError::AbilityIndexOutOfRange)?;
 
+    // Target validation for non-mana abilities
+    let produces_mana = ability
+        .effect
+        .iter()
+        .any(|e| matches!(e, EffectStep::AddMana(_)));
+    if !produces_mana {
+        use crate::engine::targeting::is_legal_target;
+        if ability.target_requirements.len() != declared_targets.len() {
+            return Err(EngineError::WrongNumberOfTargets);
+        }
+        for (filter, target) in ability
+            .target_requirements
+            .iter()
+            .zip(declared_targets.iter())
+        {
+            if !is_legal_target(&state, target, *filter, activating_player) {
+                return Err(EngineError::IllegalTarget);
+            }
+        }
+    }
+
     // Check costs (read-only)
     for component in &ability.cost {
         match component {
@@ -70,10 +92,7 @@ pub fn activate_ability(
     }
 
     // If this is a mana ability, create checkpoint before paying anything
-    let produces_mana = ability
-        .effect
-        .iter()
-        .any(|e| matches!(e, EffectStep::AddMana(_)));
+    // (produces_mana is already computed above for target validation)
     if produces_mana && state.mana_checkpoint.is_none() {
         let pools = state
             .players
@@ -198,7 +217,7 @@ pub fn activate_ability(
                 label,
             },
             controller: activating_player,
-            targets: vec![],
+            targets: declared_targets,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, stack_obj);
@@ -369,7 +388,7 @@ mod tests {
     fn tap_mana_ability_taps_and_adds_mana() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
         assert!(gs.battlefield[&id].tapped);
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
     }
@@ -378,7 +397,7 @@ mod tests {
     fn tap_mana_ability_creates_checkpoint() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
         assert!(gs.mana_checkpoint.is_some());
         assert_eq!(gs.mana_checkpoint.as_ref().unwrap().tapped_lands, vec![id]);
     }
@@ -389,7 +408,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         gs.battlefield.get_mut(&id).unwrap().tapped = true;
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0), None, None),
+            activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
             Err(EngineError::AlreadyTapped)
         ));
     }
@@ -400,7 +419,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         gs.battlefield.get_mut(&id).unwrap().summoning_sick = true;
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0), None, None),
+            activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
             Err(EngineError::SummoningSick)
         ));
     }
@@ -410,7 +429,7 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_draw_def(), PlayerId(0));
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0), None, None),
+            activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
             Err(EngineError::InsufficientMana)
         ));
     }
@@ -423,7 +442,7 @@ mod tests {
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 1;
         put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
 
         // Mana was spent but effect not yet applied
         assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
@@ -440,7 +459,7 @@ mod tests {
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 1;
         put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
         let gs = resolve_top(gs);
 
         assert_eq!(gs.hands[&PlayerId(0)].len(), 1);
@@ -456,7 +475,7 @@ mod tests {
         gs.priority_player = PlayerId(1); // opponent has priority
 
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0), None, None),
+            activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
             Err(EngineError::NotYourPriority)
         ));
     }
@@ -469,7 +488,7 @@ mod tests {
         put_in_library(&mut gs, PlayerId(0));
         put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
 
         assert_eq!(gs.libraries[&PlayerId(0)].len(), 2); // not milled yet
         assert_eq!(gs.stack.len(), 1);
@@ -484,7 +503,7 @@ mod tests {
         let card1 = put_in_library(&mut gs, PlayerId(0));
         let card2 = put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
         let gs = resolve_top(gs);
 
         assert!(gs.libraries[&PlayerId(0)].is_empty());
@@ -500,7 +519,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_mill_def(), PlayerId(0));
         let card1 = put_in_library(&mut gs, PlayerId(0)); // only 1 card, mill 2
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
         let gs = resolve_top(gs);
 
         assert!(gs.libraries[&PlayerId(0)].is_empty());
@@ -537,7 +556,7 @@ mod tests {
         put_in_library(&mut gs, PlayerId(0));
         put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
         assert_eq!(gs.stack.len(), 1);
 
         let gs = resolve_top(gs);
@@ -549,7 +568,7 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         assert!(matches!(
-            activate_ability(gs, id, 99, PlayerId(0), None, None),
+            activate_ability(gs, id, 99, PlayerId(0), None, None, vec![]),
             Err(EngineError::AbilityIndexOutOfRange)
         ));
     }
@@ -606,7 +625,7 @@ mod tests {
         };
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, snow_elves_def, PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
         let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
         assert_eq!(pool.green, 1);
         assert_eq!(pool.snow_green, 1);
