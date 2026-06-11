@@ -130,10 +130,18 @@ struct OracleSpanView {
 }
 
 #[derive(Serialize)]
+struct TargetView {
+    kind: String, // "permanent" | "player"
+    id: u64,
+    name: String,
+}
+
+#[derive(Serialize)]
 struct ActivatedAbilityView {
     index: usize,
     label: String,
     can_activate: bool,
+    valid_targets: Vec<TargetView>,
 }
 
 #[derive(Serialize)]
@@ -165,6 +173,7 @@ struct CardView {
     activated_abilities: Vec<ActivatedAbilityView>,
     cycling_cost: Option<String>,
     can_cycle: bool,
+    valid_targets: Vec<TargetView>,
 }
 
 #[derive(Serialize)]
@@ -376,6 +385,34 @@ fn format_triggered_ability(t: &TriggeredAbility) -> String {
     format!("{}, {}.", trigger_str, effect_parts.join(". "))
 }
 
+fn build_target_views(
+    state: &GameState,
+    targets: &[mecha_oracle::types::effect::EffectTarget],
+) -> Vec<TargetView> {
+    use mecha_oracle::types::effect::EffectTarget;
+    targets
+        .iter()
+        .filter_map(|t| match t {
+            EffectTarget::Object { id } => {
+                let obj = state.objects.get(id)?;
+                Some(TargetView {
+                    kind: "permanent".into(),
+                    id: id.0,
+                    name: obj.definition.name.clone(),
+                })
+            }
+            EffectTarget::Player { id } => {
+                let player = state.get_player(*id)?;
+                Some(TargetView {
+                    kind: "player".into(),
+                    id: id.0 as u64,
+                    name: player.name.clone(),
+                })
+            }
+        })
+        .collect()
+}
+
 fn compute_can_cast(
     state: &GameState,
     pid: PlayerId,
@@ -507,6 +544,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     index: i,
                     label: format_activated_ability(ability),
                     can_activate: can_pay_cost(state, obj.id, ability, pid),
+                    valid_targets: vec![],
                 })
                 .collect(),
             cycling_cost: obj.definition.abilities.iter().find_map(|span| {
@@ -526,6 +564,45 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                     false
                 }
             }),
+            valid_targets: {
+                use mecha_oracle::engine::targeting::legal_targets;
+                if compute_can_cast(state, pid, obj) {
+                    let filters: Vec<_> = obj
+                        .definition
+                        .abilities
+                        .iter()
+                        .filter_map(|span| match span {
+                            OracleSpan::Parsed(Ability::SpellEffect(sa)) => {
+                                Some(sa.target_requirements.clone())
+                            }
+                            _ => None,
+                        })
+                        .flatten()
+                        .collect();
+                    if filters.is_empty() {
+                        vec![]
+                    } else {
+                        // Expose union of legal targets across all slots (CR 115.4).
+                        let mut seen = std::collections::HashSet::new();
+                        let mut all_targets = vec![];
+                        for filter in &filters {
+                            for t in legal_targets(state, *filter, pid) {
+                                use mecha_oracle::types::effect::EffectTarget;
+                                let key = match &t {
+                                    EffectTarget::Object { id } => format!("o{}", id.0),
+                                    EffectTarget::Player { id } => format!("p{}", id.0),
+                                };
+                                if seen.insert(key) {
+                                    all_targets.push(t);
+                                }
+                            }
+                        }
+                        build_target_views(state, &all_targets)
+                    }
+                } else {
+                    vec![]
+                }
+            },
         }
     };
 
@@ -603,6 +680,7 @@ fn build_game_view(state: &GameState) -> GameView {
                             activated_abilities: vec![],
                             cycling_cost: None,
                             can_cycle: false,
+                            valid_targets: vec![],
                         }),
                     }
                 }
