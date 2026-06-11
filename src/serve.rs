@@ -19,9 +19,7 @@ use mecha_oracle::types::ability::{
 };
 use mecha_oracle::types::effect::EffectStep;
 use mecha_oracle::types::stack::StackPayload;
-use mecha_oracle::types::{
-    CardObject, GameState, ObjectId, PermanentState, Player, PlayerId, Step, Zone,
-};
+use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
@@ -884,7 +882,7 @@ pub async fn run(shuffle: bool, deck_path: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mecha_oracle::types::Step;
+    use mecha_oracle::types::{PermanentState, Step};
     use std::path::Path;
 
     fn test_db() -> CardDatabase {

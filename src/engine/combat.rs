@@ -1,7 +1,7 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
 use crate::engine::triggered::{collect_attack_triggers, collect_block_triggers};
 use crate::types::ability::StaticAbility;
-use crate::types::{GameState, ObjectId, PermanentState, PlayerId, Step};
+use crate::types::{GameState, ObjectId, PlayerId, Step};
 use std::collections::HashMap;
 
 /// Declare attackers: tap them and record in CombatState (CR 508).
@@ -470,9 +470,9 @@ mod tests {
 
     #[test]
     fn declare_attackers_exalted_puts_trigger_on_stack() {
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState};
 
         let mut gs = make_combat_state();
         let plain_def = CardDefinition {
@@ -956,9 +956,9 @@ mod tests {
 
     #[test]
     fn declare_blockers_flanking_attacker_puts_trigger_on_stack() {
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState};
 
         let mut gs = make_combat_state();
         let flanking_def = CardDefinition {

@@ -1,9 +1,7 @@
 use super::combat::deal_combat_damage;
 use super::state_based_actions::move_to_graveyard;
 use crate::types::ability::StaticAbility;
-use crate::types::{
-    CombatState, GameState, ObjectId, PTDelta, PermanentState, PlayerId, Step, Zone,
-};
+use crate::types::{CombatState, GameState, ObjectId, PTDelta, PlayerId, Step, Zone};
 
 /// Apply the automatic rules for the start of the current step/phase.
 pub fn apply_step_start(state: GameState) -> GameState {

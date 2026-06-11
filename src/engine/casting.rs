@@ -552,7 +552,7 @@ mod tests {
     fn cast_noncreature_with_prowess_creature_puts_boost_on_stack() {
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::mana::ManaPip;
         use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = make_state();

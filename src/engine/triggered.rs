@@ -161,25 +161,24 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
             .battlefield
             .get(attacker_id)
             .and_then(|p| p.bushido_n())
+            && !blockers.is_empty()
         {
-            if !blockers.is_empty() {
-                let sid = state.alloc_stack_id();
-                result.push(StackObject {
-                    id: sid,
-                    payload: StackPayload::TriggeredAbility {
-                        source_id: *attacker_id,
-                        effect: vec![EffectStep::BoostPermanentPT {
-                            target_id: *attacker_id,
-                            delta: PTDelta {
-                                power: n as i32,
-                                toughness: n as i32,
-                            },
-                        }],
-                        label: format!("Bushido {n}"),
-                    },
-                    controller: attacking_player,
-                });
-            }
+            let sid = state.alloc_stack_id();
+            result.push(StackObject {
+                id: sid,
+                payload: StackPayload::TriggeredAbility {
+                    source_id: *attacker_id,
+                    effect: vec![EffectStep::BoostPermanentPT {
+                        target_id: *attacker_id,
+                        delta: PTDelta {
+                            power: n as i32,
+                            toughness: n as i32,
+                        },
+                    }],
+                    label: format!("Bushido {n}"),
+                },
+                controller: attacking_player,
+            });
         }
 
         // Bushido N on each blocker: fires for every blocker with Bushido.
@@ -572,9 +571,9 @@ mod tests {
     #[test]
     fn collect_attack_triggers_exalted_single_attacker() {
         use crate::engine::triggered::collect_attack_triggers;
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = two_player_state();
         // A 2/2 attacker (no Exalted).
@@ -632,9 +631,9 @@ mod tests {
     #[test]
     fn collect_attack_triggers_exalted_multiple_attackers_no_trigger() {
         use crate::engine::triggered::collect_attack_triggers;
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = two_player_state();
         let make_def = |name: &str| CardDefinition {
@@ -661,9 +660,9 @@ mod tests {
     #[test]
     fn collect_attack_triggers_two_exalted_permanents_give_two_triggers() {
         use crate::engine::triggered::collect_attack_triggers;
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = two_player_state();
         let plain_def = CardDefinition {
@@ -704,9 +703,9 @@ mod tests {
     #[test]
     fn collect_attack_triggers_melee_in_two_player_gives_one_boost() {
         use crate::engine::triggered::collect_attack_triggers;
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = two_player_state();
         let melee_def = CardDefinition {
@@ -748,9 +747,9 @@ mod tests {
     #[test]
     fn collect_block_triggers_flanking_gives_minus_one_to_non_flanking_blocker() {
         use crate::engine::triggered::collect_block_triggers;
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = two_player_state();
         let flanking_def = CardDefinition {
@@ -808,9 +807,9 @@ mod tests {
     #[test]
     fn collect_block_triggers_flanking_no_trigger_for_flanking_blocker() {
         use crate::engine::triggered::collect_block_triggers;
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = two_player_state();
         let flanking_def = |name: &str| CardDefinition {
@@ -838,9 +837,9 @@ mod tests {
     #[test]
     fn collect_block_triggers_bushido_boosts_attacker_and_blocker() {
         use crate::engine::triggered::collect_block_triggers;
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = two_player_state();
         let bushido_def = CardDefinition {
@@ -911,9 +910,9 @@ mod tests {
     #[test]
     fn collect_block_triggers_bushido_no_trigger_when_unblocked() {
         use crate::engine::triggered::collect_block_triggers;
+        use crate::types::OracleSpan;
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = two_player_state();
         let bushido_def = CardDefinition {

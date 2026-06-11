@@ -337,18 +337,18 @@ fn match_keyword(kw: &str) -> OracleSpan {
     }
 
     // BushidoN: "bushido N"
-    if let Some(rest) = s.strip_prefix("bushido ") {
-        if let Some(n) = parse_number_word(rest.trim()) {
-            return OracleSpan::Parsed(Ability::Static(StaticAbility::BushidoN(n)));
-        }
+    if let Some(rest) = s.strip_prefix("bushido ")
+        && let Some(n) = parse_number_word(rest.trim())
+    {
+        return OracleSpan::Parsed(Ability::Static(StaticAbility::BushidoN(n)));
     }
 
     // Plain cycling (not type-cycling variants like mountaincycling).
     // Use original `kw` for the cost slice so mana symbols stay uppercase ({U} not {u}).
-    if s.starts_with("cycling ") {
-        if let Some(cost) = try_parse_mana_cost(kw["cycling ".len()..].trim()) {
-            return OracleSpan::Parsed(Ability::Cycling(cost));
-        }
+    if s.starts_with("cycling ")
+        && let Some(cost) = try_parse_mana_cost(kw["cycling ".len()..].trim())
+    {
+        return OracleSpan::Parsed(Ability::Cycling(cost));
     }
 
     // ── CR 702 recognised-but-unimplemented keywords ──────────────────────────
