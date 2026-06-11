@@ -333,8 +333,8 @@ fn match_keyword(kw: &str) -> OracleSpan {
         "flanking" => return parsed!(Flanking),
         "melee" => return parsed!(Melee),
         "prowess" => return parsed!(Prowess),
-        "shroud" => return OracleSpan::Parsed(Ability::Static(StaticAbility::Shroud)),
-        "hexproof" => return OracleSpan::Parsed(Ability::Static(StaticAbility::Hexproof)),
+        "shroud" => return parsed!(Shroud),
+        "hexproof" => return parsed!(Hexproof),
         _ => {}
     }
 
