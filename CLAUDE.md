@@ -5,6 +5,10 @@ We're building a Magic: The Gathering rules enforcement engine, and as such the 
 
 This file (docs/todo.md) is a running scratchpad I'll keep of bugs/issues as I find them. You should be aware of this file; you don't always have to refer to it as the source of what to do, but you should be aware of its contents, and delete items (bulleted list items) as they are completed. If you do delete something from this file, be sure to tell me that you've deleted it and why.
 
+# Ensure that linter is clean before finalising a block of work
+
+Before finishing a block of work, ensure that `cargo clippy --all-targets` output is clean, and fix anything that comes up. Use `cargo clippy --fix` as a first step.
+
 # Note on running cargo test
 
 Default to the grep summary pattern when running `cargo test`:
