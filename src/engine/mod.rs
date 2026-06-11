@@ -5,6 +5,7 @@ pub mod cycling;
 pub mod mana;
 pub mod stack;
 pub mod state_based_actions;
+pub mod targeting;
 pub mod triggered;
 pub mod turn;
 
@@ -28,4 +29,6 @@ pub enum EngineError {
     AbilityIndexOutOfRange,
     InvalidPaymentPlan,
     NotYourPriority,
+    WrongNumberOfTargets, // CR 601.2c: wrong number of targets declared
+    IllegalTarget,        // CR 601.2c: declared target is not a legal target
 }
