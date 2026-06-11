@@ -43,7 +43,7 @@ pub fn collect_etb_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec
                     label,
                 },
                 controller,
-                targets: vec![],
+                targets: vec![], // ETB effects use DrawCard/GainLife; never targeted
             }
         })
         .collect()

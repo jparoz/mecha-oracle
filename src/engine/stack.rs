@@ -80,6 +80,8 @@ fn execute_effect_steps(
                     perm.pt_boost_until_eot.toughness += delta.toughness;
                 }
             }
+            // TODO CR 702.2c/702.15a: deathtouch and lifelink propagation not yet
+            // implemented; DealDamage carries no source-keyword context.
             EffectStep::DealDamage(n) => match targets.first() {
                 Some(EffectTarget::Object { id }) => {
                     if let Some(perm) = state.battlefield.get_mut(id) {
