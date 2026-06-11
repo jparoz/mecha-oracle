@@ -7,6 +7,7 @@
 
 # Gameplay issues
 - Players should discard to hand size at the cleanup step (see CR 402.2)
+- Dryad Arbor isn't working as a land once in play, it's only treated as a creature (i.e. I can't tap it for mana)
 
 
 

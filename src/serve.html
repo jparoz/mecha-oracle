@@ -534,6 +534,9 @@ function describeAction(action) {
     case 'cast_spell': {
       // Instants and Flash creatures can be cast by any player with priority
       const casterLabel = currentState.priority_player + 1;
+      if (action.targets && action.targets.length > 0) {
+        return `<span class="who">P${casterLabel}</span> cast a targeted spell`;
+      }
       return `<span class="who">P${casterLabel}</span> cast a spell`;
     }
     case 'declare_attackers': return `<span class="who">P${apLabel}</span> declared attackers`;
@@ -876,6 +879,18 @@ function getHandActions(card, s, pid) {
     if (canPlay) {
       actions.push({ label: 'Play land', onClick: () => sendAction({ type: 'play_land', object_id: card.id }) });
     }
+  } else if (card.valid_targets && card.valid_targets.length > 0) {
+    // Targeted spell: one action per legal target (TargetView.kind is "permanent"|"player";
+    // EffectTarget tag is "object"|"player").
+    card.valid_targets.forEach(t => {
+      const efTarget = t.kind === 'permanent'
+        ? { kind: 'object', id: t.id }
+        : { kind: 'player', id: t.id };
+      actions.push({
+        label: `Cast ${card.name} → ${t.name}`,
+        onClick: () => sendAction({ type: 'cast_spell', object_id: card.id, targets: [efTarget] }),
+      });
+    });
   } else {
     actions.push({ label: `Cast ${card.name}`, onClick: () => sendAction({ type: 'cast_spell', object_id: card.id }) });
   }
