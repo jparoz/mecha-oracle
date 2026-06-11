@@ -177,7 +177,7 @@ fn scripted_game_runs_to_completion() {
         let gs = tap_all_lands_for_player(gs, PlayerId(0));
         let available = gs.get_player(PlayerId(0)).unwrap().mana_pool.total();
         if available >= cost.mana_value() {
-            cast_spell(gs, PlayerId(0), bear_id).unwrap()
+            cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap()
         } else {
             gs
         }

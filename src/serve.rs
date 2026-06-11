@@ -655,6 +655,8 @@ enum ActionRequest {
     },
     CastSpell {
         object_id: u64,
+        #[serde(default)]
+        targets: Vec<mecha_oracle::types::effect::EffectTarget>,
     },
     DeclareAttackers {
         attacker_ids: Vec<u64>,
@@ -710,9 +712,9 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             let player = state.priority_player;
             play_land(state, player, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
         }
-        ActionRequest::CastSpell { object_id } => {
+        ActionRequest::CastSpell { object_id, targets } => {
             let player = state.priority_player;
-            cast_spell(state, player, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
+            cast_spell(state, player, ObjectId(object_id), targets).map_err(|e| format!("{e:?}"))
         }
         ActionRequest::DeclareAttackers { attacker_ids } => {
             let ids: Vec<ObjectId> = attacker_ids.iter().map(|&id| ObjectId(id)).collect();

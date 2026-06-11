@@ -90,9 +90,42 @@ pub fn cast_spell(
     mut state: GameState,
     player_id: PlayerId,
     object_id: ObjectId,
+    declared_targets: Vec<crate::types::effect::EffectTarget>,
 ) -> Result<GameState, EngineError> {
     if state.priority_player != player_id {
         return Err(EngineError::NotYourPriority);
+    }
+
+    // CR 601.2c: targets declared when spell is cast; validate count and legality.
+    {
+        use crate::engine::targeting::is_legal_target;
+        use crate::types::OracleSpan;
+        use crate::types::ability::Ability;
+        let target_requirements: Vec<crate::types::ability::TargetFilter> = state
+            .objects
+            .get(&object_id)
+            .map(|obj| {
+                obj.definition
+                    .abilities
+                    .iter()
+                    .filter_map(|span| match span {
+                        OracleSpan::Parsed(Ability::SpellEffect(sa)) => {
+                            Some(sa.target_requirements.clone())
+                        }
+                        _ => None,
+                    })
+                    .flatten()
+                    .collect()
+            })
+            .unwrap_or_default();
+        if target_requirements.len() != declared_targets.len() {
+            return Err(EngineError::WrongNumberOfTargets);
+        }
+        for (filter, target) in target_requirements.iter().zip(declared_targets.iter()) {
+            if !is_legal_target(&state, target, *filter, player_id) {
+                return Err(EngineError::IllegalTarget);
+            }
+        }
     }
 
     let cost = {
@@ -151,7 +184,7 @@ pub fn cast_spell(
         id: stack_id,
         payload: crate::types::StackPayload::Spell { card_id: object_id },
         controller: player_id,
-        targets: vec![],
+        targets: declared_targets,
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);
@@ -248,7 +281,7 @@ mod tests {
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -265,7 +298,7 @@ mod tests {
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -292,7 +325,7 @@ mod tests {
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 2;
         let id = put_in_hand(&mut gs, PlayerId(0), make_flash_creature_def());
 
-        let gs = cast_spell(gs, PlayerId(0), id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -325,7 +358,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), id),
+            cast_spell(gs, PlayerId(0), id, vec![]),
             Err(EngineError::CannotCastNow)
         ));
     }
@@ -341,7 +374,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
 
         assert!(!gs.hands[&PlayerId(0)].contains(&id));
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
@@ -359,7 +392,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
 
         assert_eq!(gs.priority_player, PlayerId(0));
         assert_eq!(gs.consecutive_passes, 0);
@@ -424,7 +457,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), bear_id),
+            cast_spell(gs, PlayerId(0), bear_id, vec![]),
             Err(EngineError::InsufficientMana)
         ));
     }
@@ -446,7 +479,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap();
 
         assert!(gs.mana_checkpoint.is_none());
     }
@@ -477,7 +510,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap();
 
         assert!(!gs.battlefield.contains_key(&bear_id));
         assert!(gs.hands[&PlayerId(0)].is_empty());
@@ -496,7 +529,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap();
 
         // CR 117.3c: caster retains priority
         assert_eq!(gs.priority_player, PlayerId(0));
@@ -516,7 +549,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), bear_id),
+            cast_spell(gs, PlayerId(0), bear_id, vec![]),
             Err(EngineError::NotYourPriority)
         ));
     }
@@ -533,7 +566,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap();
         let gs = pass_priority(gs, PlayerId(0)).unwrap();
         let gs = pass_priority(gs, PlayerId(1)).unwrap();
 
@@ -590,10 +623,148 @@ mod tests {
             PlayerId(0),
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
-        let gs = cast_spell(gs, PlayerId(0), spell_id).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), spell_id, vec![]).unwrap();
 
         // Spell on stack + 1 Prowess trigger on stack = 2 items.
         assert_eq!(gs.stack.len(), 2);
+    }
+
+    #[test]
+    fn cast_targeted_spell_without_target_returns_wrong_number() {
+        use crate::types::ability::{SpellAbility, TargetFilter};
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 1;
+        let targeted_instant_def = CardDefinition {
+            name: "Giant Growth".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Green],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![TargetFilter::Creature],
+                steps: vec![],
+            }))],
+            power: None,
+            toughness: None,
+        };
+        let id = put_in_hand(&mut gs, PlayerId(0), targeted_instant_def);
+        let result = cast_spell(gs, PlayerId(0), id, vec![]);
+        assert!(matches!(result, Err(EngineError::WrongNumberOfTargets)));
+    }
+
+    #[test]
+    fn cast_targeted_spell_with_illegal_target_returns_illegal_target() {
+        use crate::types::ability::{SpellAbility, TargetFilter};
+        use crate::types::effect::EffectTarget;
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 1;
+        let targeted_instant_def = CardDefinition {
+            name: "Giant Growth".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Green],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![TargetFilter::Creature],
+                steps: vec![],
+            }))],
+            power: None,
+            toughness: None,
+        };
+        let id = put_in_hand(&mut gs, PlayerId(0), targeted_instant_def);
+        // ObjectId(999) doesn't exist
+        let result = cast_spell(
+            gs,
+            PlayerId(0),
+            id,
+            vec![EffectTarget::Object { id: ObjectId(999) }],
+        );
+        assert!(matches!(result, Err(EngineError::IllegalTarget)));
+    }
+
+    #[test]
+    fn cast_targeted_spell_with_valid_target_succeeds() {
+        use crate::types::PermanentState;
+        use crate::types::ability::{SpellAbility, TargetFilter};
+        use crate::types::effect::EffectTarget;
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 1;
+        // Place a creature on the battlefield
+        let creature_def = CardDefinition {
+            name: "Bear".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            power: Some(2),
+            toughness: Some(2),
+        };
+        let creature_id = gs.alloc_id();
+        let obj = CardObject::new(creature_id, creature_def, PlayerId(1), Zone::Battlefield);
+        gs.battlefield
+            .insert(creature_id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let targeted_instant_def = CardDefinition {
+            name: "Giant Growth".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Green],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![TargetFilter::Creature],
+                steps: vec![],
+            }))],
+            power: None,
+            toughness: None,
+        };
+        let id = put_in_hand(&mut gs, PlayerId(0), targeted_instant_def);
+        let gs = cast_spell(
+            gs,
+            PlayerId(0),
+            id,
+            vec![EffectTarget::Object { id: creature_id }],
+        )
+        .unwrap();
+        assert_eq!(gs.objects[&id].zone, Zone::Stack);
+        // targets stored on stack object
+        let stack_id = gs.stack[0];
+        assert_eq!(
+            gs.stack_objects[&stack_id].targets,
+            vec![EffectTarget::Object { id: creature_id }]
+        );
+    }
+
+    #[test]
+    fn cast_untargeted_spell_with_no_targets_still_works() {
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 1;
+        let id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            make_instant_def("Opt", vec![ManaPip::Blue]),
+        );
+        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
+        assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
 
     #[test]
