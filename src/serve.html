@@ -385,7 +385,7 @@ let popupDismissHandler = null;
 // Returns true if this card has at least one available action right now.
 // Used for visual state only — clicking is always allowed regardless.
 function isCardActionable(card, s, pid, zone) {
-  if (card.can_cycle) return true;
+  if (zone === 'hand' && card.cycling_cost) return true;
   // Hand lands: only playable at sorcery speed when the land-drop is available
   if (zone === 'hand' && card.type_line.includes('Land')) {
     return s.active_player === pid &&
@@ -879,7 +879,7 @@ function getHandActions(card, s, pid) {
   } else {
     actions.push({ label: `Cast ${card.name}`, onClick: () => sendAction({ type: 'cast_spell', object_id: card.id }) });
   }
-  if (card.can_cycle) {
+  if (card.cycling_cost) {
     actions.push({ label: `Cycle (${card.cycling_cost})`, onClick: () => sendAction({ type: 'cycle_card', object_id: card.id }) });
   }
   return actions;
