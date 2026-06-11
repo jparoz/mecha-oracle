@@ -151,6 +151,7 @@ pub fn cast_spell(
         id: stack_id,
         payload: crate::types::StackPayload::Spell { card_id: object_id },
         controller: player_id,
+        targets: vec![],
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);
@@ -235,6 +236,7 @@ mod tests {
                     label: "dummy".into(),
                 },
                 controller: PlayerId(0),
+                targets: vec![],
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 1;
@@ -282,6 +284,7 @@ mod tests {
                     label: "dummy".into(),
                 },
                 controller: PlayerId(0),
+                targets: vec![],
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 2;
@@ -309,6 +312,7 @@ mod tests {
                     label: "dummy".into(),
                 },
                 controller: PlayerId(0),
+                targets: vec![],
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
@@ -605,6 +609,7 @@ mod tests {
                 label: "dummy".into(),
             },
             controller: PlayerId(0),
+            targets: vec![],
         };
         gs.stack.push(sid);
         gs.stack_objects.insert(sid, obj);

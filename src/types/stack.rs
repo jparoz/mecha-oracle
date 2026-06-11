@@ -31,4 +31,5 @@ pub struct StackObject {
     pub id: StackId,
     pub payload: StackPayload,
     pub controller: PlayerId,
+    pub targets: Vec<super::effect::EffectTarget>, // declared targets (CR 115.1)
 }

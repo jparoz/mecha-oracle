@@ -197,6 +197,7 @@ mod tests {
             id: stack_id,
             payload: StackPayload::Spell { card_id },
             controller,
+            targets: vec![],
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, obj);
@@ -213,6 +214,7 @@ mod tests {
                 label: "draw trigger".into(),
             },
             controller,
+            targets: vec![],
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, obj);
@@ -339,6 +341,7 @@ mod tests {
                 label: "gain life trigger".into(),
             },
             controller: PlayerId(0),
+            targets: vec![],
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, obj);
@@ -363,6 +366,7 @@ mod tests {
                 label: "mill trigger".into(),
             },
             controller: PlayerId(0),
+            targets: vec![],
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, obj);
@@ -649,6 +653,7 @@ mod tests {
                 label: "test boost".into(),
             },
             controller: PlayerId(0),
+            targets: vec![],
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -681,6 +686,7 @@ mod tests {
                 label: "noop boost".into(),
             },
             controller: PlayerId(0),
+            targets: vec![],
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);

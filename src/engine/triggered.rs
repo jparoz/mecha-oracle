@@ -43,6 +43,7 @@ pub fn collect_etb_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec
                     label,
                 },
                 controller,
+                targets: vec![],
             }
         })
         .collect()
@@ -103,6 +104,7 @@ pub fn collect_cast_triggers(
                     label: "Prowess".into(),
                 },
                 controller,
+                targets: vec![],
             }
         })
         .collect()
@@ -151,6 +153,7 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
                             label: "Flanking".into(),
                         },
                         controller: attacking_player,
+                        targets: vec![],
                     });
                 }
             }
@@ -178,6 +181,7 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
                     label: format!("Bushido {n}"),
                 },
                 controller: attacking_player,
+                targets: vec![],
             });
         }
 
@@ -203,6 +207,7 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
                         label: format!("Bushido {n}"),
                     },
                     controller: defending_player,
+                    targets: vec![],
                 });
             }
         }
@@ -254,6 +259,7 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
                     label: "Exalted".into(),
                 },
                 controller: attacking_player,
+                targets: vec![],
             });
         }
     }
@@ -286,6 +292,7 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
                 label: "Melee".into(),
             },
             controller: attacking_player,
+            targets: vec![],
         });
     }
 

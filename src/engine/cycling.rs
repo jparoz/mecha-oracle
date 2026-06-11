@@ -85,6 +85,7 @@ pub fn cycle_card(
             label: "Cycling".into(),
         },
         controller: player_id,
+        targets: vec![],
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);
