@@ -153,6 +153,25 @@ pub enum IgnoredKind {
     AbilityWord,
 }
 
+/// Describes the visual style to apply to an annotated range of oracle text in the UI.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnnotationKind {
+    ReminderText,
+    AbilityWord,
+    ParsedUnimplemented,
+    Unparsed,
+}
+
+/// A styled byte-range annotation over a `CardDefinition`'s `oracle_text` field.
+/// `start` and `end` are byte offsets (UTF-8) into `oracle_text`, exclusive of `end`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextAnnotation {
+    pub start: usize,
+    pub end: usize,
+    pub kind: AnnotationKind,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ability {
     Static(StaticAbility),
@@ -236,5 +255,29 @@ mod tests {
         assert_eq!(StaticAbility::BushidoN(2).display_name(), "Bushido 2");
         assert_eq!(StaticAbility::Melee.display_name(), "Melee");
         assert_eq!(StaticAbility::Prowess.display_name(), "Prowess");
+    }
+
+    #[test]
+    fn annotation_kind_serialises_to_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&AnnotationKind::ReminderText).unwrap(),
+            r#""reminder_text""#
+        );
+        assert_eq!(
+            serde_json::to_string(&AnnotationKind::ParsedUnimplemented).unwrap(),
+            r#""parsed_unimplemented""#
+        );
+    }
+
+    #[test]
+    fn text_annotation_construction() {
+        let ann = TextAnnotation {
+            start: 3,
+            end: 10,
+            kind: AnnotationKind::Unparsed,
+        };
+        assert_eq!(ann.start, 3);
+        assert_eq!(ann.end, 10);
+        assert_eq!(ann.kind, AnnotationKind::Unparsed);
     }
 }
