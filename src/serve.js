@@ -272,13 +272,12 @@ function cardHTML(card, s, pid, zone) {
   if (card.is_attacking)   tags.push('<span class="tag tag-attack">Attacking</span>');
   if (card.is_blocking)    tags.push('<span class="tag tag-block">Blocking</span>');
 
-  const oracle = card.oracle_text;
   const tooltip = `
     <div class="tooltip">
       <div class="tooltip-name">${esc(card.name)}</div>
       ${card.mana_cost ? `<div class="tooltip-cost">${esc(card.mana_cost)}</div>` : ''}
       <div class="tooltip-type">${esc(card.type_line)}</div>
-      ${oracle.length > 0 ? `<div class="tooltip-text">${renderOracleText(oracle)}</div>` : ''}
+      ${card.oracle_text ? `<div class="tooltip-text">${renderOracleText(card)}</div>` : ''}
       ${card.power != null ? `<div class="tooltip-pt">${card.power} / ${card.toughness}</div>` : ''}
       ${tags.length ? `<div class="tooltip-tags">${tags.join('')}</div>` : ''}
     </div>`;
@@ -299,19 +298,28 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function renderOracleText(spans) {
-  if (!spans || spans.length === 0) return '';
-  return spans.map(span => {
-    const t = String(span.text)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    if (span.kind === 'parsed')               return `<span>${t}</span>`;
-    if (span.kind === 'ignored')              return `<span style="font-style:italic">${t}</span>`;
-    if (span.kind === 'unparsed')             return `<span style="color:red;text-decoration:underline">${t}</span>`;
-    if (span.kind === 'parsed_unimplemented') return `<span style="color:#4dd9d9;text-decoration:underline">${t}</span>`;
-    return t;
-  }).join('<br>');
+function annStyle(kind) {
+  if (kind === 'reminder_text' || kind === 'ability_word') return 'font-style:italic';
+  if (kind === 'parsed_unimplemented') return 'color:#4dd9d9;text-decoration:underline';
+  if (kind === 'unparsed') return 'color:red;text-decoration:underline';
+  return '';
+}
+
+function renderOracleText(card) {
+  const text = card.oracle_text || '';
+  if (!text) return '';
+  const annotations = (card.text_annotations || []).slice().sort((a, b) => a.start - b.start);
+  const parts = [];
+  let pos = 0;
+  for (const ann of annotations) {
+    if (ann.start > pos) parts.push(esc(text.slice(pos, ann.start)));
+    const style = annStyle(ann.kind);
+    const content = esc(text.slice(ann.start, ann.end));
+    parts.push(style ? `<span style="${style}">${content}</span>` : content);
+    pos = ann.end;
+  }
+  if (pos < text.length) parts.push(esc(text.slice(pos)));
+  return `<div style="white-space:pre-wrap">${parts.join('')}</div>`;
 }
 
 function renderActionBar(s) {
