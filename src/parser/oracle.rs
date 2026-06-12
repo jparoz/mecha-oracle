@@ -916,6 +916,12 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
                 OracleSpan::ParsedUnimplemented(_) => {
                     // CR 702 keyword with em-dash syntax (Cumulative upkeep, Suspend, etc.).
                     // Emit the whole paragraph as a single recognised-unimplemented span.
+                    let para_start = subslice_offset(text, paragraph);
+                    annotations.push(TextAnnotation {
+                        start: para_start,
+                        end: para_start + paragraph.len(),
+                        kind: AnnotationKind::ParsedUnimplemented,
+                    });
                     spans.push(ParsedUnimplemented(paragraph.to_string()));
                     continue;
                 }
@@ -924,9 +930,24 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
                 }
                 _ => {
                     // Ability word or flavour word — emit label + right side.
-                    let label = paragraph[..dash_pos + EM_DASH.len_utf8()].to_string();
-                    spans.push(OracleSpan::Ignored(IgnoredKind::AbilityWord, label));
+                    let label_slice = &paragraph[..dash_pos + EM_DASH.len_utf8()];
+                    let label_start = subslice_offset(text, label_slice);
+                    annotations.push(TextAnnotation {
+                        start: label_start,
+                        end: label_start + label_slice.len(),
+                        kind: AnnotationKind::AbilityWord,
+                    });
+                    spans.push(OracleSpan::Ignored(
+                        IgnoredKind::AbilityWord,
+                        label_slice.to_string(),
+                    ));
                     if !right.is_empty() {
+                        let right_start = subslice_offset(text, right);
+                        annotations.push(TextAnnotation {
+                            start: right_start,
+                            end: right_start + right.len(),
+                            kind: AnnotationKind::Unparsed,
+                        });
                         spans.push(OracleSpan::Unparsed(right.to_string()));
                     }
                     continue;
@@ -947,6 +968,12 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
                         effect,
                     })));
                 } else {
+                    let para_start = subslice_offset(text, paragraph);
+                    annotations.push(TextAnnotation {
+                        start: para_start,
+                        end: para_start + paragraph.len(),
+                        kind: AnnotationKind::ParsedUnimplemented,
+                    });
                     spans.push(OracleSpan::ParsedUnimplemented(paragraph.to_string()));
                 }
                 continue;
@@ -955,6 +982,14 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
 
         // ETB trigger check: "When/Whenever this enters…" or "When <CardName> enters…"
         if let Some(span) = try_parse_etb_trigger(paragraph, card_name) {
+            if let OracleSpan::ParsedUnimplemented(_) = &span {
+                let para_start = subslice_offset(text, paragraph);
+                annotations.push(TextAnnotation {
+                    start: para_start,
+                    end: para_start + paragraph.len(),
+                    kind: AnnotationKind::ParsedUnimplemented,
+                });
+            }
             spans.push(span);
             continue;
         }
@@ -2035,5 +2070,63 @@ mod tests {
         assert_eq!(annotations[0].kind, AnnotationKind::Unparsed);
         assert_eq!(annotations[0].start, 0);
         assert_eq!(annotations[0].end, text.len());
+    }
+
+    #[test]
+    fn ability_word_emits_ability_word_and_unparsed_annotations() {
+        let text = "Landfall \u{2014} Whenever a land you control enters, you gain 1 life.";
+        let (_, annotations) = parse_permanent(text, "");
+        assert_eq!(annotations.len(), 2);
+        assert_eq!(annotations[0].kind, AnnotationKind::AbilityWord);
+        // label = "Landfall —" (em-dash is 3 bytes)
+        let em_dash = '\u{2014}';
+        let label = format!("Landfall {em_dash}");
+        assert_eq!(annotations[0].start, 0);
+        assert_eq!(annotations[0].end, label.len()); // 9 + 3 = 12
+        assert_eq!(annotations[1].kind, AnnotationKind::Unparsed);
+        let right = "Whenever a land you control enters, you gain 1 life.";
+        let right_start = text.find(right).unwrap();
+        assert_eq!(annotations[1].start, right_start);
+        assert_eq!(annotations[1].end, text.len());
+    }
+
+    #[test]
+    fn em_dash_cr702_keyword_emits_parsed_unimplemented_annotation() {
+        let text = "Cumulative upkeep\u{2014}Add {R}.";
+        let (_, annotations) = parse_permanent(text, "");
+        assert_eq!(annotations.len(), 1);
+        assert_eq!(annotations[0].kind, AnnotationKind::ParsedUnimplemented);
+        assert_eq!(annotations[0].start, 0);
+        assert_eq!(annotations[0].end, text.len());
+    }
+
+    #[test]
+    fn activated_with_unknown_effect_emits_parsed_unimplemented_annotation() {
+        let text = "{T}: Create a 1/1 token.";
+        let (_, annotations) = parse_permanent(text, "");
+        assert_eq!(annotations.len(), 1);
+        assert_eq!(annotations[0].kind, AnnotationKind::ParsedUnimplemented);
+        assert_eq!(annotations[0].start, 0);
+        assert_eq!(annotations[0].end, text.len());
+    }
+
+    #[test]
+    fn etb_with_unknown_effect_emits_parsed_unimplemented_annotation() {
+        let text = "When this enters, create a 1/1 token.";
+        let (_, annotations) = parse_permanent(text, "");
+        assert_eq!(annotations.len(), 1);
+        assert_eq!(annotations[0].kind, AnnotationKind::ParsedUnimplemented);
+        assert_eq!(annotations[0].start, 0);
+        assert_eq!(annotations[0].end, text.len());
+    }
+
+    #[test]
+    fn fully_parsed_spans_emit_no_annotations() {
+        let (_, a1) = parse_permanent("When this enters, draw a card.", "");
+        assert!(a1.is_empty());
+        let (_, a2) = parse_permanent("{T}: Add {G}.", "");
+        assert!(a2.is_empty());
+        let (_, a3) = parse_permanent("Flying", "");
+        assert!(a3.is_empty());
     }
 }
