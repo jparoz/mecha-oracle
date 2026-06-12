@@ -98,62 +98,8 @@ pub fn declare_blockers(
         if !state.combat.attackers.contains(&attacker_id) {
             return Err(EngineError::CannotCastNow);
         }
-        // CR 702.9b: a creature with flying can only be blocked by creatures with flying or reach.
-        if state
-            .objects
-            .get(&attacker_id)
-            .map(|a| a.has_keyword(StaticAbility::Flying))
-            .unwrap_or(false)
-            && !obj.has_keyword(StaticAbility::Flying)
-            && !obj.has_keyword(StaticAbility::Reach)
-        {
+        if !can_block_attacker(&state, blocker_id, attacker_id) {
             return Err(EngineError::InvalidBlocker);
-        }
-        // CR 702.28b: shadow creatures can only be blocked by/block other shadow creatures.
-        {
-            let attacker_has_shadow = state
-                .objects
-                .get(&attacker_id)
-                .map(|a| a.has_keyword(StaticAbility::Shadow))
-                .unwrap_or(false);
-            if attacker_has_shadow != obj.has_keyword(StaticAbility::Shadow) {
-                return Err(EngineError::InvalidBlocker);
-            }
-        }
-        // CR 702.147a: a creature with Decayed can't block.
-        if obj.has_keyword(StaticAbility::Decayed) {
-            return Err(EngineError::InvalidBlocker);
-        }
-        // CR 702.31b: horsemanship — can only be blocked by creatures with horsemanship.
-        if state
-            .objects
-            .get(&attacker_id)
-            .map(|a| a.has_keyword(StaticAbility::Horsemanship))
-            .unwrap_or(false)
-            && !obj.has_keyword(StaticAbility::Horsemanship)
-        {
-            return Err(EngineError::InvalidBlocker);
-        }
-        // CR 702.118b: skulk — can't be blocked by a creature with greater power.
-        if state
-            .objects
-            .get(&attacker_id)
-            .map(|a| a.has_keyword(StaticAbility::Skulk))
-            .unwrap_or(false)
-        {
-            let attacker_power = state
-                .battlefield
-                .get(&attacker_id)
-                .and_then(|p| p.effective_power())
-                .unwrap_or(0);
-            let blocker_power = state
-                .battlefield
-                .get(&blocker_id)
-                .and_then(|p| p.effective_power())
-                .unwrap_or(0);
-            if blocker_power > attacker_power {
-                return Err(EngineError::InvalidBlocker);
-            }
         }
     }
 
@@ -206,6 +152,59 @@ pub fn declare_blockers(
     }
 
     Ok(state)
+}
+
+/// CR 509.1: returns true if `blocker_id` can legally block `attacker_id`.
+/// Checks per-pair evasion rules. Does not check menace (a whole-declaration constraint).
+pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: ObjectId) -> bool {
+    let Some(blocker_perm) = state.battlefield.get(&blocker_id) else {
+        return false;
+    };
+    let Some(blocker_obj) = state.objects.get(&blocker_id) else {
+        return false;
+    };
+    let Some(attacker_obj) = state.objects.get(&attacker_id) else {
+        return false;
+    };
+    if !blocker_perm.can_block() {
+        return false;
+    }
+    // CR 702.9b: flying
+    if attacker_obj.has_keyword(StaticAbility::Flying)
+        && !blocker_obj.has_keyword(StaticAbility::Flying)
+        && !blocker_obj.has_keyword(StaticAbility::Reach)
+    {
+        return false;
+    }
+    // CR 702.28b: shadow
+    if attacker_obj.has_keyword(StaticAbility::Shadow)
+        != blocker_obj.has_keyword(StaticAbility::Shadow)
+    {
+        return false;
+    }
+    // CR 702.31b: horsemanship
+    if attacker_obj.has_keyword(StaticAbility::Horsemanship)
+        && !blocker_obj.has_keyword(StaticAbility::Horsemanship)
+    {
+        return false;
+    }
+    // CR 702.118b: skulk
+    if attacker_obj.has_keyword(StaticAbility::Skulk) {
+        let attacker_power = state
+            .battlefield
+            .get(&attacker_id)
+            .and_then(|p| p.effective_power())
+            .unwrap_or(0);
+        let blocker_power = state
+            .battlefield
+            .get(&blocker_id)
+            .and_then(|p| p.effective_power())
+            .unwrap_or(0);
+        if blocker_power > attacker_power {
+            return false;
+        }
+    }
+    true
 }
 
 /// Deal combat damage (CR 510). Handles first strike / double strike two-round system (CR 510.4).
@@ -1101,5 +1100,101 @@ mod tests {
             declare_blockers(gs, PlayerId(1), &[(decayed, attacker)]),
             Err(EngineError::InvalidBlocker)
         ));
+    }
+
+    #[test]
+    fn can_block_attacker_vanilla_vs_vanilla() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_ground_cannot_block_flier() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_reach_can_block_flier() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Reach]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_non_shadow_cannot_block_shadow() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Shadow]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_shadow_cannot_block_non_shadow() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Shadow]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_shadow_can_block_shadow() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Shadow]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Shadow]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_non_horsemanship_cannot_block_horsemanship() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(
+            &mut gs,
+            PlayerId(0),
+            2,
+            2,
+            vec![StaticAbility::Horsemanship],
+        );
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_skulk_not_blockable_by_greater_power() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 1, 1, vec![StaticAbility::Skulk]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_skulk_blockable_by_equal_power() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Skulk]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_decayed_cannot_block() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Decayed]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        assert!(!can_block_attacker(&gs, blocker, attacker));
     }
 }
