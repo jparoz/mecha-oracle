@@ -7,7 +7,7 @@ use axum::{
 use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
 use mecha_oracle::engine::casting::{cast_spell, play_land};
-use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
+use mecha_oracle::engine::combat::{can_block_attacker, declare_attackers, declare_blockers};
 use mecha_oracle::engine::cycling::cycle_card;
 use mecha_oracle::engine::mana::{
     can_pay_mana, greedy_payment_plan, reset_mana, tap_land_for_mana,
@@ -570,27 +570,23 @@ fn compute_battlefield_actions(
 
     // Blocker assignment (no cost — can_pay_cost always true)
     if state.step() == Step::DeclareBlockers && pid != state.active_player {
-        let can_blk = state
-            .battlefield
-            .get(&obj.id)
-            .map(|p| p.can_block())
-            .unwrap_or(false);
-        if can_blk {
-            for &atk_id in &state.combat.attackers {
-                let atk_name = state
-                    .objects
-                    .get(&atk_id)
-                    .map(|o| o.definition.name.as_str())
-                    .unwrap_or("Unknown");
-                actions.push(ActionItemView {
-                    label: format!("Block {atk_name}"),
-                    can_pay_cost: true,
-                    kind: ActionItemKind::AssignBlocker {
-                        blocker_id: obj.id.0,
-                        attacker_id: atk_id.0,
-                    },
-                });
+        for &atk_id in &state.combat.attackers {
+            if !can_block_attacker(state, obj.id, atk_id) {
+                continue;
             }
+            let atk_name = state
+                .objects
+                .get(&atk_id)
+                .map(|o| o.definition.name.as_str())
+                .unwrap_or("Unknown");
+            actions.push(ActionItemView {
+                label: format!("Block {atk_name}"),
+                can_pay_cost: true,
+                kind: ActionItemKind::AssignBlocker {
+                    blocker_id: obj.id.0,
+                    attacker_id: atk_id.0,
+                },
+            });
         }
     }
 
@@ -1779,6 +1775,120 @@ mod tests {
         assert!(
             !has_toggle_attacker(p1_c),
             "declared attacker (tapped) should not have toggle_attacker action"
+        );
+    }
+
+    #[test]
+    fn blocker_ui_only_shows_valid_pairings() {
+        use mecha_oracle::types::ability::StaticAbility;
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        use mecha_oracle::types::{Ability, CardObject, OracleSpan, Zone};
+
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        // P0: a flying attacker
+        let flying_atk = {
+            let id = gs.alloc_id();
+            let def = CardDefinition {
+                name: "Flying Attacker".into(),
+                mana_cost: None,
+                type_line: TypeLine {
+                    supertypes: vec![],
+                    card_types: vec![CardType::Creature],
+                    subtypes: vec![],
+                },
+                oracle_text: String::new(),
+                abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flying))],
+                power: Some(2),
+                toughness: Some(2),
+            };
+            let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        // P0: a ground attacker
+        let ground_atk = {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(0),
+                Zone::Battlefield,
+            );
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        // P1: a ground blocker (can block ground_atk but not flying_atk)
+        let ground_blk = {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(1),
+                Zone::Battlefield,
+            );
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+
+        // Navigate to DeclareAttackers and declare both P0 creatures
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(gs.step(), Step::DeclareAttackers);
+        gs = dispatch_action(
+            gs,
+            ActionRequest::DeclareAttackers {
+                attacker_ids: vec![flying_atk.0, ground_atk.0],
+            },
+        )
+        .unwrap();
+        for _ in 0..2 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(gs.step(), Step::DeclareBlockers);
+
+        let view = build_game_view(&gs);
+        let blk_card = view
+            .p2
+            .creatures
+            .iter()
+            .find(|c| c.id == ground_blk)
+            .unwrap();
+
+        let blocker_targets: Vec<u64> = blk_card
+            .actions
+            .iter()
+            .filter_map(|a| {
+                if let ActionItemKind::AssignBlocker { attacker_id, .. } = a.kind {
+                    Some(attacker_id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(
+            blocker_targets.contains(&ground_atk.0),
+            "ground blocker should be offered as blocker for ground attacker"
+        );
+        assert!(
+            !blocker_targets.contains(&flying_atk.0),
+            "ground blocker must not be offered as blocker for flying attacker"
         );
     }
 }
