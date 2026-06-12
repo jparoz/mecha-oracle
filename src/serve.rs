@@ -983,6 +983,8 @@ fn init_game(path: &str, shuffle: bool) -> Result<GameState, String> {
 }
 
 const INDEX_HTML: &str = include_str!("serve.html");
+const STYLE_CSS: &str = include_str!("serve.css");
+const APP_JS: &str = include_str!("serve.js");
 
 // ── App state ────────────────────────────────────────────────────────────────
 
@@ -995,6 +997,17 @@ struct AppState {
 
 async fn index_handler() -> impl IntoResponse {
     Html(INDEX_HTML)
+}
+
+async fn css_handler() -> impl IntoResponse {
+    ([(axum::http::header::CONTENT_TYPE, "text/css")], STYLE_CSS)
+}
+
+async fn js_handler() -> impl IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/javascript")],
+        APP_JS,
+    )
 }
 
 async fn state_handler(State(app): State<AppState>) -> Json<GameView> {
@@ -1039,6 +1052,8 @@ pub async fn run(shuffle: bool, deck_path: &str) {
 
     let router = Router::new()
         .route("/", get(index_handler))
+        .route("/static/app.css", get(css_handler))
+        .route("/static/app.js", get(js_handler))
         .route("/state", get(state_handler))
         .route("/action", post(action_handler))
         .with_state(app_state);
