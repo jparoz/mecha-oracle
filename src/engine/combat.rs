@@ -98,6 +98,7 @@ pub fn declare_blockers(
         if !state.combat.attackers.contains(&attacker_id) {
             return Err(EngineError::CannotCastNow);
         }
+        // tapped already caught above (distinct error variant); can_block() here gates Decayed et al.
         if !can_block_attacker(&state, blocker_id, attacker_id) {
             return Err(EngineError::InvalidBlocker);
         }
@@ -1196,5 +1197,23 @@ mod tests {
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Decayed]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_returns_false_for_unknown_blocker() {
+        let mut gs = make_combat_state();
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![]);
+        gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
+        // Use an ObjectId that does not exist in the state
+        let unknown = ObjectId(9999);
+        assert!(!can_block_attacker(&gs, unknown, attacker));
+    }
+
+    #[test]
+    fn can_block_attacker_returns_false_for_unknown_attacker() {
+        let mut gs = make_combat_state();
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        let unknown_attacker = ObjectId(9999);
+        assert!(!can_block_attacker(&gs, blocker, unknown_attacker));
     }
 }
