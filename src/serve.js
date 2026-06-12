@@ -7,31 +7,6 @@ let gyData = { 1: [], 2: [] };
 let toastTimer = null;
 let popupDismissHandler = null;
 
-// ── Card state helpers ───────────────────────────────────────────────────────
-
-// Returns true if this card has at least one available action right now.
-// Used for visual state only — clicking is always allowed regardless.
-function isCardActionable(card, s, pid, zone) {
-  if (zone === 'hand' && card.cycling_cost) return true;
-  // Hand lands: only playable at sorcery speed when the land-drop is available
-  if (zone === 'hand' && card.type_line.includes('Land')) {
-    return s.active_player === pid &&
-      s.lands_played_this_turn === 0 &&
-      (s.step === 'PreCombatMain' || s.step === 'PostCombatMain');
-  }
-  if (card.can_cast) return true;
-
-  // Battlefield cards (including lands)
-  if (card.can_attack) return true;
-  if (card.can_block) return true;
-  if (card.activated_abilities && card.activated_abilities.length > 0)
-    return card.activated_abilities.some(a => a.can_activate);
-  // Basic lands have no parsed activated_abilities; their intrinsic mana ability
-  // is available whenever the land is untapped (tap_land action path).
-  if (zone === 'bf' && card.type_line.includes('Land')) return !card.tapped;
-
-  return false;
-}
 
 // ── Toast ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +31,7 @@ function openPopup(items, anchorEl, header) {
   popup.innerHTML =
     (header ? `<div class="popup-header">${esc(header)}</div>` : '') +
     items.map((item, i) =>
-      `<button class="popup-item${item.active ? ' active' : ''}" data-idx="${i}">${esc(item.label)}</button>`
+      `<button class="popup-item${item.active ? ' active' : ''}${item.disabled ? ' disabled' : ''}" data-idx="${i}">${esc(item.label)}</button>`
     ).join('');
 
   // Position near anchor
@@ -75,6 +50,7 @@ function openPopup(items, anchorEl, header) {
   popup.querySelectorAll('.popup-item').forEach((btn, i) => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
+      if (items[i].disabled) return;
       closePopup();
       items[i].onClick();
     });
@@ -278,7 +254,7 @@ function cardHTML(card, s, pid, zone) {
   if (isSelected) classes += ' selected';
 
   if (!isSelected && !card.is_attacking && !card.is_blocking) {
-    if (s && pid !== undefined && isCardActionable(card, s, pid, zone)) {
+    if (card.actions && card.actions.some(a => a.can_pay_cost)) {
       classes += ' actionable';
     } else {
       classes += ' dim';
@@ -286,7 +262,8 @@ function cardHTML(card, s, pid, zone) {
   }
 
   const wrap = card.tapped ? 'card-wrap tapped-wrap' : 'card-wrap';
-  const clickAttr = `onclick="handleCardClick(${card.id}, ${pid !== undefined ? pid : -1}, event)"`;
+  const pid_ = pid !== undefined ? pid : -1;
+  const clickAttr = `onclick="handleCardClick(${card.id}, ${pid_}, event, true)" oncontextmenu="handleCardClick(${card.id}, ${pid_}, event, false)"`;
 
   const tags = [];
   if (card.tapped)         tags.push('<span class="tag tag-tapped">Tapped</span>');
@@ -421,147 +398,57 @@ function toggleLog() {
 
 // ── Card click dispatch ───────────────────────────────────────────────────────
 
-// Returns an array of action items, or null if the action was handled inline
-// (attacker direct-toggle or blocker popup).
-function getBattlefieldCreatureActions(card, s, pid, anchorEl) {
-  const oppData = pid === 0 ? s.p2 : s.p1;
-
-  // DeclareBlockers: always show attacker-assignment popup (takes priority over abilities)
-  if (s.step === 'DeclareBlockers' && card.can_block) {
-    const attackers = oppData.creatures.filter(c => c.is_attacking);
-    const currentAssignment = blockersAssignment[card.id];
-    const items = attackers.map(atk => ({
-      label: `Block ${atk.name}`,
-      active: currentAssignment === atk.id,
-      onClick: () => {
-        if (blockersAssignment[card.id] === atk.id) {
-          delete blockersAssignment[card.id]; // deselect if already assigned here
-        } else {
-          blockersAssignment[card.id] = atk.id;
-        }
-        render(currentState);
-      },
-    }));
-    openPopup(items, anchorEl, 'Assign blocker');
-    return null; // handled inline
-  }
-
-  // Build action list for all other steps
-  const actions = [];
-
-  // DeclareAttackers: "Declare as attacker" toggle is offered as an action
-  if (s.step === 'DeclareAttackers' && card.can_attack) {
-    const isSelected = attackersSelected.includes(card.id);
-    actions.push({
-      label: isSelected ? '✓ Attacking — click to remove' : 'Declare as attacker',
-      onClick: () => {
-        if (isSelected) attackersSelected.splice(attackersSelected.indexOf(card.id), 1);
-        else attackersSelected.push(card.id);
-        render(currentState);
-      },
-    });
-  }
-
-  // Activated abilities
-  if (card.activated_abilities) {
-    card.activated_abilities.forEach(ab => {
-      actions.push({
-        label: ab.label,
-        onClick: () => sendAction({ type: 'activate_ability', object_id: card.id, ability_index: ab.index }),
-      });
-    });
-  }
-
-  // If the only action is the attacker toggle, fire it directly (no popup needed)
-  if (actions.length === 1 && s.step === 'DeclareAttackers' && card.can_attack) {
-    actions[0].onClick();
-    return null; // handled inline
-  }
-
-  return actions; // empty array = no-op; 1+ items = caller opens popup or fires directly
+function findCard(cardId, pid) {
+    const p = pid === 0 ? currentState.p1 : currentState.p2;
+    return p.hand.find(c => c.id === cardId)
+        || p.lands.find(c => c.id === cardId)
+        || p.creatures.find(c => c.id === cardId);
 }
 
-function getBattlefieldLandActions(card) {
-  // If the land has multiple parsed activated abilities, offer each as a popup option
-  if (card.activated_abilities && card.activated_abilities.length > 1) {
-    return card.activated_abilities.map(ab => ({
-      label: ab.label,
-      onClick: () => sendAction({ type: 'activate_ability', object_id: card.id, ability_index: ab.index }),
-    }));
-  }
-  if (card.activated_abilities && card.activated_abilities.length === 1) {
-    const ab = card.activated_abilities[0];
-    return [{ label: ab.label, onClick: () => sendAction({ type: 'activate_ability', object_id: card.id, ability_index: ab.index }) }];
-  }
-  // Fallback: intrinsic mana ability — use tap_land
-  return [{ label: 'Tap for mana', onClick: () => sendAction({ type: 'tap_land', object_id: card.id }) }];
-}
-
-function getHandActions(card, s, pid) {
-  const actions = [];
-  if (card.type_line.includes('Land')) {
-    const canPlay = s.active_player === pid &&
-      s.lands_played_this_turn === 0 &&
-      (s.step === 'PreCombatMain' || s.step === 'PostCombatMain');
-    if (canPlay) {
-      actions.push({ label: 'Play land', onClick: () => sendAction({ type: 'play_land', object_id: card.id }) });
+function dispatchAction(item) {
+    if (item.kind === 'server') {
+        sendAction(item.action);
+    } else if (item.kind === 'toggle_attacker') {
+        const idx = attackersSelected.indexOf(item.object_id);
+        if (idx >= 0) attackersSelected.splice(idx, 1);
+        else attackersSelected.push(item.object_id);
+        render(currentState);
+    } else if (item.kind === 'assign_blocker') {
+        if (blockersAssignment[item.blocker_id] === item.attacker_id)
+            delete blockersAssignment[item.blocker_id];
+        else
+            blockersAssignment[item.blocker_id] = item.attacker_id;
+        render(currentState);
     }
-  } else if (card.valid_targets && card.valid_targets.length > 0) {
-    // Targeted spell: one action per legal target (TargetView.kind is "permanent"|"player";
-    // EffectTarget tag is "object"|"player").
-    card.valid_targets.forEach(t => {
-      const efTarget = t.kind === 'permanent'
-        ? { kind: 'object', id: t.id }
-        : { kind: 'player', id: t.id };
-      actions.push({
-        label: `Cast ${card.name} → ${t.name}`,
-        onClick: () => sendAction({ type: 'cast_spell', object_id: card.id, targets: [efTarget] }),
-      });
-    });
-  } else {
-    actions.push({ label: `Cast ${card.name}`, onClick: () => sendAction({ type: 'cast_spell', object_id: card.id }) });
-  }
-  if (card.cycling_cost) {
-    actions.push({ label: `Cycle (${card.cycling_cost})`, onClick: () => sendAction({ type: 'cycle_card', object_id: card.id }) });
-  }
-  return actions;
 }
 
-function handleCardClick(cardId, pid, event) {
-  if (!currentState || pid < 0) return;
-  closePopup();
+function buildPopupItems(actions) {
+    return actions.map(a => ({
+        label: a.label,
+        disabled: !a.can_pay_cost,
+        onClick: a.can_pay_cost ? () => dispatchAction(a) : () => {},
+    }));
+}
 
-  const s = currentState;
-  const playerData = pid === 0 ? s.p1 : s.p2;
+// autoDispatchIfSingle=true for left-click; false for right-click (always show popup)
+function handleCardClick(cardId, pid, event, autoDispatchIfSingle) {
+    if (!autoDispatchIfSingle) event.preventDefault();
+    if (!currentState) return;
+    closePopup();
+    const card = pid >= 0 ? findCard(cardId, pid) : null;
+    const actions = card ? card.actions : [];
 
-  // Check hand
-  const handCard = playerData.hand.find(c => c.id === cardId);
-  if (handCard) {
-    const actions = getHandActions(handCard, s, pid);
-    if (actions.length === 1) { actions[0].onClick(); return; }
-    openPopup(actions, event.currentTarget);
-    return;
-  }
+    if (autoDispatchIfSingle) {
+        if (actions.length === 1 && actions[0].can_pay_cost) {
+            dispatchAction(actions[0]); return;
+        }
+        if (actions.length === 0) return;
+    }
 
-  // Battlefield lands
-  const land = playerData.lands.find(c => c.id === cardId);
-  if (land) {
-    const actions = getBattlefieldLandActions(land);
-    if (actions.length === 1) { actions[0].onClick(); return; }
-    openPopup(actions, event.currentTarget, 'Tap for mana');
-    return;
-  }
-
-  // Battlefield creatures
-  const creature = playerData.creatures.find(c => c.id === cardId);
-  if (creature) {
-    const actions = getBattlefieldCreatureActions(creature, s, pid, event.currentTarget);
-    if (actions === null) return; // handled inline (toggle or popup opened)
-    if (actions.length === 0) return; // no actions — click is a no-op
-    if (actions.length === 1) { actions[0].onClick(); return; }
-    openPopup(actions, event.currentTarget, 'Actions');
-    return;
-  }
+    const items = actions.length > 0
+        ? buildPopupItems(actions)
+        : [{ label: 'No valid actions', onClick: () => {} }];
+    openPopup(items, event.target, 'Actions');
 }
 
 // ── Attacker / Blocker selection ──────────────────────────────────────────────
