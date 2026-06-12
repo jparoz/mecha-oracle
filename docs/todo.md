@@ -2,8 +2,6 @@
 - Can we run dead code analysis on library re-exports? That is, check that all library exports are actually used in the binary?
 - Consider renaming `Ability` (in `types/ability.rs`) to `Rule` or `RulesText` — it looks odd to see `Ability::SpellEffect` as a variant on a type named `Ability`, even though it's the right place structurally.
 
-# UI issues
-
 # Gameplay issues
 - Players should discard to hand size at the cleanup step (see CR 402.2)
 
