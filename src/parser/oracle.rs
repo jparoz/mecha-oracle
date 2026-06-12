@@ -273,9 +273,53 @@ fn parse_spell_effect(paragraph: &str) -> Effect {
         .collect()
 }
 
+/// Returns the byte offset of `sub` within `whole`.
+/// Panics in debug builds if `sub` is not a subslice of `whole`.
+fn subslice_offset(whole: &str, sub: &str) -> usize {
+    debug_assert!(
+        sub.as_ptr() as usize >= whole.as_ptr() as usize
+            && sub.as_ptr() as usize + sub.len() <= whole.as_ptr() as usize + whole.len(),
+        "sub is not a subslice of whole"
+    );
+    sub.as_ptr() as usize - whole.as_ptr() as usize
+}
+
+/// Pushes a `TextAnnotation` for a keyword span if the span kind warrants one.
+/// `raw_start..raw_end` is the byte range of the *untrimmed* non-paren text in `original`.
+fn push_keyword_annotation(
+    span: &OracleSpan,
+    raw_start: usize,
+    raw_end: usize,
+    original: &str,
+    annotations: &mut Vec<TextAnnotation>,
+) {
+    let kind = match span {
+        OracleSpan::Unparsed(_) => AnnotationKind::Unparsed,
+        OracleSpan::ParsedUnimplemented(_) => AnnotationKind::ParsedUnimplemented,
+        _ => return,
+    };
+    let raw_slice = &original[raw_start..raw_end];
+    let trimmed = raw_slice.trim(); // str::trim returns a subslice; safe for subslice_offset
+    if trimmed.is_empty() {
+        return;
+    }
+    let trim_start = subslice_offset(original, trimmed);
+    annotations.push(TextAnnotation {
+        start: trim_start,
+        end: trim_start + trimmed.len(),
+        kind,
+    });
+}
+
 /// Emits spans for a single comma-separated token (no top-level em-dash).
 /// Extracts any `(…)` reminder text inline, in source order.
-fn emit_token_spans(token: &str, spans: &mut Vec<OracleSpan>) {
+/// Also emits `TextAnnotation` values for reminder text and non-parsed keyword spans.
+fn emit_token_spans(
+    token: &str,
+    original: &str,
+    spans: &mut Vec<OracleSpan>,
+    annotations: &mut Vec<TextAnnotation>,
+) {
     // Partition the token into alternating non-paren and paren segments.
     let mut segments: Vec<(bool, &str)> = Vec::new();
     let mut depth = 0usize;
@@ -305,26 +349,50 @@ fn emit_token_spans(token: &str, spans: &mut Vec<OracleSpan>) {
         segments.push((false, &token[seg_start..]));
     }
 
-    // Emit spans in source order; accumulate non-paren text for keyword matching.
+    // Track byte range of the current non-paren accumulation in `original`.
+    let mut acc_start: Option<usize> = None;
+    let mut acc_end: usize = 0;
     let mut accumulated = String::new();
-    for (is_paren, text) in segments {
-        if is_paren {
+
+    for (is_paren, text) in &segments {
+        if *is_paren {
+            // Flush accumulated keyword.
             let kw = accumulated.trim();
             if !kw.is_empty() {
-                spans.push(match_keyword(kw));
+                let span = match_keyword(kw);
+                push_keyword_annotation(&span, acc_start.unwrap(), acc_end, original, annotations);
+                spans.push(span);
             }
             accumulated.clear();
+            acc_start = None;
+
+            // Emit reminder text annotation and span.
+            let off = subslice_offset(original, text);
+            annotations.push(TextAnnotation {
+                start: off,
+                end: off + text.len(),
+                kind: AnnotationKind::ReminderText,
+            });
             spans.push(OracleSpan::Ignored(
                 IgnoredKind::ReminderText,
                 text.to_string(),
             ));
         } else {
+            let off = subslice_offset(original, text);
+            if acc_start.is_none() {
+                acc_start = Some(off);
+            }
+            acc_end = off + text.len();
             accumulated.push_str(text);
         }
     }
+
+    // Flush remaining keyword.
     let kw = accumulated.trim();
     if !kw.is_empty() {
-        spans.push(match_keyword(kw));
+        let span = match_keyword(kw);
+        push_keyword_annotation(&span, acc_start.unwrap(), acc_end, original, annotations);
+        spans.push(span);
     }
 }
 
@@ -892,11 +960,27 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
         }
 
         // Split on commas at depth 0; classify each token.
+        // Track annotation count before this paragraph so we can coalesce
+        // multiple Unparsed annotations from the same paragraph into one.
+        let ann_before = annotations.len();
         for token in split_at_depth_zero(paragraph, ',') {
             let token = token.trim();
             if !token.is_empty() {
-                emit_token_spans(token, &mut spans);
+                emit_token_spans(token, text, &mut spans, &mut annotations);
             }
+        }
+        // Coalesce: if every new annotation from this paragraph is Unparsed,
+        // replace them with a single annotation spanning the whole paragraph.
+        let new_anns = &annotations[ann_before..];
+        if new_anns.len() > 1 && new_anns.iter().all(|a| a.kind == AnnotationKind::Unparsed) {
+            let para_start = subslice_offset(text, paragraph);
+            let para_end = para_start + paragraph.len();
+            annotations.truncate(ann_before);
+            annotations.push(TextAnnotation {
+                start: para_start,
+                end: para_end,
+                kind: AnnotationKind::Unparsed,
+            });
         }
     }
 
@@ -1913,5 +1997,43 @@ mod tests {
             parse_perm("Hexproof", ""),
             vec![parsed(StaticAbility::Hexproof)]
         );
+    }
+
+    #[test]
+    fn reminder_text_emits_annotation() {
+        let text =
+            "Deathtouch (Any amount of damage this deals to a creature is enough to destroy it.)";
+        let (_, annotations) = parse_permanent(text, "");
+        assert_eq!(annotations.len(), 1);
+        assert_eq!(annotations[0].kind, AnnotationKind::ReminderText);
+        let expected_start = text.find('(').unwrap();
+        assert_eq!(annotations[0].start, expected_start);
+        assert_eq!(annotations[0].end, text.len());
+    }
+
+    #[test]
+    fn parsed_keyword_emits_no_annotation() {
+        let (_, annotations) = parse_permanent("Flying", "");
+        assert!(annotations.is_empty());
+    }
+
+    #[test]
+    fn parsed_unimplemented_keyword_emits_annotation() {
+        let text = "Storm";
+        let (_, annotations) = parse_permanent(text, "");
+        assert_eq!(annotations.len(), 1);
+        assert_eq!(annotations[0].kind, AnnotationKind::ParsedUnimplemented);
+        assert_eq!(annotations[0].start, 0);
+        assert_eq!(annotations[0].end, text.len());
+    }
+
+    #[test]
+    fn unparsed_text_emits_annotation() {
+        let text = "Whenever a land you control enters, you gain 1 life.";
+        let (_, annotations) = parse_permanent(text, "");
+        assert_eq!(annotations.len(), 1);
+        assert_eq!(annotations[0].kind, AnnotationKind::Unparsed);
+        assert_eq!(annotations[0].start, 0);
+        assert_eq!(annotations[0].end, text.len());
     }
 }
