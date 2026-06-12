@@ -1,5 +1,5 @@
 use crate::types::OracleSpan::ParsedUnimplemented;
-use crate::types::ability::{ActivationCost, CostComponent, TextAnnotation};
+use crate::types::ability::{ActivationCost, AnnotationKind, CostComponent, TextAnnotation};
 use crate::types::effect::{Effect, EffectStep};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use crate::types::{
@@ -831,7 +831,7 @@ fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<OracleSpan>
 pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<TextAnnotation>) {
     const EM_DASH: char = '\u{2014}';
     let mut spans = Vec::new();
-    let annotations: Vec<TextAnnotation> = Vec::new();
+    let mut annotations: Vec<TextAnnotation> = Vec::new();
 
     for paragraph in text.split('\n') {
         let paragraph = paragraph.trim();
