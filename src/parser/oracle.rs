@@ -1,5 +1,5 @@
 use crate::types::OracleSpan::ParsedUnimplemented;
-use crate::types::ability::{ActivationCost, CostComponent};
+use crate::types::ability::{ActivationCost, CostComponent, TextAnnotation};
 use crate::types::effect::{Effect, EffectStep};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use crate::types::{
@@ -828,9 +828,10 @@ fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<OracleSpan>
 ///
 /// Always succeeds. Separators (`\n`, `,`) are consumed; each logical token
 /// becomes one span. See `OracleSpan` for rendering intent.
-pub fn parse_permanent(text: &str, card_name: &str) -> Vec<OracleSpan> {
+pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<TextAnnotation>) {
     const EM_DASH: char = '\u{2014}';
     let mut spans = Vec::new();
+    let annotations: Vec<TextAnnotation> = Vec::new();
 
     for paragraph in text.split('\n') {
         let paragraph = paragraph.trim();
@@ -899,7 +900,7 @@ pub fn parse_permanent(text: &str, card_name: &str) -> Vec<OracleSpan> {
         }
     }
 
-    spans
+    (spans, annotations)
 }
 
 /// Detects targeting patterns in a spell paragraph and returns a SpellAbility.
@@ -969,7 +970,10 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
 /// Parse the oracle text of an instant or sorcery.
 /// Each paragraph becomes one SpellEffect span containing parsed and
 /// unimplemented effect steps in written order (CR 609).
-pub fn parse_instant_or_sorcery(text: &str, card_name: &str) -> Vec<OracleSpan> {
+pub fn parse_instant_or_sorcery(
+    text: &str,
+    card_name: &str,
+) -> (Vec<OracleSpan>, Vec<TextAnnotation>) {
     use crate::types::ability::Ability;
     let mut spans = Vec::new();
     for paragraph in text.split('\n') {
@@ -980,13 +984,20 @@ pub fn parse_instant_or_sorcery(text: &str, card_name: &str) -> Vec<OracleSpan> 
         let spell_ability = parse_spell_paragraph(paragraph, card_name);
         spans.push(OracleSpan::Parsed(Ability::SpellEffect(spell_ability)));
     }
-    spans
+    (spans, vec![])
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::ability::StaticAbility;
+
+    fn parse_perm(text: &str, name: &str) -> Vec<OracleSpan> {
+        parse_permanent(text, name).0
+    }
+    fn parse_spell(text: &str, name: &str) -> Vec<OracleSpan> {
+        parse_instant_or_sorcery(text, name).0
+    }
 
     fn parsed(kw: StaticAbility) -> OracleSpan {
         OracleSpan::Parsed(Ability::Static(kw))
@@ -1006,18 +1017,18 @@ mod tests {
 
     #[test]
     fn empty_text_returns_empty_vec() {
-        assert_eq!(parse_permanent("", ""), vec![]);
+        assert_eq!(parse_perm("", ""), vec![]);
     }
 
     #[test]
     fn blank_lines_skipped() {
-        assert_eq!(parse_permanent("\n\n", ""), vec![]);
+        assert_eq!(parse_perm("\n\n", ""), vec![]);
     }
 
     #[test]
     fn reminder_text_only() {
         assert_eq!(
-            parse_permanent("({T}: Add {G}.)", ""),
+            parse_perm("({T}: Add {G}.)", ""),
             vec![reminder("({T}: Add {G}.)")]
         );
     }
@@ -1025,7 +1036,7 @@ mod tests {
     #[test]
     fn single_keyword() {
         assert_eq!(
-            parse_permanent("Flying", ""),
+            parse_perm("Flying", ""),
             vec![parsed(StaticAbility::Flying)]
         );
     }
@@ -1033,7 +1044,7 @@ mod tests {
     #[test]
     fn comma_separated_keywords() {
         assert_eq!(
-            parse_permanent("Flying, vigilance", ""),
+            parse_perm("Flying, vigilance", ""),
             vec![
                 parsed(StaticAbility::Flying),
                 parsed(StaticAbility::Vigilance)
@@ -1044,7 +1055,7 @@ mod tests {
     #[test]
     fn multiline_keywords() {
         assert_eq!(
-            parse_permanent("Trample\nLifelink", ""),
+            parse_perm("Trample\nLifelink", ""),
             vec![
                 parsed(StaticAbility::Trample),
                 parsed(StaticAbility::Lifelink)
@@ -1055,7 +1066,7 @@ mod tests {
     #[test]
     fn two_word_keyword() {
         assert_eq!(
-            parse_permanent("First strike", ""),
+            parse_perm("First strike", ""),
             vec![parsed(StaticAbility::FirstStrike)]
         );
     }
@@ -1063,7 +1074,7 @@ mod tests {
     #[test]
     fn keyword_with_reminder_text() {
         assert_eq!(
-            parse_permanent(
+            parse_perm(
                 "Deathtouch (Any amount of damage this deals to a creature is enough to destroy it.)",
                 "",
             ),
@@ -1078,7 +1089,7 @@ mod tests {
 
     #[test]
     fn ability_word_line_splits_at_em_dash() {
-        let result = parse_permanent(
+        let result = parse_perm(
             "Landfall \u{2014} Whenever a land you control enters, you gain 1 life.",
             "",
         );
@@ -1093,7 +1104,7 @@ mod tests {
 
     #[test]
     fn cumulative_upkeep_emits_parsed_unimplemented() {
-        let result = parse_permanent("Cumulative upkeep\u{2014}Add {R}.", "");
+        let result = parse_perm("Cumulative upkeep\u{2014}Add {R}.", "");
         assert_eq!(
             result,
             vec![unimplemented("Cumulative upkeep\u{2014}Add {R}.")]
@@ -1103,7 +1114,7 @@ mod tests {
     #[test]
     fn em_dash_inside_parens_not_split() {
         assert_eq!(
-            parse_permanent("(Choose one \u{2014} do A; or do B.)", ""),
+            parse_perm("(Choose one \u{2014} do A; or do B.)", ""),
             vec![reminder("(Choose one \u{2014} do A; or do B.)")]
         );
     }
@@ -1111,17 +1122,14 @@ mod tests {
     #[test]
     fn all_implemented_keywords_parse() {
         let text = "Flying\nReach\nTrample\nFirst strike\nDouble strike\nVigilance\nHaste\nLifelink\nDeathtouch\nMenace\nIndestructible\nDefender\nShadow\nHorsemanship\nSkulk\nDecayed\nFlash";
-        let result = parse_permanent(text, "");
+        let result = parse_perm(text, "");
         assert_eq!(result.len(), 17);
         assert!(result.iter().all(|s| matches!(s, OracleSpan::Parsed(_))));
     }
 
     #[test]
     fn bare_unimplemented_keyword_emits_parsed_unimplemented() {
-        assert_eq!(
-            parse_permanent("Cascade", ""),
-            vec![unimplemented("Cascade")]
-        );
+        assert_eq!(parse_perm("Cascade", ""), vec![unimplemented("Cascade")]);
     }
 
     #[test]
@@ -1129,11 +1137,11 @@ mod tests {
         // Cycling {2} is now promoted to Parsed(Ability::Cycling(...))
         // See parse_cycling_keyword test for its new behavior.
         assert_eq!(
-            parse_permanent("Kicker {1}{U}", ""),
+            parse_perm("Kicker {1}{U}", ""),
             vec![unimplemented("Kicker {1}{U}")]
         );
         assert_eq!(
-            parse_permanent("Protection from black", ""),
+            parse_perm("Protection from black", ""),
             vec![unimplemented("Protection from black")]
         );
     }
@@ -1141,11 +1149,11 @@ mod tests {
     #[test]
     fn landwalk_variants_emit_parsed_unimplemented() {
         assert_eq!(
-            parse_permanent("Islandwalk", ""),
+            parse_perm("Islandwalk", ""),
             vec![unimplemented("Islandwalk")]
         );
         assert_eq!(
-            parse_permanent("Nonbasic landwalk", ""),
+            parse_perm("Nonbasic landwalk", ""),
             vec![unimplemented("Nonbasic landwalk")]
         );
     }
@@ -1154,11 +1162,11 @@ mod tests {
     fn typecycling_with_space_emits_parsed_unimplemented() {
         // 702.29e: "basic landcycling" has a space between the two type words
         assert_eq!(
-            parse_permanent("Basic landcycling {2}", ""),
+            parse_perm("Basic landcycling {2}", ""),
             vec![unimplemented("Basic landcycling {2}")]
         );
         assert_eq!(
-            parse_permanent("Mountaincycling {1}", ""),
+            parse_perm("Mountaincycling {1}", ""),
             vec![unimplemented("Mountaincycling {1}")]
         );
     }
@@ -1167,7 +1175,7 @@ mod tests {
     fn em_dash_keyword_emits_whole_paragraph_as_parsed_unimplemented() {
         // Suspend: "Suspend 2—{1}{U}"
         assert_eq!(
-            parse_permanent("Suspend 2\u{2014}{1}{U}", ""),
+            parse_perm("Suspend 2\u{2014}{1}{U}", ""),
             vec![unimplemented("Suspend 2\u{2014}{1}{U}")]
         );
     }
@@ -1415,7 +1423,7 @@ mod tests {
     #[test]
     fn keyword_and_ability_word_on_separate_lines() {
         let text = "Flying\nLandfall \u{2014} Whenever a land you control enters, you gain 1 life.";
-        let result = parse_permanent(text, "");
+        let result = parse_perm(text, "");
         assert_eq!(
             result,
             vec![
@@ -1433,7 +1441,7 @@ mod tests {
         use crate::types::ability::{ActivatedAbility, CostComponent};
         use crate::types::effect::EffectStep;
         use crate::types::mana::ManaPool;
-        let result = parse_permanent("{T}: Add {G}.", "");
+        let result = parse_perm("{T}: Add {G}.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
@@ -1451,7 +1459,7 @@ mod tests {
         use crate::types::ability::CostComponent;
         use crate::types::effect::EffectStep;
         use crate::types::mana::{ManaCost, ManaPip, ManaPool};
-        let result = parse_permanent("{2}, {T}: Add {G}{G}.", "");
+        let result = parse_perm("{2}, {T}: Add {G}{G}.", "");
         assert_eq!(result.len(), 1);
         if let OracleSpan::Parsed(Ability::Activated(ability)) = &result[0] {
             assert_eq!(
@@ -1480,7 +1488,7 @@ mod tests {
         use crate::types::ability::CostComponent;
         use crate::types::effect::EffectStep;
         use crate::types::mana::{ManaCost, ManaPip};
-        let result = parse_permanent("{1}: Draw a card.", "");
+        let result = parse_perm("{1}: Draw a card.", "");
         assert_eq!(result.len(), 1);
         if let OracleSpan::Parsed(Ability::Activated(ability)) = &result[0] {
             assert_eq!(
@@ -1499,7 +1507,7 @@ mod tests {
     fn tap_mill_two_parses_as_activated() {
         use crate::types::ability::{ActivatedAbility, CostComponent};
         use crate::types::effect::EffectStep;
-        let result = parse_permanent("{T}: Mill 2.", "");
+        let result = parse_perm("{T}: Mill 2.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
@@ -1512,7 +1520,7 @@ mod tests {
     #[test]
     fn reminder_text_colon_not_treated_as_activated() {
         // ({T}: Add {G}.) is reminder text — not an activated ability
-        let result = parse_permanent("({T}: Add {G}.)", "");
+        let result = parse_perm("({T}: Add {G}.)", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
@@ -1525,7 +1533,7 @@ mod tests {
         use crate::types::ability::{ActivatedAbility, CostComponent};
         use crate::types::effect::EffectStep;
         use crate::types::mana::ManaPool;
-        let result = parse_permanent("Sacrifice a creature: Add {G}{G}.", "");
+        let result = parse_perm("Sacrifice a creature: Add {G}{G}.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
@@ -1537,7 +1545,7 @@ mod tests {
 
     #[test]
     fn unknown_effect_becomes_parsed_unimplemented() {
-        let result = parse_permanent("{T}: Create a 1/1 token.", "");
+        let result = parse_perm("{T}: Create a 1/1 token.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(&result[0], OracleSpan::ParsedUnimplemented(_)));
     }
@@ -1563,7 +1571,7 @@ mod tests {
     fn etb_self_draw_parses_as_triggered() {
         use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::effect::EffectStep;
-        let result = parse_permanent("When this enters, draw a card.", "");
+        let result = parse_perm("When this enters, draw a card.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
@@ -1579,7 +1587,7 @@ mod tests {
         use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::effect::EffectStep;
         // Older template: "When this creature enters"
-        let result = parse_permanent("When this creature enters, draw a card.", "");
+        let result = parse_perm("When this creature enters, draw a card.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
@@ -1594,7 +1602,7 @@ mod tests {
     fn etb_battlefield_form_parses_as_triggered() {
         use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::effect::EffectStep;
-        let result = parse_permanent("Whenever this enters the battlefield, you gain 3 life.", "");
+        let result = parse_perm("Whenever this enters the battlefield, you gain 3 life.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
@@ -1609,7 +1617,7 @@ mod tests {
     fn etb_card_name_subject_parses_as_triggered() {
         use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
         use crate::types::effect::EffectStep;
-        let result = parse_permanent(
+        let result = parse_perm(
             "When Elvish Visionary enters the battlefield, draw a card.",
             "Elvish Visionary",
         );
@@ -1627,7 +1635,7 @@ mod tests {
     fn etb_multistep_effect_parses_as_triggered() {
         use crate::types::ability::{Ability, TriggeredAbility};
         use crate::types::effect::EffectStep;
-        let result = parse_permanent("When this enters, draw a card. You gain 2 life.", "");
+        let result = parse_perm("When this enters, draw a card. You gain 2 life.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
@@ -1638,7 +1646,7 @@ mod tests {
 
     #[test]
     fn etb_unknown_effect_becomes_parsed_unimplemented() {
-        let result = parse_permanent("When this enters, create a 1/1 token.", "");
+        let result = parse_perm("When this enters, create a 1/1 token.", "");
         assert_eq!(result.len(), 1);
         assert!(matches!(&result[0], OracleSpan::ParsedUnimplemented(_)));
     }
@@ -1658,14 +1666,14 @@ mod tests {
 
     #[test]
     fn instant_draw_one_card() {
-        let result = parse_instant_or_sorcery("Draw a card.", "");
+        let result = parse_spell("Draw a card.", "");
         assert_eq!(result, vec![spell_effect(vec![EffectStep::DrawCard(1)])]);
     }
 
     #[test]
     fn brainstorm_then_split() {
         // ", then " splits intra-sentence; DrawCard(3) is parseable, the rest is not
-        let result = parse_instant_or_sorcery(
+        let result = parse_spell(
             "Draw three cards, then put two cards from your hand on top of your library in any order.",
             "",
         );
@@ -1681,7 +1689,7 @@ mod tests {
     #[test]
     fn opt_period_then_draw() {
         // ". " splits sentences; first sentence unimplemented, second parseable
-        let result = parse_instant_or_sorcery("Scry 1. Draw a card.", "");
+        let result = parse_spell("Scry 1. Draw a card.", "");
         assert_eq!(
             result,
             vec![spell_effect(vec![
@@ -1694,7 +1702,7 @@ mod tests {
     #[test]
     fn serum_visions_draw_then_scry() {
         // "Draw a card, then scry 2." — draw is parsed, scry is unimplemented
-        let result = parse_instant_or_sorcery("Draw a card, then scry 2.", "");
+        let result = parse_spell("Draw a card, then scry 2.", "");
         assert_eq!(
             result,
             vec![spell_effect(vec![
@@ -1706,7 +1714,7 @@ mod tests {
 
     #[test]
     fn counterspell_fully_unimplemented() {
-        let result = parse_instant_or_sorcery("Counter target spell.", "");
+        let result = parse_spell("Counter target spell.", "");
         assert_eq!(
             result,
             vec![spell_effect(vec![unimpl("Counter target spell"),])]
@@ -1716,7 +1724,7 @@ mod tests {
     #[test]
     fn ponder_multi_sentence_mixed() {
         // One paragraph; three sentences; first has ", then " inside it
-        let result = parse_instant_or_sorcery(
+        let result = parse_spell(
             "Look at the top three cards of your library, then put them back in any order. You may shuffle. Draw a card.",
             "",
         );
@@ -1733,7 +1741,7 @@ mod tests {
 
     #[test]
     fn empty_oracle_text_returns_empty() {
-        let result = parse_instant_or_sorcery("", "");
+        let result = parse_spell("", "");
         assert_eq!(result, vec![]);
     }
 
@@ -1744,7 +1752,7 @@ mod tests {
         use crate::types::PTDelta;
         use crate::types::ability::TargetFilter;
         use crate::types::effect::EffectStep;
-        let result = parse_instant_or_sorcery(
+        let result = parse_spell(
             "Target creature gets +3/+3 until end of turn.",
             "Giant Growth",
         );
@@ -1766,7 +1774,7 @@ mod tests {
     fn parse_lightning_bolt_effect() {
         use crate::types::ability::TargetFilter;
         use crate::types::effect::EffectStep;
-        let result = parse_instant_or_sorcery(
+        let result = parse_spell(
             "Lightning Bolt deals 3 damage to any target.",
             "Lightning Bolt",
         );
@@ -1780,7 +1788,7 @@ mod tests {
 
     #[test]
     fn parse_draw_a_card_spell_is_untargeted() {
-        let result = parse_instant_or_sorcery("Draw a card.", "Opt");
+        let result = parse_spell("Draw a card.", "Opt");
         assert_eq!(result.len(), 1);
         let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect");
@@ -1790,7 +1798,7 @@ mod tests {
 
     #[test]
     fn flash_parses_as_static_ability() {
-        let result = parse_permanent("Flash", "");
+        let result = parse_perm("Flash", "");
         assert_eq!(
             result,
             vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flash))]
@@ -1799,20 +1807,20 @@ mod tests {
 
     #[test]
     fn parse_exalted_keyword() {
-        let spans = parse_permanent("Exalted", "");
+        let spans = parse_perm("Exalted", "");
         assert_eq!(spans, vec![parsed(StaticAbility::Exalted)]);
     }
 
     #[test]
     fn parse_flanking_keyword() {
-        let spans = parse_permanent("Flanking", "");
+        let spans = parse_perm("Flanking", "");
         assert_eq!(spans, vec![parsed(StaticAbility::Flanking)]);
     }
 
     #[test]
     fn parse_bushido_n_keyword() {
         use crate::types::ability::StaticAbility;
-        let spans = parse_permanent("Bushido 2", "");
+        let spans = parse_perm("Bushido 2", "");
         assert_eq!(
             spans,
             vec![OracleSpan::Parsed(Ability::Static(
@@ -1823,20 +1831,20 @@ mod tests {
 
     #[test]
     fn parse_melee_keyword() {
-        let spans = parse_permanent("Melee", "");
+        let spans = parse_perm("Melee", "");
         assert_eq!(spans, vec![parsed(StaticAbility::Melee)]);
     }
 
     #[test]
     fn parse_prowess_keyword() {
-        let spans = parse_permanent("Prowess", "");
+        let spans = parse_perm("Prowess", "");
         assert_eq!(spans, vec![parsed(StaticAbility::Prowess)]);
     }
 
     #[test]
     fn parse_cycling_keyword() {
         use crate::types::mana::{ManaCost, ManaPip};
-        let spans = parse_permanent("Cycling {2}", "");
+        let spans = parse_perm("Cycling {2}", "");
         assert_eq!(
             spans,
             vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
@@ -1848,7 +1856,7 @@ mod tests {
     #[test]
     fn parse_cycling_with_reminder_text() {
         use crate::types::mana::{ManaCost, ManaPip};
-        let spans = parse_permanent("Cycling {2} ({2}, Discard this card: Draw a card.)", "");
+        let spans = parse_perm("Cycling {2} ({2}, Discard this card: Draw a card.)", "");
         // First span is the cycling ability; second is reminder text (ignored).
         assert_eq!(spans.len(), 2);
         assert_eq!(
@@ -1867,14 +1875,14 @@ mod tests {
     fn parse_cycling_colored_cost() {
         // Regression: mana symbols in cycling costs must preserve case for try_parse_mana_cost.
         use crate::types::mana::{ManaCost, ManaPip};
-        let spans = parse_permanent("Cycling {U}", "");
+        let spans = parse_perm("Cycling {U}", "");
         assert_eq!(
             spans,
             vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
                 pips: vec![ManaPip::Blue],
             }))]
         );
-        let spans = parse_permanent("Cycling {1}{W}", "");
+        let spans = parse_perm("Cycling {1}{W}", "");
         assert_eq!(
             spans,
             vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
@@ -1885,7 +1893,7 @@ mod tests {
 
     #[test]
     fn mountaincycling_stays_parsed_unimplemented() {
-        let spans = parse_permanent("Mountaincycling {2}", "");
+        let spans = parse_perm("Mountaincycling {2}", "");
         assert!(matches!(&spans[0], OracleSpan::ParsedUnimplemented(_)));
     }
 
@@ -1893,7 +1901,7 @@ mod tests {
     fn parse_shroud_keyword() {
         use crate::types::ability::StaticAbility;
         assert_eq!(
-            parse_permanent("Shroud", ""),
+            parse_perm("Shroud", ""),
             vec![parsed(StaticAbility::Shroud)]
         );
     }
@@ -1902,7 +1910,7 @@ mod tests {
     fn parse_hexproof_keyword() {
         use crate::types::ability::StaticAbility;
         assert_eq!(
-            parse_permanent("Hexproof", ""),
+            parse_perm("Hexproof", ""),
             vec![parsed(StaticAbility::Hexproof)]
         );
     }

@@ -46,7 +46,7 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
 
     let oracle_text = v["oracle_text"].as_str().unwrap_or("").to_string();
 
-    let abilities = if type_line
+    let (abilities, text_annotations) = if type_line
         .card_types
         .iter()
         .any(|t| matches!(t, CardType::Instant | CardType::Sorcery))
@@ -65,7 +65,7 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
         type_line,
         oracle_text,
         abilities,
-        text_annotations: vec![],
+        text_annotations,
         power,
         toughness,
     };
