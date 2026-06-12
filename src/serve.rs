@@ -154,6 +154,25 @@ struct StackItemView {
 }
 
 #[derive(Serialize)]
+struct ActionItemView {
+    label: String,
+    can_pay_cost: bool,
+    #[serde(flatten)]
+    kind: ActionItemKind,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum ActionItemKind {
+    /// Pre-built JSON payload posted verbatim to /action
+    Server { action: serde_json::Value },
+    /// Toggle this creature in/out of the client-side attacker-staging list
+    ToggleAttacker { object_id: u64 },
+    /// Assign this creature as a blocker for the given attacker (client-side staging)
+    AssignBlocker { blocker_id: u64, attacker_id: u64 },
+}
+
+#[derive(Serialize)]
 struct CardView {
     id: ObjectId,
     name: String,
