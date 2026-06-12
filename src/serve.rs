@@ -737,7 +737,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             .collect(),
         lands: bf_objects
             .iter()
-            .filter(|obj| obj.is_land())
+            .filter(|obj| obj.is_land() && !obj.is_creature())
             .map(|obj| to_card_view(obj))
             .collect(),
         creatures: bf_objects
@@ -1483,10 +1483,10 @@ mod tests {
     }
 
     #[test]
-    fn dryad_arbor_appears_in_both_lands_and_creatures() {
-        // CR 305.6: Dryad Arbor has the Forest subtype, so it taps for {G}.
-        // It is also a creature, so it must appear in both the lands list (tappable
-        // for mana) and the creatures list (eligible to attack/block).
+    fn dryad_arbor_appears_in_creatures_not_lands() {
+        // A Land Creature is displayed in the creatures row; the tap-for-mana action
+        // is available there via activated abilities. It must NOT appear in the lands row
+        // to avoid a duplicate entry that confuses the UI layout.
         use mecha_oracle::engine::casting::play_land;
         let db = test_db();
         let config = vec![
@@ -1516,12 +1516,12 @@ mod tests {
         let view = build_game_view(&gs);
         let p1 = &view.p1;
         assert!(
-            p1.lands.iter().any(|c| c.name == "Dryad Arbor"),
-            "Dryad Arbor must appear in lands so it can be tapped for mana"
-        );
-        assert!(
             p1.creatures.iter().any(|c| c.name == "Dryad Arbor"),
             "Dryad Arbor must appear in creatures"
+        );
+        assert!(
+            !p1.lands.iter().any(|c| c.name == "Dryad Arbor"),
+            "Dryad Arbor must not appear in lands (it shows in creatures instead)"
         );
     }
 
