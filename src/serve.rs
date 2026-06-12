@@ -16,7 +16,7 @@ use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
-    Ability, ActivatedAbility, CostComponent, OracleSpan, StaticAbility, TriggeredAbility,
+    Ability, ActivatedAbility, CostComponent, OracleSpan, StaticAbility,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
 use mecha_oracle::types::stack::StackPayload;
@@ -114,20 +114,16 @@ struct ManaPoolView {
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "snake_case")]
-enum SpanKind {
-    Parsed,
-    Ignored,
-    Unparsed,
-    ParsedUnimplemented,
+struct TextAnnotationView {
+    start: usize,
+    end: usize,
+    kind: mecha_oracle::types::ability::AnnotationKind,
 }
 
-#[derive(Serialize)]
-struct OracleSpanView {
-    kind: SpanKind,
-    text: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ignored_kind: Option<mecha_oracle::types::IgnoredKind>,
+/// Converts a UTF-8 byte offset to a Unicode codepoint offset.
+/// MTG oracle text is BMP-only, so codepoint offsets equal JS string char indices.
+fn byte_to_char(s: &str, byte_offset: usize) -> usize {
+    s[..byte_offset].chars().count()
 }
 
 #[derive(Serialize)]
@@ -163,7 +159,8 @@ struct CardView {
     id: ObjectId,
     name: String,
     type_line: String,
-    oracle_text: Vec<OracleSpanView>,
+    oracle_text: String,
+    text_annotations: Vec<TextAnnotationView>,
     mana_cost: Option<String>,
     power: Option<i32>,
     toughness: Option<i32>,
@@ -339,49 +336,6 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
         })
         .collect();
     format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))
-}
-
-fn format_spell_effect(effect: &[EffectStep]) -> String {
-    effect
-        .iter()
-        .map(|step| match step {
-            EffectStep::DrawCard(1) => "Draw a card".to_string(),
-            EffectStep::DrawCard(n) => format!("Draw {n} cards"),
-            EffectStep::GainLife(n) => format!("Gain {n} life"),
-            EffectStep::Mill(n) => format!("Mill {n}"),
-            EffectStep::AddMana(pool) => format!("Add {}", format_mana_pool(pool)),
-            EffectStep::BoostPermanentPT(delta) => {
-                format!("Boost by {}/{}", delta.power, delta.toughness)
-            }
-            EffectStep::DealDamage(n) => format!("Deal {n} damage"),
-            EffectStep::Unimplemented(s) => s.clone(),
-        })
-        .collect::<Vec<_>>()
-        .join(", then ")
-}
-
-fn format_triggered_ability(t: &TriggeredAbility) -> String {
-    use mecha_oracle::types::ability::TriggerEvent;
-    let trigger_str = match &t.trigger {
-        TriggerEvent::EntersTheBattlefield { .. } => "When this enters",
-    };
-    let effect_parts: Vec<String> = t
-        .effect
-        .iter()
-        .map(|e| match e {
-            EffectStep::DrawCard(1) => "draw a card".to_string(),
-            EffectStep::DrawCard(n) => format!("draw {n} cards"),
-            EffectStep::GainLife(n) => format!("you gain {n} life"),
-            EffectStep::AddMana(pool) => format!("add {}", format_mana_pool(pool)),
-            EffectStep::Mill(n) => format!("mill {n}"),
-            EffectStep::BoostPermanentPT(delta) => {
-                format!("boost by {}/{}", delta.power, delta.toughness)
-            }
-            EffectStep::DealDamage(n) => format!("deal {n} damage"),
-            EffectStep::Unimplemented(s) => s.to_string(),
-        })
-        .collect();
-    format!("{}, {}.", trigger_str, effect_parts.join(". "))
 }
 
 fn can_cast_structural(state: &GameState, pid: PlayerId, obj: &CardObject) -> bool {
@@ -648,54 +602,17 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             id: obj.id,
             name: obj.definition.name.clone(),
             type_line: format_type_line(&obj.definition.type_line),
-            oracle_text: {
-                obj.definition
-                    .abilities
-                    .iter()
-                    .map(|span| match span {
-                        OracleSpan::Parsed(Ability::Static(kw)) => OracleSpanView {
-                            kind: SpanKind::Parsed,
-                            text: kw.display_name(),
-                            ignored_kind: None,
-                        },
-                        OracleSpan::Parsed(Ability::Activated(a)) => OracleSpanView {
-                            kind: SpanKind::Parsed,
-                            text: format_activated_ability(a),
-                            ignored_kind: None,
-                        },
-                        OracleSpan::Parsed(Ability::Triggered(t)) => OracleSpanView {
-                            kind: SpanKind::Parsed,
-                            text: format_triggered_ability(t),
-                            ignored_kind: None,
-                        },
-                        OracleSpan::Parsed(Ability::SpellEffect(spell_ability)) => OracleSpanView {
-                            kind: SpanKind::Parsed,
-                            text: format_spell_effect(&spell_ability.steps),
-                            ignored_kind: None,
-                        },
-                        OracleSpan::Parsed(Ability::Cycling(cost)) => OracleSpanView {
-                            kind: SpanKind::Parsed,
-                            text: format!("Cycling {}", format_mana_cost(cost)),
-                            ignored_kind: None,
-                        },
-                        OracleSpan::Ignored(kind, t) => OracleSpanView {
-                            kind: SpanKind::Ignored,
-                            text: t.clone(),
-                            ignored_kind: Some(kind.clone()),
-                        },
-                        OracleSpan::ParsedUnimplemented(t) => OracleSpanView {
-                            kind: SpanKind::ParsedUnimplemented,
-                            text: t.clone(),
-                            ignored_kind: None,
-                        },
-                        OracleSpan::Unparsed(t) => OracleSpanView {
-                            kind: SpanKind::Unparsed,
-                            text: t.clone(),
-                            ignored_kind: None,
-                        },
-                    })
-                    .collect()
-            },
+            oracle_text: obj.definition.oracle_text.clone(),
+            text_annotations: obj
+                .definition
+                .text_annotations
+                .iter()
+                .map(|a| TextAnnotationView {
+                    start: byte_to_char(&obj.definition.oracle_text, a.start),
+                    end: byte_to_char(&obj.definition.oracle_text, a.end),
+                    kind: a.kind.clone(),
+                })
+                .collect(),
             mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
             power: perm.and_then(|p| p.effective_power()),
             toughness: perm.and_then(|p| p.effective_toughness()),
@@ -769,7 +686,8 @@ fn build_game_view(state: &GameState) -> GameView {
                             id: c.id,
                             name: c.definition.name.clone(),
                             type_line: format_type_line(&c.definition.type_line),
-                            oracle_text: vec![],
+                            oracle_text: String::new(),
+                            text_annotations: vec![],
                             mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost),
                             power: c.definition.power,
                             toughness: c.definition.toughness,
