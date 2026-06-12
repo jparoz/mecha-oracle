@@ -868,12 +868,51 @@ struct ActionResponse {
     error: Option<String>,
 }
 
+fn has_valid_attackers(state: &GameState) -> bool {
+    let cmt = state.controllers_most_recent_turn(state.active_player);
+    state.battlefield.iter().any(|(&id, perm)| {
+        state
+            .objects
+            .get(&id)
+            .map(|o| o.controller == state.active_player)
+            .unwrap_or(false)
+            && perm.can_attack(cmt)
+    })
+}
+
+fn has_valid_blockers(state: &GameState) -> bool {
+    let defender = state.opponent_of(state.active_player);
+    state.combat.attackers.iter().any(|&atk_id| {
+        state.battlefield.keys().any(|&blk_id| {
+            state
+                .objects
+                .get(&blk_id)
+                .map(|o| o.controller == defender)
+                .unwrap_or(false)
+                && can_block_attacker(state, blk_id, atk_id)
+        })
+    })
+}
+
 // After pass_priority has already advanced the step, apply step-start actions and
-// auto-advance through Untap/Cleanup steps (CR 502, 514).
+// auto-advance through Untap/Cleanup steps (CR 502, 514), and auto-skip
+// DeclareAttackers/DeclareBlockers when no valid options exist (CR 508.1, 509.1).
 fn apply_step_start_loop(mut state: GameState) -> GameState {
     loop {
         state = apply_step_start(state);
-        if !matches!(state.step(), Step::Untap | Step::Cleanup) || state.is_game_over() {
+        if state.is_game_over() {
+            break;
+        }
+        let step = state.step();
+        if step == Step::DeclareAttackers && !has_valid_attackers(&state) {
+            let active = state.active_player;
+            state = declare_attackers(state, active, &[])
+                .expect("auto-declare empty attackers cannot fail");
+        } else if step == Step::DeclareBlockers && !has_valid_blockers(&state) {
+            let defender = state.opponent_of(state.active_player);
+            state = declare_blockers(state, defender, &[])
+                .expect("auto-declare empty blockers cannot fail");
+        } else if !matches!(step, Step::Untap | Step::Cleanup) {
             break;
         }
         state = advance_step(state);
@@ -1186,12 +1225,26 @@ mod tests {
 
     #[test]
     fn game_view_includes_combat_declared_flags() {
+        use mecha_oracle::types::{CardObject, Zone};
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
             (0..10).map(|_| "Forest".to_string()).collect(),
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
+        // Add P0 creature to prevent DA auto-skip
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.controller_since_turn = 0;
+        gs.battlefield.insert(id, perm);
+        gs.add_object(obj);
+
         // Navigate to DeclareAttackers: 4 passes (2 per step × 2 steps)
         for _ in 0..4 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
@@ -1284,39 +1337,81 @@ mod tests {
 
     #[test]
     fn advance_step_blocked_before_attackers_declared() {
+        use mecha_oracle::types::{CardObject, Zone};
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
             (0..10).map(|_| "Forest".to_string()).collect(),
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        // Navigate to DeclareAttackers (4 passes: PC×2, BOC×2)
+        // Add an untapped creature for P0 so DA is not auto-skipped
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.controller_since_turn = 0;
+        gs.battlefield.insert(id, perm);
+        gs.add_object(obj);
+
         for _ in 0..4 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
         assert_eq!(gs.step(), Step::DeclareAttackers);
         assert!(!gs.combat.attackers_declared);
 
-        // AdvanceStep must be rejected before attackers are declared
         assert!(dispatch_action(gs, ActionRequest::AdvanceStep).is_err());
     }
 
     #[test]
     fn advance_step_blocked_before_blockers_declared() {
+        use mecha_oracle::types::{CardObject, Zone};
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
             (0..10).map(|_| "Forest".to_string()).collect(),
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        // Navigate to DeclareAttackers (4 passes), declare, then advance to DeclareBlockers (2 passes)
+        // P0 attacker — prevents DA auto-skip and makes DB non-trivially skippable
+        let p0_id = {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(0),
+                Zone::Battlefield,
+            );
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        // P1 blocker — makes has_valid_blockers return true, preventing DB auto-skip
+        {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(1),
+                Zone::Battlefield,
+            );
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+        }
         for _ in 0..4 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
+        assert_eq!(gs.step(), Step::DeclareAttackers);
         gs = dispatch_action(
             gs,
             ActionRequest::DeclareAttackers {
-                attacker_ids: vec![],
+                attacker_ids: vec![p0_id.0],
             },
         )
         .unwrap();
@@ -1326,7 +1421,6 @@ mod tests {
         assert_eq!(gs.step(), Step::DeclareBlockers);
         assert!(!gs.combat.blockers_declared);
 
-        // AdvanceStep must be rejected before blockers are declared
         assert!(dispatch_action(gs, ActionRequest::AdvanceStep).is_err());
     }
 
@@ -1351,26 +1445,8 @@ mod tests {
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        // PC (2) + BOC (2) → DeclareAttackers
-        for _ in 0..4 {
-            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-        }
-        // Turn-based action: declare (empty) before priority opens
-        gs = dispatch_action(
-            gs,
-            ActionRequest::DeclareAttackers {
-                attacker_ids: vec![],
-            },
-        )
-        .unwrap();
-        // DA (2) → DeclareBlockers
-        for _ in 0..2 {
-            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
-        }
-        // Turn-based action: declare (empty) before priority opens
-        gs = dispatch_action(gs, ActionRequest::DeclareBlockers { blocks: vec![] }).unwrap();
-        // DB (2) → CD (auto-resolves) → CD (2) → EOC (2) → PC2 (2) → End
-        for _ in 0..8 {
+        // PC (2) + BOC (2) → DA/DB auto-skipped → CD (2) → EOC (2) → PC2 (2) → End
+        for _ in 0..10 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
         assert_eq!(gs.step(), Step::End);
@@ -1777,6 +1853,193 @@ mod tests {
             !has_toggle_attacker(p1_c),
             "declared attacker (tapped) should not have toggle_attacker action"
         );
+    }
+
+    #[test]
+    fn autoskips_declare_attackers_when_no_valid_attackers() {
+        // All-Forest deck: no creatures → auto-skip both DA and DB
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        // 2 passes → BOC; 2 more passes → DA auto-skip → DB auto-skip → CombatDamage
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(
+            gs.step(),
+            Step::CombatDamage,
+            "should have auto-skipped DA and DB to reach CombatDamage"
+        );
+        assert!(gs.combat.attackers_declared);
+        assert!(gs.combat.blockers_declared);
+    }
+
+    #[test]
+    fn no_autoskip_declare_attackers_when_valid_attacker_exists() {
+        use mecha_oracle::types::{CardObject, Zone};
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        // Add an untapped, non-sick creature for P0
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.controller_since_turn = 0;
+        gs.battlefield.insert(id, perm);
+        gs.add_object(obj);
+
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(
+            gs.step(),
+            Step::DeclareAttackers,
+            "should stop at DA when a valid attacker exists"
+        );
+        assert!(!gs.combat.attackers_declared);
+    }
+
+    #[test]
+    fn autoskips_declare_blockers_when_no_valid_blocker_for_any_attacker() {
+        // P0 has a flying attacker; P1 has only a ground creature — no valid blockers.
+        use mecha_oracle::types::ability::StaticAbility;
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        use mecha_oracle::types::{Ability, CardObject, OracleSpan, Zone};
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let flying_id = {
+            let id = gs.alloc_id();
+            let def = CardDefinition {
+                name: "Flying Attacker".into(),
+                mana_cost: None,
+                type_line: TypeLine {
+                    supertypes: vec![],
+                    card_types: vec![CardType::Creature],
+                    subtypes: vec![],
+                },
+                oracle_text: String::new(),
+                abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flying))],
+                power: Some(2),
+                toughness: Some(2),
+            };
+            let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(1),
+                Zone::Battlefield,
+            );
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+        }
+
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(gs.step(), Step::DeclareAttackers);
+        gs = dispatch_action(
+            gs,
+            ActionRequest::DeclareAttackers {
+                attacker_ids: vec![flying_id.0],
+            },
+        )
+        .unwrap();
+        // 2 passes → transition to DB triggers auto-skip → CombatDamage
+        for _ in 0..2 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(
+            gs.step(),
+            Step::CombatDamage,
+            "should have auto-skipped DB since ground creature cannot block flying attacker"
+        );
+        assert!(gs.combat.blockers_declared);
+    }
+
+    #[test]
+    fn no_autoskip_declare_blockers_when_valid_blocker_exists() {
+        use mecha_oracle::types::{CardObject, Zone};
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let p0_id = {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(0),
+                Zone::Battlefield,
+            );
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(1),
+                Zone::Battlefield,
+            );
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+        }
+
+        for _ in 0..4 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(gs.step(), Step::DeclareAttackers);
+        gs = dispatch_action(
+            gs,
+            ActionRequest::DeclareAttackers {
+                attacker_ids: vec![p0_id.0],
+            },
+        )
+        .unwrap();
+        for _ in 0..2 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(
+            gs.step(),
+            Step::DeclareBlockers,
+            "should stop at DB when P1 has a valid blocker"
+        );
+        assert!(!gs.combat.blockers_declared);
     }
 
     #[test]
