@@ -5,17 +5,15 @@ use axum::{
     routing::{get, post},
 };
 use mecha_oracle::cards::CardDatabase;
-use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
+use mecha_oracle::engine::activated::activate_ability;
 use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::cycling::cycle_card;
-use mecha_oracle::engine::mana::{
-    can_pay_mana, greedy_payment_plan, reset_mana, tap_land_for_mana,
-};
+use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
-    Ability, ActivatedAbility, CostComponent, OracleSpan, StaticAbility, TriggeredAbility,
+    Ability, ActivatedAbility, CostComponent, OracleSpan, TriggeredAbility,
 };
 use mecha_oracle::types::effect::EffectStep;
 use mecha_oracle::types::stack::StackPayload;
@@ -130,21 +128,6 @@ struct OracleSpanView {
 }
 
 #[derive(Serialize)]
-struct TargetView {
-    kind: String, // "permanent" | "player"
-    id: u64,
-    name: String,
-}
-
-#[derive(Serialize)]
-struct ActivatedAbilityView {
-    index: usize,
-    label: String,
-    can_activate: bool,
-    valid_targets: Vec<TargetView>,
-}
-
-#[derive(Serialize)]
 struct StackItemView {
     id: u64,
     kind: String,
@@ -186,13 +169,7 @@ struct CardView {
     damage_marked: u32,
     is_attacking: bool,
     is_blocking: bool,
-    can_attack: bool,
-    can_block: bool,
-    can_cast: bool,
-    activated_abilities: Vec<ActivatedAbilityView>,
-    cycling_cost: Option<String>,
-    can_cycle: bool,
-    valid_targets: Vec<TargetView>,
+    actions: Vec<ActionItemView>,
 }
 
 #[derive(Serialize)]
@@ -404,71 +381,6 @@ fn format_triggered_ability(t: &TriggeredAbility) -> String {
     format!("{}, {}.", trigger_str, effect_parts.join(". "))
 }
 
-fn build_target_views(
-    state: &GameState,
-    targets: &[mecha_oracle::types::effect::EffectTarget],
-) -> Vec<TargetView> {
-    use mecha_oracle::types::effect::EffectTarget;
-    targets
-        .iter()
-        .filter_map(|t| match t {
-            EffectTarget::Object { id } => {
-                let obj = state.objects.get(id)?;
-                Some(TargetView {
-                    kind: "permanent".into(),
-                    id: id.0,
-                    name: obj.definition.name.clone(),
-                })
-            }
-            EffectTarget::Player { id } => {
-                let player = state.get_player(*id)?;
-                Some(TargetView {
-                    kind: "player".into(),
-                    id: id.0 as u64,
-                    name: player.name.clone(),
-                })
-            }
-        })
-        .collect()
-}
-
-fn compute_can_cast(
-    state: &GameState,
-    pid: PlayerId,
-    obj: &mecha_oracle::types::CardObject,
-) -> bool {
-    use mecha_oracle::types::card::CardType;
-    if obj.zone != Zone::Hand {
-        return false;
-    }
-    if state.priority_player != pid {
-        return false;
-    }
-    let Some(cost) = obj.definition.mana_cost.as_ref() else {
-        return false;
-    };
-    let player = match state.get_player(pid) {
-        Some(p) => p,
-        None => return false,
-    };
-    if greedy_payment_plan(cost, &player.mana_pool, player.life).is_none() {
-        return false;
-    }
-    let is_instant_speed = obj
-        .definition
-        .type_line
-        .card_types
-        .contains(&CardType::Instant)
-        || obj.has_keyword(StaticAbility::Flash);
-    if is_instant_speed {
-        return true;
-    }
-    // Sorcery-speed: must be active player, main phase, empty stack
-    state.active_player == pid
-        && matches!(state.step(), Step::PreCombatMain | Step::PostCombatMain)
-        && state.stack.is_empty()
-}
-
 fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
     use mecha_oracle::types::ObjectId;
     use std::collections::HashSet;
@@ -543,85 +455,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             damage_marked: perm.map(|p| p.damage_marked).unwrap_or(0),
             is_attacking: state.combat.attackers.contains(&obj.id),
             is_blocking: all_blockers.contains(&obj.id),
-            can_attack: state.step() == Step::DeclareAttackers
-                && pid == state.active_player
-                && perm.map(|p| p.can_attack()).unwrap_or(false),
-            can_block: state.step() == Step::DeclareBlockers
-                && pid != state.active_player
-                && perm.map(|p| p.can_block()).unwrap_or(false),
-            can_cast: compute_can_cast(state, pid, obj),
-            activated_abilities: obj
-                .definition
-                .abilities
-                .iter()
-                .filter_map(|span| match span {
-                    OracleSpan::Parsed(Ability::Activated(a)) => Some(a),
-                    _ => None,
-                })
-                .enumerate()
-                .map(|(i, ability)| ActivatedAbilityView {
-                    index: i,
-                    label: format_activated_ability(ability),
-                    can_activate: can_pay_cost(state, obj.id, ability, pid),
-                    valid_targets: vec![],
-                })
-                .collect(),
-            cycling_cost: obj.definition.abilities.iter().find_map(|span| {
-                if let OracleSpan::Parsed(Ability::Cycling(cost)) = span {
-                    Some(format_mana_cost_braced(cost))
-                } else {
-                    None
-                }
-            }),
-            can_cycle: obj.definition.abilities.iter().any(|span| {
-                if let OracleSpan::Parsed(Ability::Cycling(cost)) = span {
-                    obj.zone == Zone::Hand && state.priority_player == pid && {
-                        let player = state.get_player(pid).unwrap();
-                        can_pay_mana(cost, &player.mana_pool, player.life)
-                    }
-                } else {
-                    false
-                }
-            }),
-            valid_targets: {
-                use mecha_oracle::engine::targeting::legal_targets;
-                if compute_can_cast(state, pid, obj) {
-                    let filters: Vec<_> = obj
-                        .definition
-                        .abilities
-                        .iter()
-                        .filter_map(|span| match span {
-                            OracleSpan::Parsed(Ability::SpellEffect(sa)) => {
-                                Some(sa.target_requirements.clone())
-                            }
-                            _ => None,
-                        })
-                        .flatten()
-                        .collect();
-                    if filters.is_empty() {
-                        vec![]
-                    } else {
-                        // Expose union of legal targets across all slots (CR 115.4).
-                        let mut seen = std::collections::HashSet::new();
-                        let mut all_targets = vec![];
-                        for filter in &filters {
-                            for t in legal_targets(state, *filter, pid) {
-                                use mecha_oracle::types::effect::EffectTarget;
-                                let key = match &t {
-                                    EffectTarget::Object { id } => format!("o{}", id.0),
-                                    EffectTarget::Player { id } => format!("p{}", id.0),
-                                };
-                                if seen.insert(key) {
-                                    all_targets.push(t);
-                                }
-                            }
-                        }
-                        build_target_views(state, &all_targets)
-                    }
-                } else {
-                    vec![]
-                }
-            },
+            actions: vec![], // populated in Tasks 4 and 5
         }
     };
 
@@ -693,13 +527,7 @@ fn build_game_view(state: &GameState) -> GameView {
                             damage_marked: 0,
                             is_attacking: false,
                             is_blocking: false,
-                            can_attack: false,
-                            can_block: false,
-                            can_cast: false,
-                            activated_abilities: vec![],
-                            cycling_cost: None,
-                            can_cycle: false,
-                            valid_targets: vec![],
+                            actions: vec![],
                         }),
                     }
                 }
@@ -975,6 +803,27 @@ pub async fn run(shuffle: bool, deck_path: &str) {
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+fn has_payable_server_action(card: &CardView) -> bool {
+    card.actions
+        .iter()
+        .any(|a| a.can_pay_cost && matches!(a.kind, ActionItemKind::Server { .. }))
+}
+
+#[cfg(test)]
+fn has_toggle_attacker(card: &CardView) -> bool {
+    card.actions
+        .iter()
+        .any(|a| matches!(a.kind, ActionItemKind::ToggleAttacker { .. }))
+}
+
+#[cfg(test)]
+fn has_assign_blocker(card: &CardView) -> bool {
+    card.actions
+        .iter()
+        .any(|a| matches!(a.kind, ActionItemKind::AssignBlocker { .. }))
+}
 
 #[cfg(test)]
 mod tests {
@@ -1417,7 +1266,6 @@ mod tests {
         ];
         let mut gs = build_game_state(config, &db, false).unwrap();
 
-        // Place one untapped, non-sick creature for each player.
         let p1_id = {
             let id = gs.alloc_id();
             let obj = CardObject::new(
@@ -1447,7 +1295,6 @@ mod tests {
             id.0
         };
 
-        // 4 passes to reach DeclareAttackers (2 per step × 2 steps)
         for _ in 0..4 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
@@ -1467,18 +1314,21 @@ mod tests {
             .find(|c| c.id == ObjectId(p2_id))
             .unwrap();
 
-        assert!(p1_c.can_attack, "active player's creature shows can_attack");
         assert!(
-            !p2_c.can_attack,
-            "defending player's creature does not show can_attack"
+            has_toggle_attacker(p1_c),
+            "active player's creature should have toggle_attacker action"
         );
         assert!(
-            !p1_c.can_block,
-            "can_block is false outside DeclareBlockers"
+            !has_toggle_attacker(p2_c),
+            "defending player's creature should not have toggle_attacker action"
         );
         assert!(
-            !p2_c.can_block,
-            "can_block is false outside DeclareBlockers"
+            !has_assign_blocker(p1_c),
+            "assign_blocker is false outside DeclareBlockers"
+        );
+        assert!(
+            !has_assign_blocker(p2_c),
+            "assign_blocker is false outside DeclareBlockers"
         );
     }
 
@@ -1535,8 +1385,8 @@ mod tests {
             .find(|c| c.name == "Cheap Instant")
             .unwrap();
         assert!(
-            card.can_cast,
-            "instant with mana in hand with priority should be castable"
+            has_payable_server_action(card),
+            "instant with mana in hand with priority should have a payable server action"
         );
     }
 
@@ -1577,8 +1427,8 @@ mod tests {
             .find(|c| c.name == "Grizzly Bears")
             .unwrap();
         assert!(
-            !card.can_cast,
-            "creature cannot be cast when player is not active"
+            card.actions.is_empty(),
+            "creature cannot be cast when player is not active player — should have no actions"
         );
     }
 
@@ -1621,11 +1471,9 @@ mod tests {
             id.0
         };
 
-        // 4 passes to reach DeclareAttackers
         for _ in 0..4 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
-        // Declare P1's bear as attacker
         let gs = dispatch_action(
             gs,
             ActionRequest::DeclareAttackers {
@@ -1633,7 +1481,6 @@ mod tests {
             },
         )
         .unwrap();
-        // 2 passes to advance DeclareAttackers → DeclareBlockers
         let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         let gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         assert_eq!(gs.step(), Step::DeclareBlockers);
@@ -1653,16 +1500,16 @@ mod tests {
             .unwrap();
 
         assert!(
-            !p1_c.can_block,
-            "active player's creature does not show can_block"
+            !has_assign_blocker(p1_c),
+            "active player's creature should not have assign_blocker action"
         );
         assert!(
-            p2_c.can_block,
-            "defending player's creature shows can_block"
+            has_assign_blocker(p2_c),
+            "defending player's creature should have assign_blocker action"
         );
         assert!(
-            !p1_c.can_attack,
-            "declared attacker (tapped) does not show can_attack"
+            !has_toggle_attacker(p1_c),
+            "declared attacker (tapped) should not have toggle_attacker action"
         );
     }
 }
