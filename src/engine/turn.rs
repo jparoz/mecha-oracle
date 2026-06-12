@@ -93,7 +93,6 @@ fn untap_step(mut state: GameState) -> GameState {
     for id in to_untap {
         if let Some(perm) = state.battlefield.get_mut(&id) {
             perm.tapped = false;
-            perm.summoning_sick = false;
         }
     }
     state.lands_played_this_turn = 0;
@@ -188,7 +187,7 @@ mod tests {
         );
         let mut perm = PermanentState::new(&obj.definition);
         perm.tapped = true;
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0; // treat as not sick (entered before turn 1)
         state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
@@ -229,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn untap_step_clears_summoning_sickness() {
+    fn untap_step_creature_is_no_longer_summoning_sick() {
         let db = test_db();
         let mut gs = make_state();
         let id = gs.alloc_id();
@@ -239,13 +238,17 @@ mod tests {
             PlayerId(0),
             Zone::Battlefield,
         );
-        let perm = PermanentState::new(&obj.definition); // summoning_sick = true by default
+        // Creature entered last turn (turn 0) under P0's control.
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
 
+        // gs.turn_number = 1, active_player = P0, so controllers_most_recent_turn(P0) = 1.
+        // controller_since_turn (0) < 1 → not sick.
         let gs = apply_step_start(gs);
 
-        assert!(!gs.battlefield[&id].summoning_sick);
+        assert!(!gs.battlefield[&id].summoning_sick(gs.controllers_most_recent_turn(PlayerId(0))));
     }
 
     #[test]
@@ -292,7 +295,7 @@ mod tests {
         );
         let mut perm = PermanentState::new(&obj.definition);
         perm.damage_marked = 1;
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
 
@@ -429,7 +432,7 @@ mod tests {
             Zone::Battlefield,
         );
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         gs.combat.attackers = vec![id];
@@ -464,7 +467,7 @@ mod tests {
         };
         let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         gs.combat.attackers = vec![id];
@@ -488,7 +491,7 @@ mod tests {
             Zone::Battlefield,
         );
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         gs.combat.attackers = vec![id];

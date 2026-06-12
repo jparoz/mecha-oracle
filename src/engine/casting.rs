@@ -53,9 +53,9 @@ pub fn play_land(
         .unwrap()
         .retain(|&id| id != object_id);
     let definition = state.objects.get(&object_id).unwrap().definition.clone();
-    state
-        .battlefield
-        .insert(object_id, PermanentState::new(&definition));
+    let mut land_perm = PermanentState::new(&definition);
+    land_perm.controller_since_turn = state.turn_number;
+    state.battlefield.insert(object_id, land_perm);
     state.objects.get_mut(&object_id).unwrap().zone = Zone::Battlefield;
     state.lands_played_this_turn += 1;
 
@@ -612,7 +612,7 @@ mod tests {
         let monk_id = gs.alloc_id();
         let obj = CardObject::new(monk_id, prowess_def, PlayerId(0), Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(monk_id, perm);
         gs.add_object(obj);
 

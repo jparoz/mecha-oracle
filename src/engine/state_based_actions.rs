@@ -98,7 +98,7 @@ mod tests {
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
@@ -186,7 +186,7 @@ mod tests {
         };
         let obj = CardObject::new(id, def, owner, Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         state.battlefield.insert(id, perm);
         state.add_object(obj);
         id

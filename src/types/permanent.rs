@@ -21,8 +21,10 @@ pub struct PermanentState {
     pub current_power: Option<i32>,
     pub current_toughness: Option<i32>,
     pub tapped: bool,
-    /// CR 302.6 — true until controller's next untap step.
-    pub summoning_sick: bool,
+    /// CR 302.6 — the turn number when this permanent came under its current controller's
+    /// control. Use `summoning_sick(controllers_most_recent_turn)` to check sickness;
+    /// `u32::MAX` means "entered this turn" (always sick until explicitly set).
+    pub controller_since_turn: u32,
     pub damage_marked: u32,
     /// CR 704.5h — flagged when deathtouch damage lands; cleared by SBAs.
     pub damaged_by_deathtouch: bool,
@@ -36,7 +38,7 @@ impl PermanentState {
             current_power: definition.power,
             current_toughness: definition.toughness,
             tapped: false,
-            summoning_sick: true,
+            controller_since_turn: u32::MAX,
             damage_marked: 0,
             damaged_by_deathtouch: false,
             pt_boost_until_eot: PTDelta::default(),
@@ -81,13 +83,22 @@ impl PermanentState {
             .map(|t| t + self.pt_boost_until_eot.toughness)
     }
 
+    /// CR 302.6 — a creature is summoning sick if it has not been under its controller's
+    /// control continuously since the beginning of their most recent turn.
+    /// Pass `controllers_most_recent_turn` from `GameState::controllers_most_recent_turn`.
+    /// Returns false for non-creatures (sickness only restricts creature abilities).
+    pub fn summoning_sick(&self, controllers_most_recent_turn: u32) -> bool {
+        self.is_creature() && self.controller_since_turn >= controllers_most_recent_turn
+    }
+
     /// CR 302.5a — a creature can attack if untapped, not summoning sick (unless Haste),
     /// and not a Defender.
-    pub fn can_attack(&self) -> bool {
+    pub fn can_attack(&self, controllers_most_recent_turn: u32) -> bool {
         self.is_creature()
             && !self.tapped
             && !self.has_keyword(StaticAbility::Defender)
-            && (!self.summoning_sick || self.has_keyword(StaticAbility::Haste))
+            && (!self.summoning_sick(controllers_most_recent_turn)
+                || self.has_keyword(StaticAbility::Haste))
     }
 
     /// CR 509.1a — a creature can block if untapped and not Decayed.
@@ -109,23 +120,23 @@ mod tests {
     #[test]
     fn new_permanent_enters_summoning_sick() {
         let perm = grizzly_bears_perm();
-        assert!(perm.summoning_sick);
-        assert!(!perm.can_attack());
+        assert!(perm.summoning_sick(1));
+        assert!(!perm.can_attack(1));
     }
 
     #[test]
     fn creature_can_attack_after_sickness_cleared() {
         let mut perm = grizzly_bears_perm();
-        perm.summoning_sick = false;
-        assert!(perm.can_attack());
+        perm.controller_since_turn = 0; // entered before turn 1 → not sick
+        assert!(perm.can_attack(1));
     }
 
     #[test]
     fn tapped_creature_cannot_attack_or_block() {
         let mut perm = grizzly_bears_perm();
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         perm.tapped = true;
-        assert!(!perm.can_attack());
+        assert!(!perm.can_attack(1));
         assert!(!perm.can_block());
     }
 
@@ -134,9 +145,31 @@ mod tests {
         use crate::types::{Ability, OracleSpan, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
         def.abilities = vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Haste))];
-        let mut perm = PermanentState::new(&def);
-        perm.summoning_sick = true;
-        assert!(perm.can_attack());
+        let perm = PermanentState::new(&def); // controller_since_turn = u32::MAX → sick
+        assert!(perm.can_attack(1)); // sick but has Haste
+    }
+
+    #[test]
+    fn non_creature_permanent_is_never_summoning_sick() {
+        let db = test_db();
+        let perm = PermanentState::new(db.get("Forest").unwrap());
+        assert!(!perm.summoning_sick(1));
+    }
+
+    #[test]
+    fn creature_not_sick_on_controllers_next_turn() {
+        let mut perm = grizzly_bears_perm();
+        perm.controller_since_turn = 1; // entered turn 1
+        // On controller's next turn (most_recent = 3), 1 >= 3 = false
+        assert!(!perm.summoning_sick(3));
+    }
+
+    #[test]
+    fn creature_still_sick_during_opponents_turn() {
+        let mut perm = grizzly_bears_perm();
+        perm.controller_since_turn = 1; // entered turn 1
+        // During opponent's turn, controller's most_recent_turn = 1 still
+        assert!(perm.summoning_sick(1));
     }
 
     #[test]
@@ -162,7 +195,6 @@ mod tests {
     #[test]
     fn effective_power_includes_eot_boost() {
         let mut perm = grizzly_bears_perm();
-        perm.summoning_sick = false;
         perm.pt_boost_until_eot.power = 3;
         assert_eq!(perm.effective_power(), Some(5)); // 2 base + 3
     }

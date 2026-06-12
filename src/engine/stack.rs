@@ -133,7 +133,9 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     obj.zone = Zone::Battlefield;
                 }
                 if let Some(def) = def {
-                    state.battlefield.insert(card_id, PermanentState::new(&def));
+                    let mut perm = PermanentState::new(&def);
+                    perm.controller_since_turn = state.turn_number;
+                    state.battlefield.insert(card_id, perm);
                 }
 
                 // CR 603.3: collect ETB triggers and push onto stack (CR 405.3 APNAP order —
@@ -445,7 +447,8 @@ mod tests {
 
         assert!(gs.battlefield.contains_key(&id));
         assert_eq!(gs.objects[&id].zone, Zone::Battlefield);
-        assert!(gs.battlefield[&id].summoning_sick);
+        let cmt = gs.controllers_most_recent_turn(PlayerId(0));
+        assert!(gs.battlefield[&id].summoning_sick(cmt));
         assert!(gs.stack.is_empty());
     }
 
@@ -689,7 +692,7 @@ mod tests {
         let id = gs.alloc_id();
         let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
 

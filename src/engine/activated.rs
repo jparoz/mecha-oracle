@@ -72,10 +72,8 @@ pub fn activate_ability(
                 if perm.tapped {
                     return Err(EngineError::AlreadyTapped);
                 }
-                if perm.is_creature()
-                    && perm.summoning_sick
-                    && !perm.has_keyword(StaticAbility::Haste)
-                {
+                let cmt = state.controllers_most_recent_turn(activating_player);
+                if perm.summoning_sick(cmt) && !perm.has_keyword(StaticAbility::Haste) {
                     return Err(EngineError::SummoningSick);
                 }
             }
@@ -244,10 +242,8 @@ pub fn can_pay_cost(
                 if perm.tapped {
                     return false;
                 }
-                if perm.is_creature()
-                    && perm.summoning_sick
-                    && !perm.has_keyword(StaticAbility::Haste)
-                {
+                let cmt = state.controllers_most_recent_turn(player);
+                if perm.summoning_sick(cmt) && !perm.has_keyword(StaticAbility::Haste) {
                     return false;
                 }
             }
@@ -357,7 +353,7 @@ mod tests {
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
@@ -417,7 +413,7 @@ mod tests {
     fn summoning_sick_creature_with_tap_cost_returns_error() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        gs.battlefield.get_mut(&id).unwrap().summoning_sick = true;
+        gs.battlefield.get_mut(&id).unwrap().controller_since_turn = u32::MAX;
         assert!(matches!(
             activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
             Err(EngineError::SummoningSick)

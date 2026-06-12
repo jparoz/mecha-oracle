@@ -551,10 +551,11 @@ fn compute_battlefield_actions(
 
     // Attacker toggle (no cost — can_pay_cost always true)
     if state.step() == Step::DeclareAttackers && pid == state.active_player {
+        let cmt = state.controllers_most_recent_turn(pid);
         let can_atk = state
             .battlefield
             .get(&obj.id)
-            .map(|p| p.can_attack())
+            .map(|p| p.can_attack(cmt))
             .unwrap_or(false);
         if can_atk {
             actions.push(ActionItemView {
@@ -702,7 +703,9 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             power: perm.and_then(|p| p.effective_power()),
             toughness: perm.and_then(|p| p.effective_toughness()),
             tapped: perm.map(|p| p.tapped).unwrap_or(false),
-            summoning_sick: perm.map(|p| p.summoning_sick).unwrap_or(false),
+            summoning_sick: perm
+                .map(|p| p.summoning_sick(state.controllers_most_recent_turn(pid)))
+                .unwrap_or(false),
             damage_marked: perm.map(|p| p.damage_marked).unwrap_or(0),
             is_attacking: state.combat.attackers.contains(&obj.id),
             is_blocking: all_blockers.contains(&obj.id),
@@ -1541,7 +1544,7 @@ mod tests {
                 Zone::Battlefield,
             );
             let mut perm = PermanentState::new(&obj.definition);
-            perm.summoning_sick = false;
+            perm.controller_since_turn = 0;
             gs.battlefield.insert(id, perm);
             gs.add_object(obj);
             id.0
@@ -1555,7 +1558,7 @@ mod tests {
                 Zone::Battlefield,
             );
             let mut perm = PermanentState::new(&obj.definition);
-            perm.summoning_sick = false;
+            perm.controller_since_turn = 0;
             gs.battlefield.insert(id, perm);
             gs.add_object(obj);
             id.0
@@ -1717,7 +1720,7 @@ mod tests {
                 Zone::Battlefield,
             );
             let mut perm = PermanentState::new(&obj.definition);
-            perm.summoning_sick = false;
+            perm.controller_since_turn = 0;
             gs.battlefield.insert(id, perm);
             gs.add_object(obj);
             id.0
@@ -1731,7 +1734,7 @@ mod tests {
                 Zone::Battlefield,
             );
             let mut perm = PermanentState::new(&obj.definition);
-            perm.summoning_sick = false;
+            perm.controller_since_turn = 0;
             gs.battlefield.insert(id, perm);
             gs.add_object(obj);
             id.0

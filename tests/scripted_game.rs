@@ -220,9 +220,10 @@ fn scripted_game_runs_to_completion() {
     let gs = advance_step(gs); // → DeclareAttackers
     // We are now at Combat,DeclareAttackers
 
+    let cmt = gs.controllers_most_recent_turn(PlayerId(0));
     let bear_can_attack = alice_bear
         .and_then(|id| gs.battlefield.get(&id))
-        .map(|p| p.can_attack())
+        .map(|p| p.can_attack(cmt))
         .unwrap_or(false);
 
     let gs = if bear_can_attack {
@@ -278,7 +279,7 @@ fn player_dies_at_zero_life_ends_game() {
         Zone::Battlefield,
     );
     let mut perm = PermanentState::new(&obj.definition);
-    perm.summoning_sick = false;
+    perm.controller_since_turn = 0;
     gs.battlefield.insert(id, perm);
     gs.add_object(obj);
     gs.combat.attackers = vec![id];
@@ -352,7 +353,7 @@ fn first_striker_kills_blocker_and_survives_unscathed() {
             Zone::Battlefield,
         );
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
@@ -366,7 +367,7 @@ fn first_striker_kills_blocker_and_survives_unscathed() {
             Zone::Battlefield,
         );
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
@@ -440,7 +441,7 @@ fn trample_excess_kills_player() {
         let id = gs.alloc_id();
         let obj = CardObject::new(id, trampler_def, PlayerId(0), Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
@@ -454,7 +455,7 @@ fn trample_excess_kills_player() {
             Zone::Battlefield,
         );
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
@@ -497,7 +498,7 @@ fn deathtouch_rat_kills_hill_giant() {
             Zone::Battlefield,
         );
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id
@@ -511,7 +512,7 @@ fn deathtouch_rat_kills_hill_giant() {
             Zone::Battlefield,
         );
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         gs.battlefield.insert(id, perm);
         gs.add_object(obj);
         id

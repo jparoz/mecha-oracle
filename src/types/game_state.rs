@@ -185,6 +185,25 @@ impl GameState {
         self.players.iter_mut().find(|p| p.id == id)
     }
 
+    /// CR 302.6 — the turn number at which `controller`'s most recent untap step occurred.
+    /// Used to evaluate summoning sickness: a permanent is sick if `controller_since_turn >=
+    /// controllers_most_recent_turn(controller)`.
+    pub fn controllers_most_recent_turn(&self, controller: PlayerId) -> u32 {
+        let n = self.players.len() as u32;
+        let active_idx = self
+            .players
+            .iter()
+            .position(|p| p.id == self.active_player)
+            .unwrap_or(0) as u32;
+        let ctrl_idx = self
+            .players
+            .iter()
+            .position(|p| p.id == controller)
+            .unwrap_or(0) as u32;
+        let offset = (active_idx + n - ctrl_idx) % n;
+        self.turn_number.saturating_sub(offset)
+    }
+
     pub fn opponent_of(&self, player: PlayerId) -> PlayerId {
         self.players
             .iter()

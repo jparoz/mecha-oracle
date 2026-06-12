@@ -14,6 +14,7 @@ pub fn declare_attackers(
         return Err(EngineError::CannotCastNow);
     }
 
+    let cmt = state.controllers_most_recent_turn(player_id);
     for &id in attacker_ids {
         let obj = state.objects.get(&id).ok_or(EngineError::CardNotFound)?;
         if obj.controller != player_id {
@@ -26,7 +27,7 @@ pub fn declare_attackers(
             .battlefield
             .get(&id)
             .ok_or(EngineError::CardNotFound)?;
-        if perm.summoning_sick && !perm.has_keyword(StaticAbility::Haste) {
+        if perm.summoning_sick(cmt) && !perm.has_keyword(StaticAbility::Haste) {
             return Err(EngineError::SummoningSick);
         }
         if perm.tapped {
@@ -426,7 +427,7 @@ mod tests {
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
@@ -462,7 +463,7 @@ mod tests {
         };
         let obj = crate::types::CardObject::new(id, def, owner, Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
-        perm.summoning_sick = false;
+        perm.controller_since_turn = 0;
         state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
@@ -540,7 +541,7 @@ mod tests {
         use crate::types::ability::StaticAbility;
         let mut gs = make_combat_state();
         let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Haste]);
-        gs.battlefield.get_mut(&id).unwrap().summoning_sick = true; // still sick
+        gs.battlefield.get_mut(&id).unwrap().controller_since_turn = u32::MAX; // still sick
         // Should be able to declare it as attacker
         let gs = declare_attackers(gs, PlayerId(0), &[id]).unwrap();
         assert!(gs.combat.attackers.contains(&id));
@@ -623,7 +624,10 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        gs.battlefield.get_mut(&bear_id).unwrap().summoning_sick = true;
+        gs.battlefield
+            .get_mut(&bear_id)
+            .unwrap()
+            .controller_since_turn = u32::MAX;
 
         assert!(matches!(
             declare_attackers(gs, PlayerId(0), &[bear_id]),
