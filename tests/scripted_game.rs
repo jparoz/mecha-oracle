@@ -96,11 +96,7 @@ fn pass_combat_no_attackers(mut gs: GameState) -> GameState {
     gs = apply_step_start(gs);
     gs = advance_step(gs); // → DeclareAttackers
     gs = apply_step_start(gs);
-    // No attackers declared — skip to end of combat
-    gs = advance_step(gs); // → DeclareBlockers
-    gs = apply_step_start(gs);
-    gs = advance_step(gs); // → CombatDamage
-    gs = apply_step_start(gs);
+    // CR 506.1: no attackers declared → advance_step skips DB and CD directly to EOC
     gs = advance_step(gs); // → EndOfCombat
     gs = apply_step_start(gs);
     gs = advance_step(gs); // → PostCombatMain/Main
@@ -244,12 +240,8 @@ fn scripted_game_runs_to_completion() {
         gs = advance_step(gs); // EndOfCombat → PostCombatMain
         gs
     } else {
-        // No attackers — step through remaining combat steps from DeclareAttackers
-        let mut gs = advance_step(gs); // DeclareAttackers → DeclareBlockers
-        gs = apply_step_start(gs);
-        gs = advance_step(gs); // DeclareBlockers → CombatDamage
-        gs = apply_step_start(gs);
-        gs = advance_step(gs); // CombatDamage → EndOfCombat
+        // No attackers — CR 506.1: advance_step skips DB+CD, goes to EndOfCombat
+        let mut gs = advance_step(gs); // DeclareAttackers → EndOfCombat
         gs = apply_step_start(gs);
         gs = advance_step(gs); // EndOfCombat → PostCombatMain
         gs

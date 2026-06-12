@@ -56,7 +56,14 @@ pub fn advance_step(mut state: GameState) -> GameState {
         Step::Draw => set(state, Step::PreCombatMain),
         Step::PreCombatMain => set(state, Step::BeginningOfCombat),
         Step::BeginningOfCombat => set(state, Step::DeclareAttackers),
-        Step::DeclareAttackers => set(state, Step::DeclareBlockers),
+        Step::DeclareAttackers => {
+            if state.combat.attackers.is_empty() {
+                // CR 506.1: DB and CD are skipped when no creatures declared as attackers.
+                set(state, Step::EndOfCombat)
+            } else {
+                set(state, Step::DeclareBlockers)
+            }
+        }
         Step::DeclareBlockers => set(state, Step::CombatDamage),
         Step::CombatDamage => set(state, Step::EndOfCombat),
         Step::EndOfCombat => {
@@ -476,6 +483,36 @@ mod tests {
 
         assert!(!gs.battlefield.contains_key(&id));
         assert!(gs.graveyards[&PlayerId(0)].contains(&id));
+    }
+
+    // CR 506.1: DB and CD are skipped when no attackers declared.
+    #[test]
+    fn advance_step_from_da_with_no_attackers_goes_to_eoc() {
+        let mut gs = make_state();
+        gs.step = Step::DeclareAttackers;
+        // combat.attackers is empty by default
+        let gs = advance_step(gs);
+        assert_eq!(gs.step, Step::EndOfCombat);
+    }
+
+    #[test]
+    fn advance_step_from_da_with_attackers_goes_to_db() {
+        let db = test_db();
+        let mut gs = make_state();
+        gs.step = Step::DeclareAttackers;
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        gs.battlefield
+            .insert(id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+        gs.combat.attackers = vec![id];
+        let gs = advance_step(gs);
+        assert_eq!(gs.step, Step::DeclareBlockers);
     }
 
     #[test]

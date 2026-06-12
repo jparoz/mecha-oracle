@@ -896,8 +896,9 @@ fn has_valid_blockers(state: &GameState) -> bool {
 }
 
 // After pass_priority has already advanced the step, apply step-start actions and
-// auto-advance through Untap/Cleanup steps (CR 502, 514), and auto-skip
-// DeclareAttackers/DeclareBlockers when no valid options exist (CR 508.1, 509.1).
+// auto-advance through Untap/Cleanup steps (CR 502, 514). When no valid options
+// exist for DA/DB, auto-declare the empty set (no UI shown) but still give players
+// priority at that step (CR 506.1 — DB and CD skipped by advance_step when attackers=0).
 fn apply_step_start_loop(mut state: GameState) -> GameState {
     loop {
         state = apply_step_start(state);
@@ -909,10 +910,12 @@ fn apply_step_start_loop(mut state: GameState) -> GameState {
             let active = state.active_player;
             state = declare_attackers(state, active, &[])
                 .expect("auto-declare empty attackers cannot fail");
+            break; // players still get priority at DA per CR 506.1
         } else if step == Step::DeclareBlockers && !has_valid_blockers(&state) {
             let defender = state.opponent_of(state.active_player);
             state = declare_blockers(state, defender, &[])
                 .expect("auto-declare empty blockers cannot fail");
+            break; // players still get priority at DB
         } else if !matches!(step, Step::Untap | Step::Cleanup) {
             break;
         }
@@ -1858,24 +1861,34 @@ mod tests {
 
     #[test]
     fn autoskips_declare_attackers_when_no_valid_attackers() {
-        // All-Forest deck: no creatures → auto-skip both DA and DB
+        // All-Forest deck: no creatures → attackers auto-declared empty; players get
+        // priority at DA; advance_step then skips DB+CD per CR 506.1.
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
             (0..10).map(|_| "Forest".to_string()).collect(),
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        // 2 passes → BOC; 2 more passes → DA auto-skip → DB auto-skip → CombatDamage
+        // 2 passes → BOC; 2 more passes → DA (auto-declared, priority window)
         for _ in 0..4 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
         assert_eq!(
             gs.step(),
-            Step::CombatDamage,
-            "should have auto-skipped DA and DB to reach CombatDamage"
+            Step::DeclareAttackers,
+            "should stop at DA (auto-declared) to give players priority per CR 506.1"
         );
         assert!(gs.combat.attackers_declared);
-        assert!(gs.combat.blockers_declared);
+        assert!(!gs.combat.blockers_declared);
+        // 2 more passes → advance_step skips DB+CD → EndOfCombat
+        for _ in 0..2 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(
+            gs.step(),
+            Step::EndOfCombat,
+            "should skip to EndOfCombat per CR 506.1 when no attackers declared"
+        );
     }
 
     #[test]
@@ -1971,16 +1984,25 @@ mod tests {
             },
         )
         .unwrap();
-        // 2 passes → transition to DB triggers auto-skip → CombatDamage
+        // 2 passes → transition to DB; auto-declare empty blockers; priority at DB
+        for _ in 0..2 {
+            gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
+        }
+        assert_eq!(
+            gs.step(),
+            Step::DeclareBlockers,
+            "should stop at DB (auto-declared) to give players priority"
+        );
+        assert!(gs.combat.blockers_declared);
+        // 2 more passes → CombatDamage
         for _ in 0..2 {
             gs = dispatch_action(gs, ActionRequest::AdvanceStep).unwrap();
         }
         assert_eq!(
             gs.step(),
             Step::CombatDamage,
-            "should have auto-skipped DB since ground creature cannot block flying attacker"
+            "should advance to CombatDamage after DB priority window"
         );
-        assert!(gs.combat.blockers_declared);
     }
 
     #[test]
