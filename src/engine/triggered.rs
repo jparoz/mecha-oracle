@@ -330,6 +330,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -356,6 +357,7 @@ mod tests {
                 },
                 effect: vec![EffectStep::DrawCard(1)],
             }))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         }
@@ -377,6 +379,7 @@ mod tests {
                 },
                 effect: vec![EffectStep::GainLife(7)],
             }))],
+            text_annotations: vec![],
             power: Some(7),
             toughness: Some(7),
         }
@@ -435,6 +438,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -466,6 +470,7 @@ mod tests {
             },
             oracle_text: "Prowess".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -482,6 +487,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         };
@@ -536,6 +542,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -552,6 +559,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -583,6 +591,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -598,6 +607,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -646,6 +656,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -675,6 +686,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -689,6 +701,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -718,6 +731,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Melee))],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -766,6 +780,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking))],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -780,6 +795,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -830,6 +846,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking))],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -862,6 +879,7 @@ mod tests {
             abilities: vec![OracleSpan::Parsed(Ability::Static(
                 StaticAbility::BushidoN(2),
             ))],
+            text_annotations: vec![],
             power: Some(3),
             toughness: Some(3),
         };
@@ -878,6 +896,7 @@ mod tests {
             abilities: vec![OracleSpan::Parsed(Ability::Static(
                 StaticAbility::BushidoN(1),
             ))],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -939,6 +958,7 @@ mod tests {
             abilities: vec![OracleSpan::Parsed(Ability::Static(
                 StaticAbility::BushidoN(2),
             ))],
+            text_annotations: vec![],
             power: Some(3),
             toughness: Some(3),
         };
@@ -978,6 +998,7 @@ mod tests {
                     effect: vec![EffectStep::GainLife(2)],
                 })),
             ],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };

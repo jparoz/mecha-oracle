@@ -1,4 +1,4 @@
-use super::ability::OracleSpan;
+use super::ability::{OracleSpan, TextAnnotation};
 use super::mana::ManaCost;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +58,7 @@ pub struct CardDefinition {
     pub type_line: TypeLine,
     pub oracle_text: String,
     pub abilities: Vec<OracleSpan>,
+    pub text_annotations: Vec<TextAnnotation>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
 }

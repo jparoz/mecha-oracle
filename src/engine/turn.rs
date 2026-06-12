@@ -469,6 +469,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Decayed))],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };

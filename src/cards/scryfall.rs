@@ -65,6 +65,7 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
         type_line,
         oracle_text,
         abilities,
+        text_annotations: vec![],
         power,
         toughness,
     };

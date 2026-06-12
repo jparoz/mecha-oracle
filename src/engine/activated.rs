@@ -298,6 +298,7 @@ mod tests {
                     ..Default::default()
                 })],
             }))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         }
@@ -318,6 +319,7 @@ mod tests {
                 target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
             }))],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         }
@@ -340,6 +342,7 @@ mod tests {
                 target_requirements: vec![],
                 effect: vec![EffectStep::DrawCard(1)],
             }))],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         }
@@ -370,6 +373,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -543,6 +547,7 @@ mod tests {
                 target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
             }))],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         };
@@ -616,6 +621,7 @@ mod tests {
                     ..Default::default()
                 })],
             }))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };

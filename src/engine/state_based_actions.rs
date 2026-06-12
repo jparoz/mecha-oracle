@@ -181,6 +181,7 @@ mod tests {
                 .into_iter()
                 .map(|k| OracleSpan::Parsed(Ability::Static(k)))
                 .collect(),
+            text_annotations: vec![],
             power: Some(power),
             toughness: Some(toughness),
         };

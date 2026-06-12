@@ -231,6 +231,7 @@ mod tests {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         }
@@ -249,6 +250,7 @@ mod tests {
             },
             oracle_text: "Flash".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flash))],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         }
@@ -606,6 +608,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -649,6 +652,7 @@ mod tests {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         };
@@ -678,6 +682,7 @@ mod tests {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         };
@@ -710,6 +715,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -734,6 +740,7 @@ mod tests {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         };

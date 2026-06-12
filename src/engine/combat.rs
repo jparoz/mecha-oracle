@@ -461,6 +461,7 @@ mod tests {
                 .into_iter()
                 .map(|k| OracleSpan::Parsed(Ability::Static(k)))
                 .collect(),
+            text_annotations: vec![],
             power: Some(power),
             toughness: Some(toughness),
         };
@@ -489,6 +490,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -503,6 +505,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
@@ -978,6 +981,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking))],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -991,6 +995,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };

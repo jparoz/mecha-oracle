@@ -282,6 +282,7 @@ fn cant_cast_giant_growth_targeting_shroud_creature() {
         },
         oracle_text: "Shroud".into(),
         abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Shroud))],
+        text_annotations: vec![],
         power: Some(1),
         toughness: Some(1),
     };

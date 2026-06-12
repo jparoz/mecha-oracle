@@ -885,6 +885,7 @@ mod tests {
             },
             oracle_text: "({T}: Add {G}.)".into(),
             abilities: vec![],
+            text_annotations: vec![],
             power: None,
             toughness: None,
         };

@@ -122,6 +122,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities,
+            text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
         };
@@ -173,6 +174,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![],
+            text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
         };
