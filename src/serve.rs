@@ -571,6 +571,7 @@ fn compute_battlefield_actions(
     // Blocker assignment (no cost — can_pay_cost always true)
     if state.step() == Step::DeclareBlockers && pid != state.active_player {
         for &atk_id in &state.combat.attackers {
+            // can_block_attacker delegates to perm.can_block() (tapped, Decayed) internally
             if !can_block_attacker(state, obj.id, atk_id) {
                 continue;
             }
