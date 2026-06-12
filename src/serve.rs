@@ -443,99 +443,99 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
     }
 
     // Cast spell
-    if let Some(cost) = &obj.definition.mana_cost {
-        if can_cast_structural(state, pid, obj) {
-            let player = state.get_player(pid).unwrap();
-            let mana_ok = greedy_payment_plan(cost, &player.mana_pool, player.life).is_some();
+    if let Some(cost) = &obj.definition.mana_cost
+        && can_cast_structural(state, pid, obj)
+    {
+        let player = state.get_player(pid).unwrap();
+        let mana_ok = greedy_payment_plan(cost, &player.mana_pool, player.life).is_some();
 
-            // Collect target requirements from all SpellEffect abilities
-            let target_filters: Vec<_> = obj
-                .definition
-                .abilities
-                .iter()
-                .filter_map(|span| match span {
-                    OracleSpan::Parsed(Ability::SpellEffect(sa))
-                        if !sa.target_requirements.is_empty() =>
-                    {
-                        Some(sa.target_requirements.as_slice())
-                    }
-                    _ => None,
-                })
-                .flatten()
-                .copied()
-                .collect();
-
-            if target_filters.is_empty() {
-                // Untargeted spell
-                actions.push(ActionItemView {
-                    label: format!("Cast {}", obj.definition.name),
-                    can_pay_cost: mana_ok,
-                    kind: ActionItemKind::Server {
-                        action: serde_json::json!({
-                            "type": "cast_spell",
-                            "object_id": obj.id.0
-                        }),
-                    },
-                });
-            } else {
-                // Targeted spell: one action per legal target
-                let mut seen = std::collections::HashSet::new();
-                for filter in &target_filters {
-                    for target in legal_targets(state, *filter, pid) {
-                        let key = match &target {
-                            EffectTarget::Object { id } => format!("o{}", id.0),
-                            EffectTarget::Player { id } => format!("p{}", id.0),
-                        };
-                        if !seen.insert(key) {
-                            continue;
-                        }
-                        let target_name = match &target {
-                            EffectTarget::Object { id } => state
-                                .objects
-                                .get(id)
-                                .map(|o| o.definition.name.clone())
-                                .unwrap_or_default(),
-                            EffectTarget::Player { id } => state
-                                .get_player(*id)
-                                .map(|p| p.name.clone())
-                                .unwrap_or_default(),
-                        };
-                        let target_val = serde_json::to_value(&target).unwrap();
-                        actions.push(ActionItemView {
-                            label: format!("Cast {} → {}", obj.definition.name, target_name),
-                            can_pay_cost: mana_ok,
-                            kind: ActionItemKind::Server {
-                                action: serde_json::json!({
-                                    "type": "cast_spell",
-                                    "object_id": obj.id.0,
-                                    "targets": [target_val]
-                                }),
-                            },
-                        });
-                    }
+        // Collect target requirements from all SpellEffect abilities
+        let target_filters: Vec<_> = obj
+            .definition
+            .abilities
+            .iter()
+            .filter_map(|span| match span {
+                OracleSpan::Parsed(Ability::SpellEffect(sa))
+                    if !sa.target_requirements.is_empty() =>
+                {
+                    Some(sa.target_requirements.as_slice())
                 }
-                // If no legal targets were found, no action is emitted (structural failure).
+                _ => None,
+            })
+            .flatten()
+            .copied()
+            .collect();
+
+        if target_filters.is_empty() {
+            // Untargeted spell
+            actions.push(ActionItemView {
+                label: format!("Cast {}", obj.definition.name),
+                can_pay_cost: mana_ok,
+                kind: ActionItemKind::Server {
+                    action: serde_json::json!({
+                        "type": "cast_spell",
+                        "object_id": obj.id.0
+                    }),
+                },
+            });
+        } else {
+            // Targeted spell: one action per legal target
+            let mut seen = std::collections::HashSet::new();
+            for filter in &target_filters {
+                for target in legal_targets(state, *filter, pid) {
+                    let key = match &target {
+                        EffectTarget::Object { id } => format!("o{}", id.0),
+                        EffectTarget::Player { id } => format!("p{}", id.0),
+                    };
+                    if !seen.insert(key) {
+                        continue;
+                    }
+                    let target_name = match &target {
+                        EffectTarget::Object { id } => state
+                            .objects
+                            .get(id)
+                            .map(|o| o.definition.name.clone())
+                            .unwrap_or_default(),
+                        EffectTarget::Player { id } => state
+                            .get_player(*id)
+                            .map(|p| p.name.clone())
+                            .unwrap_or_default(),
+                    };
+                    let target_val = serde_json::to_value(&target).unwrap();
+                    actions.push(ActionItemView {
+                        label: format!("Cast {} → {}", obj.definition.name, target_name),
+                        can_pay_cost: mana_ok,
+                        kind: ActionItemKind::Server {
+                            action: serde_json::json!({
+                                "type": "cast_spell",
+                                "object_id": obj.id.0,
+                                "targets": [target_val]
+                            }),
+                        },
+                    });
+                }
             }
+            // If no legal targets were found, no action is emitted (structural failure).
         }
     }
 
     // Cycling
     for span in &obj.definition.abilities {
-        if let OracleSpan::Parsed(Ability::Cycling(cost)) = span {
-            if state.priority_player == pid {
-                let player = state.get_player(pid).unwrap();
-                let mana_ok = can_pay_mana(cost, &player.mana_pool, player.life);
-                actions.push(ActionItemView {
-                    label: format!("Cycle ({})", format_mana_cost(cost)),
-                    can_pay_cost: mana_ok,
-                    kind: ActionItemKind::Server {
-                        action: serde_json::json!({
-                            "type": "cycle_card",
-                            "object_id": obj.id.0
-                        }),
-                    },
-                });
-            }
+        if let OracleSpan::Parsed(Ability::Cycling(cost)) = span
+            && state.priority_player == pid
+        {
+            let player = state.get_player(pid).unwrap();
+            let mana_ok = can_pay_mana(cost, &player.mana_pool, player.life);
+            actions.push(ActionItemView {
+                label: format!("Cycle ({})", format_mana_cost(cost)),
+                can_pay_cost: mana_ok,
+                kind: ActionItemKind::Server {
+                    action: serde_json::json!({
+                        "type": "cycle_card",
+                        "object_id": obj.id.0
+                    }),
+                },
+            });
         }
     }
 

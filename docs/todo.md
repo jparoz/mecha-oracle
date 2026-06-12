@@ -1,6 +1,5 @@
 # Meta issues
 - Can we run dead code analysis on library re-exports? That is, check that all library exports are actually used in the binary?
-- Make the UI layer in Javascript as thin as possible; have it query the server for a list of allowed actions, and populate the UI with the provided actions. Similar for valid targets, mana costs, etc. The web UI should be literally just a bunch of buttons which are connected to server API calls; there should be no validation done in JS, only in Rust.
 - Consider renaming `Ability` (in `types/ability.rs`) to `Rule` or `RulesText` — it looks odd to see `Ability::SpellEffect` as a variant on a type named `Ability`, even though it's the right place structurally.
 
 # UI issues
