@@ -165,6 +165,7 @@ pub enum AnnotationKind {
 
 /// A styled byte-range annotation over a `CardDefinition`'s `oracle_text` field.
 /// `start` and `end` are byte offsets (UTF-8) into `oracle_text`, exclusive of `end`.
+/// Annotations produced by the parser are non-overlapping and in source order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextAnnotation {
     pub start: usize,

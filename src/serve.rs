@@ -17,6 +17,7 @@ use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
     Ability, ActivatedAbility, AnnotationKind, CostComponent, OracleSpan, StaticAbility,
+    TextAnnotation,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
 use mecha_oracle::types::stack::StackPayload;
@@ -124,6 +125,16 @@ struct TextAnnotationView {
 /// MTG oracle text is BMP-only, so codepoint offsets equal JS string char indices.
 fn byte_to_char(s: &str, byte_offset: usize) -> usize {
     s[..byte_offset].chars().count()
+}
+
+fn annotation_views(oracle_text: &str, anns: &[TextAnnotation]) -> Vec<TextAnnotationView> {
+    anns.iter()
+        .map(|a| TextAnnotationView {
+            start: byte_to_char(oracle_text, a.start),
+            end: byte_to_char(oracle_text, a.end),
+            kind: a.kind.clone(),
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -603,16 +614,10 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             name: obj.definition.name.clone(),
             type_line: format_type_line(&obj.definition.type_line),
             oracle_text: obj.definition.oracle_text.clone(),
-            text_annotations: obj
-                .definition
-                .text_annotations
-                .iter()
-                .map(|a| TextAnnotationView {
-                    start: byte_to_char(&obj.definition.oracle_text, a.start),
-                    end: byte_to_char(&obj.definition.oracle_text, a.end),
-                    kind: a.kind.clone(),
-                })
-                .collect(),
+            text_annotations: annotation_views(
+                &obj.definition.oracle_text,
+                &obj.definition.text_annotations,
+            ),
             mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
             power: perm.and_then(|p| p.effective_power()),
             toughness: perm.and_then(|p| p.effective_toughness()),
@@ -687,16 +692,10 @@ fn build_game_view(state: &GameState) -> GameView {
                             name: c.definition.name.clone(),
                             type_line: format_type_line(&c.definition.type_line),
                             oracle_text: c.definition.oracle_text.clone(),
-                            text_annotations: c
-                                .definition
-                                .text_annotations
-                                .iter()
-                                .map(|a| TextAnnotationView {
-                                    start: byte_to_char(&c.definition.oracle_text, a.start),
-                                    end: byte_to_char(&c.definition.oracle_text, a.end),
-                                    kind: a.kind.clone(),
-                                })
-                                .collect(),
+                            text_annotations: annotation_views(
+                                &c.definition.oracle_text,
+                                &c.definition.text_annotations,
+                            ),
                             mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost),
                             power: c.definition.power,
                             toughness: c.definition.toughness,

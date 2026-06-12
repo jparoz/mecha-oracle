@@ -1103,6 +1103,7 @@ pub fn parse_instant_or_sorcery(
         let spell_ability = parse_spell_paragraph(paragraph, card_name);
         spans.push(OracleSpan::Parsed(Ability::SpellEffect(spell_ability)));
     }
+    // TODO: emit annotations for instants/sorceries (ParsedUnimplemented, Unparsed effects)
     (spans, vec![])
 }
 
