@@ -235,6 +235,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_dryad_arbor_is_land_and_creature() {
+        let v = json!({
+            "name": "Dryad Arbor",
+            "mana_cost": "",
+            "type_line": "Land Creature \u{2014} Forest Dryad",
+            "oracle_text": "",
+            "power": "1",
+            "toughness": "1"
+        });
+        let ParsedEntry::Card(card) = parse_entry(&v).unwrap() else {
+            panic!("expected Card")
+        };
+        assert!(card.mana_cost.is_none());
+        assert!(card.type_line.is_land());
+        assert!(card.type_line.is_creature());
+        assert!(card.type_line.subtypes.contains(&"Forest".to_string()));
+        assert_eq!(card.power, Some(1));
+        assert_eq!(card.toughness, Some(1));
+    }
+
+    #[test]
     fn parse_hill_giant() {
         let v = json!({
             "name": "Hill Giant",

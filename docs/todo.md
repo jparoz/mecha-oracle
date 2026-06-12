@@ -7,7 +7,6 @@
 
 # Gameplay issues
 - Players should discard to hand size at the cleanup step (see CR 402.2)
-- Dryad Arbor isn't working as a land once in play, it's only treated as a creature (i.e. I can't tap it for mana)
 
 
 
@@ -20,7 +19,6 @@ Grouped roughly by complexity of implementation.
 - **Intimidate** (702.13): unblockable except by artifact/same-color — requires color tracking
 - **Landwalk variants** (702.14): unblockable if defending player controls matching land — requires land type lookup
 - **Protection from X** (702.16): comprehensive (can't be targeted, blocked, enchanted, damaged by X) — requires targeting + color systems
-- **Shroud** (702.18) / **Hexproof** (702.11): can't be targeted — requires targeting system
 - **Ward** (702.21): targeting tax — requires targeting system
 
 ## Static creature modifiers (engine, low-to-moderate effort)

@@ -500,5 +500,18 @@
     "mana_cost": "{R}",
     "type_line": "Instant",
     "oracle_text": "Lightning Bolt deals 3 damage to any target."
+  },
+  {
+    "object": "card",
+    "layout": "normal",
+    "name": "Dryad Arbor",
+    "mana_cost": "",
+    "type_line": "Land Creature — Forest Dryad",
+    "oracle_text": "",
+    "power": "1",
+    "toughness": "1",
+    "colors": ["G"],
+    "color_identity": ["G"],
+    "keywords": []
   }
 ]

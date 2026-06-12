@@ -630,7 +630,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             .collect(),
         lands: bf_objects
             .iter()
-            .filter(|obj| obj.is_land() && !obj.is_creature())
+            .filter(|obj| obj.is_land())
             .map(|obj| to_card_view(obj))
             .collect(),
         creatures: bf_objects
@@ -1343,6 +1343,49 @@ mod tests {
         assert!(tap_result.is_ok());
         let gs2 = tap_result.unwrap();
         assert_eq!(gs2.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
+    }
+
+    #[test]
+    fn dryad_arbor_appears_in_both_lands_and_creatures() {
+        // CR 305.6: Dryad Arbor has the Forest subtype, so it taps for {G}.
+        // It is also a creature, so it must appear in both the lands list (tappable
+        // for mana) and the creatures list (eligible to attack/block).
+        use mecha_oracle::engine::casting::play_land;
+        let db = test_db();
+        let config = vec![
+            vec![
+                "Dryad Arbor".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+                "Forest".into(),
+            ],
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let arbor_id = gs.hands[&PlayerId(0)]
+            .iter()
+            .find(|id| gs.objects[*id].definition.name == "Dryad Arbor")
+            .copied()
+            .unwrap();
+        gs = play_land(gs, PlayerId(0), arbor_id).unwrap();
+
+        let view = build_game_view(&gs);
+        let p1 = &view.p1;
+        assert!(
+            p1.lands.iter().any(|c| c.name == "Dryad Arbor"),
+            "Dryad Arbor must appear in lands so it can be tapped for mana"
+        );
+        assert!(
+            p1.creatures.iter().any(|c| c.name == "Dryad Arbor"),
+            "Dryad Arbor must appear in creatures"
+        );
     }
 
     #[test]
