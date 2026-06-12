@@ -5,17 +5,20 @@ use axum::{
     routing::{get, post},
 };
 use mecha_oracle::cards::CardDatabase;
-use mecha_oracle::engine::activated::activate_ability;
+use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
 use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{declare_attackers, declare_blockers};
 use mecha_oracle::engine::cycling::cycle_card;
-use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
+use mecha_oracle::engine::mana::{
+    can_pay_mana, greedy_payment_plan, reset_mana, tap_land_for_mana,
+};
 use mecha_oracle::engine::stack::pass_priority;
+use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
-    Ability, ActivatedAbility, CostComponent, OracleSpan, TriggeredAbility,
+    Ability, ActivatedAbility, CostComponent, OracleSpan, StaticAbility, TriggeredAbility,
 };
-use mecha_oracle::types::effect::EffectStep;
+use mecha_oracle::types::effect::{EffectStep, EffectTarget};
 use mecha_oracle::types::stack::StackPayload;
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
@@ -381,6 +384,172 @@ fn format_triggered_ability(t: &TriggeredAbility) -> String {
     format!("{}, {}.", trigger_str, effect_parts.join(". "))
 }
 
+fn can_cast_structural(state: &GameState, pid: PlayerId, obj: &CardObject) -> bool {
+    use mecha_oracle::types::card::CardType;
+    if obj.zone != Zone::Hand {
+        return false;
+    }
+    if state.priority_player != pid {
+        return false;
+    }
+    if obj.definition.mana_cost.is_none() {
+        return false;
+    }
+    let is_instant_speed = obj
+        .definition
+        .type_line
+        .card_types
+        .contains(&CardType::Instant)
+        || obj.has_keyword(StaticAbility::Flash);
+    if is_instant_speed {
+        return true;
+    }
+    state.active_player == pid
+        && matches!(state.step(), Step::PreCombatMain | Step::PostCombatMain)
+        && state.stack.is_empty()
+}
+
+fn compute_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<ActionItemView> {
+    match obj.zone {
+        Zone::Hand => compute_hand_actions(state, pid, obj),
+        Zone::Battlefield => compute_battlefield_actions(state, pid, obj),
+        _ => vec![],
+    }
+}
+
+fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<ActionItemView> {
+    let mut actions = Vec::new();
+
+    // Play land (no mana cost — always can_pay_cost: true when structurally valid)
+    if obj.definition.type_line.is_land() {
+        let can_play = state.active_player == pid
+            && state.priority_player == pid
+            && state.lands_played_this_turn == 0
+            && matches!(state.step(), Step::PreCombatMain | Step::PostCombatMain)
+            && state.stack.is_empty();
+        if can_play {
+            actions.push(ActionItemView {
+                label: "Play land".to_string(),
+                can_pay_cost: true,
+                kind: ActionItemKind::Server {
+                    action: serde_json::json!({
+                        "type": "play_land",
+                        "object_id": obj.id.0
+                    }),
+                },
+            });
+        }
+        return actions;
+    }
+
+    // Cast spell
+    if let Some(cost) = &obj.definition.mana_cost {
+        if can_cast_structural(state, pid, obj) {
+            let player = state.get_player(pid).unwrap();
+            let mana_ok = greedy_payment_plan(cost, &player.mana_pool, player.life).is_some();
+
+            // Collect target requirements from all SpellEffect abilities
+            let target_filters: Vec<_> = obj
+                .definition
+                .abilities
+                .iter()
+                .filter_map(|span| match span {
+                    OracleSpan::Parsed(Ability::SpellEffect(sa))
+                        if !sa.target_requirements.is_empty() =>
+                    {
+                        Some(sa.target_requirements.as_slice())
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .copied()
+                .collect();
+
+            if target_filters.is_empty() {
+                // Untargeted spell
+                actions.push(ActionItemView {
+                    label: format!("Cast {}", obj.definition.name),
+                    can_pay_cost: mana_ok,
+                    kind: ActionItemKind::Server {
+                        action: serde_json::json!({
+                            "type": "cast_spell",
+                            "object_id": obj.id.0
+                        }),
+                    },
+                });
+            } else {
+                // Targeted spell: one action per legal target
+                let mut seen = std::collections::HashSet::new();
+                for filter in &target_filters {
+                    for target in legal_targets(state, *filter, pid) {
+                        let key = match &target {
+                            EffectTarget::Object { id } => format!("o{}", id.0),
+                            EffectTarget::Player { id } => format!("p{}", id.0),
+                        };
+                        if !seen.insert(key) {
+                            continue;
+                        }
+                        let target_name = match &target {
+                            EffectTarget::Object { id } => state
+                                .objects
+                                .get(id)
+                                .map(|o| o.definition.name.clone())
+                                .unwrap_or_default(),
+                            EffectTarget::Player { id } => state
+                                .get_player(*id)
+                                .map(|p| p.name.clone())
+                                .unwrap_or_default(),
+                        };
+                        let target_val = serde_json::to_value(&target).unwrap();
+                        actions.push(ActionItemView {
+                            label: format!("Cast {} → {}", obj.definition.name, target_name),
+                            can_pay_cost: mana_ok,
+                            kind: ActionItemKind::Server {
+                                action: serde_json::json!({
+                                    "type": "cast_spell",
+                                    "object_id": obj.id.0,
+                                    "targets": [target_val]
+                                }),
+                            },
+                        });
+                    }
+                }
+                // If no legal targets were found, no action is emitted (structural failure).
+            }
+        }
+    }
+
+    // Cycling
+    for span in &obj.definition.abilities {
+        if let OracleSpan::Parsed(Ability::Cycling(cost)) = span {
+            if state.priority_player == pid {
+                let player = state.get_player(pid).unwrap();
+                let mana_ok = can_pay_mana(cost, &player.mana_pool, player.life);
+                actions.push(ActionItemView {
+                    label: format!("Cycle ({})", format_mana_cost(cost)),
+                    can_pay_cost: mana_ok,
+                    kind: ActionItemKind::Server {
+                        action: serde_json::json!({
+                            "type": "cycle_card",
+                            "object_id": obj.id.0
+                        }),
+                    },
+                });
+            }
+        }
+    }
+
+    actions
+}
+
+fn compute_battlefield_actions(
+    _state: &GameState,
+    _pid: PlayerId,
+    _obj: &CardObject,
+) -> Vec<ActionItemView> {
+    vec![] // implemented in Task 5
+}
+
 fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
     use mecha_oracle::types::ObjectId;
     use std::collections::HashSet;
@@ -455,7 +624,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             damage_marked: perm.map(|p| p.damage_marked).unwrap_or(0),
             is_attacking: state.combat.attackers.contains(&obj.id),
             is_blocking: all_blockers.contains(&obj.id),
-            actions: vec![], // populated in Tasks 4 and 5
+            actions: compute_actions(state, pid, obj),
         }
     };
 
