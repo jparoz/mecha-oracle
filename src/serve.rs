@@ -543,11 +543,93 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
 }
 
 fn compute_battlefield_actions(
-    _state: &GameState,
-    _pid: PlayerId,
-    _obj: &CardObject,
+    state: &GameState,
+    pid: PlayerId,
+    obj: &CardObject,
 ) -> Vec<ActionItemView> {
-    vec![] // implemented in Task 5
+    let mut actions = Vec::new();
+
+    // Attacker toggle (no cost — can_pay_cost always true)
+    if state.step() == Step::DeclareAttackers && pid == state.active_player {
+        let can_atk = state
+            .battlefield
+            .get(&obj.id)
+            .map(|p| p.can_attack())
+            .unwrap_or(false);
+        if can_atk {
+            actions.push(ActionItemView {
+                label: "Declare as attacker".to_string(),
+                can_pay_cost: true,
+                kind: ActionItemKind::ToggleAttacker {
+                    object_id: obj.id.0,
+                },
+            });
+        }
+    }
+
+    // Blocker assignment (no cost — can_pay_cost always true)
+    if state.step() == Step::DeclareBlockers && pid != state.active_player {
+        let can_blk = state
+            .battlefield
+            .get(&obj.id)
+            .map(|p| p.can_block())
+            .unwrap_or(false);
+        if can_blk {
+            for &atk_id in &state.combat.attackers {
+                let atk_name = state
+                    .objects
+                    .get(&atk_id)
+                    .map(|o| o.definition.name.as_str())
+                    .unwrap_or("Unknown");
+                actions.push(ActionItemView {
+                    label: format!("Block {atk_name}"),
+                    can_pay_cost: true,
+                    kind: ActionItemKind::AssignBlocker {
+                        blocker_id: obj.id.0,
+                        attacker_id: atk_id.0,
+                    },
+                });
+            }
+        }
+    }
+
+    // Activated abilities
+    // CR 117.1b: non-mana activated abilities require priority; mana abilities do not.
+    let abilities: Vec<_> = obj
+        .definition
+        .abilities
+        .iter()
+        .filter_map(|span| match span {
+            OracleSpan::Parsed(Ability::Activated(a)) => Some(a),
+            _ => None,
+        })
+        .enumerate()
+        .collect();
+
+    for (i, ability) in &abilities {
+        let produces_mana = ability
+            .effect
+            .iter()
+            .any(|e| matches!(e, EffectStep::AddMana(_)));
+        // Mana abilities don't need priority; non-mana abilities do (CR 117.1b)
+        let structural_ok = produces_mana || state.priority_player == pid;
+        if structural_ok {
+            let cost_ok = can_pay_cost(state, obj.id, ability, pid);
+            actions.push(ActionItemView {
+                label: format_activated_ability(ability),
+                can_pay_cost: cost_ok,
+                kind: ActionItemKind::Server {
+                    action: serde_json::json!({
+                        "type": "activate_ability",
+                        "object_id": obj.id.0,
+                        "ability_index": i
+                    }),
+                },
+            });
+        }
+    }
+
+    actions
 }
 
 fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
