@@ -880,6 +880,7 @@ fn has_valid_attackers(state: &GameState) -> bool {
     })
 }
 
+// O(A×B): attackers × battlefield; acceptable for current board sizes.
 fn has_valid_blockers(state: &GameState) -> bool {
     let defender = state.opponent_of(state.active_player);
     state.combat.attackers.iter().any(|&atk_id| {

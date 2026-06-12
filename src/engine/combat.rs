@@ -167,6 +167,9 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     let Some(attacker_obj) = state.objects.get(&attacker_id) else {
         return false;
     };
+    if !state.battlefield.contains_key(&attacker_id) {
+        return false;
+    }
     if !blocker_perm.can_block() {
         return false;
     }
