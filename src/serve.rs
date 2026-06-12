@@ -16,7 +16,7 @@ use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
-    Ability, ActivatedAbility, CostComponent, OracleSpan, StaticAbility,
+    Ability, ActivatedAbility, AnnotationKind, CostComponent, OracleSpan, StaticAbility,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
 use mecha_oracle::types::stack::StackPayload;
@@ -117,7 +117,7 @@ struct ManaPoolView {
 struct TextAnnotationView {
     start: usize,
     end: usize,
-    kind: mecha_oracle::types::ability::AnnotationKind,
+    kind: AnnotationKind,
 }
 
 /// Converts a UTF-8 byte offset to a Unicode codepoint offset.
@@ -686,8 +686,17 @@ fn build_game_view(state: &GameState) -> GameView {
                             id: c.id,
                             name: c.definition.name.clone(),
                             type_line: format_type_line(&c.definition.type_line),
-                            oracle_text: String::new(),
-                            text_annotations: vec![],
+                            oracle_text: c.definition.oracle_text.clone(),
+                            text_annotations: c
+                                .definition
+                                .text_annotations
+                                .iter()
+                                .map(|a| TextAnnotationView {
+                                    start: byte_to_char(&c.definition.oracle_text, a.start),
+                                    end: byte_to_char(&c.definition.oracle_text, a.end),
+                                    kind: a.kind.clone(),
+                                })
+                                .collect(),
                             mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost),
                             power: c.definition.power,
                             toughness: c.definition.toughness,
