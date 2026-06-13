@@ -333,6 +333,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Library);
@@ -360,6 +361,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         }
     }
 
@@ -382,6 +384,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(7),
             toughness: Some(7),
+            colors: vec![],
         }
     }
 
@@ -441,6 +444,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let creature_id = place_on_battlefield(&mut gs, def, PlayerId(0));
 
@@ -473,6 +477,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let creature_id = place_on_battlefield(&mut gs, prowess_def, PlayerId(0));
 
@@ -490,6 +495,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let spell_id = gs.alloc_id();
         let spell_obj = CardObject::new(spell_id, instant_def, PlayerId(0), Zone::Stack);
@@ -545,6 +551,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         place_on_battlefield(&mut gs, prowess_def, PlayerId(0));
 
@@ -562,6 +569,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let spell_id = gs.alloc_id();
         let spell_obj = CardObject::new(spell_id, creature_spell_def, PlayerId(0), Zone::Stack);
@@ -594,6 +602,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, attacker_def, PlayerId(0));
         // An Exalted creature also controlled by P0.
@@ -610,6 +619,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let _exalted_id = place_on_battlefield(&mut gs, exalted_def, PlayerId(0));
         gs.combat.attackers = vec![attacker_id];
@@ -659,6 +669,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let a = place_on_battlefield(&mut gs, make_def("A"), PlayerId(0));
         let b = place_on_battlefield(&mut gs, make_def("B"), PlayerId(0));
@@ -689,6 +700,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, plain_def, PlayerId(0));
         let exalted_def = CardDefinition {
@@ -704,6 +716,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         place_on_battlefield(&mut gs, exalted_def.clone(), PlayerId(0));
         place_on_battlefield(&mut gs, exalted_def, PlayerId(0));
@@ -734,6 +747,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, melee_def, PlayerId(0));
         gs.combat.attackers = vec![attacker_id];
@@ -783,6 +797,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, flanking_def, PlayerId(0));
         let plain_def = CardDefinition {
@@ -798,6 +813,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let blocker_id = place_on_battlefield(&mut gs, plain_def, PlayerId(1));
 
@@ -849,6 +865,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, flanking_def("Attacker"), PlayerId(0));
         let blocker_id = place_on_battlefield(&mut gs, flanking_def("Blocker"), PlayerId(1));
@@ -882,6 +899,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(3),
             toughness: Some(3),
+            colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, bushido_def, PlayerId(0));
         let bushido_blocker_def = CardDefinition {
@@ -899,6 +917,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let blocker_id = place_on_battlefield(&mut gs, bushido_blocker_def, PlayerId(1));
         gs.combat.attackers = vec![attacker_id];
@@ -961,6 +980,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(3),
             toughness: Some(3),
+            colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, bushido_def, PlayerId(0));
         gs.combat.attackers = vec![attacker_id];
@@ -1001,6 +1021,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let creature_id = place_on_battlefield(&mut gs, def, PlayerId(0));
 

@@ -175,6 +175,7 @@ struct CardView {
     mana_cost: Option<String>,
     power: Option<i32>,
     toughness: Option<i32>,
+    colors: Vec<String>,
     tapped: bool,
     summoning_sick: bool,
     damage_marked: u32,
@@ -621,6 +622,12 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
             power: perm.and_then(|p| p.effective_power()),
             toughness: perm.and_then(|p| p.effective_toughness()),
+            colors: obj
+                .definition
+                .colors
+                .iter()
+                .map(|c| c.to_string())
+                .collect(),
             tapped: perm.map(|p| p.tapped).unwrap_or(false),
             summoning_sick: perm
                 .map(|p| p.summoning_sick(state.controllers_most_recent_turn(pid)))
@@ -699,6 +706,7 @@ fn build_game_view(state: &GameState) -> GameView {
                             mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost),
                             power: c.definition.power,
                             toughness: c.definition.toughness,
+                            colors: c.definition.colors.iter().map(|c| c.to_string()).collect(),
                             tapped: false,
                             summoning_sick: false,
                             damage_marked: 0,
@@ -1637,6 +1645,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let id = gs.alloc_id();
         let obj = CardObject::new(id, def, mecha_oracle::types::PlayerId(0), Zone::Hand);
@@ -1879,6 +1888,7 @@ mod tests {
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
+                colors: vec![],
             };
             let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
             let mut perm = PermanentState::new(&obj.definition);
@@ -2022,6 +2032,7 @@ mod tests {
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
+                colors: vec![],
             };
             let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
             let mut perm = PermanentState::new(&obj.definition);

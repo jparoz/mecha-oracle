@@ -134,6 +134,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Library);
@@ -156,6 +157,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         }
     }
 
@@ -247,6 +249,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let card_id = put_in_hand(&mut gs, PlayerId(0), def);
         assert!(matches!(

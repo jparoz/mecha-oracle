@@ -1,5 +1,5 @@
 use super::ability::{OracleSpan, TextAnnotation};
-use super::mana::ManaCost;
+use super::mana::{ManaColor, ManaCost};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Supertype {
@@ -61,6 +61,7 @@ pub struct CardDefinition {
     pub text_annotations: Vec<TextAnnotation>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
+    pub colors: Vec<ManaColor>, // NEW — authoritative color identity from Scryfall
 }
 
 impl CardDefinition {

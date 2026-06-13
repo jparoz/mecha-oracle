@@ -285,6 +285,7 @@ fn cant_cast_giant_growth_targeting_shroud_creature() {
         text_annotations: vec![],
         power: Some(1),
         toughness: Some(1),
+        colors: vec![],
     };
     let shroud_id = place_creature(&mut gs, PlayerId(1), shroud_creature_def);
 

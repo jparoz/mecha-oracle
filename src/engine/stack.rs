@@ -284,6 +284,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Library);
@@ -485,6 +486,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Stack);
@@ -516,6 +518,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Stack);
@@ -653,6 +656,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let id = gs.alloc_id();
         let obj = CardObject::new(id, def, PlayerId(0), Zone::Stack);
@@ -693,6 +697,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let id = gs.alloc_id();
         let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
@@ -773,6 +778,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(4),
+            colors: vec![],
         };
         let id = gs.alloc_id();
         let obj = CardObject::new(id, def, PlayerId(1), Zone::Battlefield);
@@ -849,6 +855,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let creature_id = gs.alloc_id();
         let creature_obj = CardObject::new(creature_id, def, PlayerId(1), Zone::Battlefield);
@@ -878,6 +885,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let gg_id = gs.alloc_id();
         let gg_obj = CardObject::new(gg_id, gg_def, PlayerId(0), Zone::Stack);

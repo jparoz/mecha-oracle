@@ -301,6 +301,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         }
     }
 
@@ -322,6 +323,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         }
     }
 
@@ -345,6 +347,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         }
     }
 
@@ -376,6 +379,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Library);
@@ -550,6 +554,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let mut gs = two_player_state();
         gs.step = crate::types::Step::PreCombatMain;
@@ -624,6 +629,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, snow_elves_def, PlayerId(0));

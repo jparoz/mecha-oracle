@@ -888,6 +888,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let mut gs = make_state();
         let id = add_land(&mut gs, PlayerId(0), snow_forest_def);

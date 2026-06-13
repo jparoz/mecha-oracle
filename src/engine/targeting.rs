@@ -125,6 +125,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let id = state.alloc_id();
         let obj = CardObject::new(id, def, owner, Zone::Battlefield);
@@ -177,6 +178,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let id = gs.alloc_id();
         let obj = CardObject::new(id, def, PlayerId(1), Zone::Hand);

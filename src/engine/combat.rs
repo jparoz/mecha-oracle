@@ -464,6 +464,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(power),
             toughness: Some(toughness),
+            colors: vec![],
         };
         let obj = crate::types::CardObject::new(id, def, owner, Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);
@@ -493,6 +494,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let attacker_id = add_creature(&mut gs, PlayerId(0), plain_def);
         let exalted_def = CardDefinition {
@@ -508,6 +510,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         add_creature(&mut gs, PlayerId(0), exalted_def);
 
@@ -984,6 +987,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let plain_def = CardDefinition {
             name: "Blocker".into(),
@@ -998,6 +1002,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let attacker = add_creature(&mut gs, PlayerId(0), flanking_def);
         let blocker = add_creature(&mut gs, PlayerId(1), plain_def);

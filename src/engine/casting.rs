@@ -234,6 +234,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         }
     }
 
@@ -253,6 +254,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         }
     }
 
@@ -611,6 +613,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
+            colors: vec![],
         };
         let monk_id = gs.alloc_id();
         let obj = CardObject::new(monk_id, prowess_def, PlayerId(0), Zone::Battlefield);
@@ -655,6 +658,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let id = put_in_hand(&mut gs, PlayerId(0), targeted_instant_def);
         let result = cast_spell(gs, PlayerId(0), id, vec![]);
@@ -685,6 +689,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let id = put_in_hand(&mut gs, PlayerId(0), targeted_instant_def);
         // ObjectId(999) doesn't exist
@@ -718,6 +723,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let creature_id = gs.alloc_id();
         let obj = CardObject::new(creature_id, creature_def, PlayerId(1), Zone::Battlefield);
@@ -743,6 +749,7 @@ mod tests {
             text_annotations: vec![],
             power: None,
             toughness: None,
+            colors: vec![],
         };
         let id = put_in_hand(&mut gs, PlayerId(0), targeted_instant_def);
         let gs = cast_spell(

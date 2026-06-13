@@ -59,6 +59,15 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
     let power = v["power"].as_str().and_then(|s| s.parse::<i32>().ok());
     let toughness = v["toughness"].as_str().and_then(|s| s.parse::<i32>().ok());
 
+    let colors: Vec<ManaColor> = v["colors"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|c| c.as_str().and_then(color_from_str_no_colorless))
+                .collect()
+        })
+        .unwrap_or_default();
+
     let def = CardDefinition {
         name,
         mana_cost,
@@ -68,11 +77,23 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
         text_annotations,
         power,
         toughness,
+        colors,
     };
 
     match v["layout"].as_str() {
         Some("token") | Some("double_faced_token") | Some("emblem") => Ok(ParsedEntry::Token(def)),
         _ => Ok(ParsedEntry::Card(def)),
+    }
+}
+
+fn color_from_str_no_colorless(s: &str) -> Option<ManaColor> {
+    match s {
+        "W" => Some(ManaColor::White),
+        "U" => Some(ManaColor::Blue),
+        "B" => Some(ManaColor::Black),
+        "R" => Some(ManaColor::Red),
+        "G" => Some(ManaColor::Green),
+        _ => None,
     }
 }
 
@@ -530,5 +551,36 @@ mod tests {
             "oracle_text": ""
         });
         assert!(matches!(parse_entry(&v), Ok(ParsedEntry::UnCard)));
+    }
+
+    #[test]
+    fn scryfall_colors_parsed_for_blue_card() {
+        let v = json!({
+            "name": "Counterspell",
+            "mana_cost": "{U}{U}",
+            "type_line": "Instant",
+            "oracle_text": "Counter target spell.",
+            "colors": ["U"],
+            "layout": "normal"
+        });
+        let ParsedEntry::Card(def) = parse_entry(&v).unwrap() else {
+            panic!()
+        };
+        assert_eq!(def.colors, vec![ManaColor::Blue]);
+    }
+
+    #[test]
+    fn scryfall_colors_empty_for_colorless_card() {
+        let v = json!({
+            "name": "Forest",
+            "type_line": "Basic Land — Forest",
+            "oracle_text": "",
+            "colors": [],
+            "layout": "normal"
+        });
+        let ParsedEntry::Card(def) = parse_entry(&v).unwrap() else {
+            panic!()
+        };
+        assert_eq!(def.colors, vec![]);
     }
 }

@@ -472,6 +472,7 @@ mod tests {
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
+            colors: vec![],
         };
         let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
         let mut perm = PermanentState::new(&obj.definition);

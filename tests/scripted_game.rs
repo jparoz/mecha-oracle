@@ -428,6 +428,7 @@ fn trample_excess_kills_player() {
         text_annotations: vec![],
         power: Some(5),
         toughness: Some(5),
+        colors: vec![],
     };
 
     let trampler_id = {
