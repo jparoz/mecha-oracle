@@ -237,7 +237,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
             return false;
         }
     }
-    // CR 702.14b: Landwalk — can't be blocked if defending player controls matching land
+    // CR 702.14c: Landwalk — can't be blocked if defending player controls matching land
     {
         use crate::types::ability::{Ability, LandwalkKind, StaticAbility as SA};
         let defending_player = state.opponent_of(state.active_player);
@@ -271,7 +271,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
             }
         }
     }
-    // CR 702.16d: Protection — can't be blocked by sources of the protected quality
+    // CR 702.16f: Protection — can't be blocked by creatures with the protected quality
     {
         use crate::types::ability::{Ability, StaticAbility as SA};
         let blocker_colors = &blocker_obj.definition.colors;
