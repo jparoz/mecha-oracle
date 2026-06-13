@@ -1,14 +1,17 @@
-use crate::types::ability::{StaticAbility, TargetFilter};
+use crate::types::ability::{Ability, StaticAbility, TargetFilter};
 use crate::types::effect::EffectTarget;
-use crate::types::{GameState, PlayerId, Zone};
+use crate::types::mana::ManaColor;
+use crate::types::{GameState, OracleSpan, PlayerId, Zone};
 
 // CR 115.4: a target is legal if it exists in the targeted zone, satisfies the
 // filter, and is not protected by Shroud (CR 702.18) or Hexproof (CR 702.11).
+// CR 702.16c: protection prevents targeting by sources of the protected quality.
 pub fn is_legal_target(
     state: &GameState,
     target: &EffectTarget,
     filter: TargetFilter,
     caster: PlayerId,
+    source_colors: &[ManaColor],
 ) -> bool {
     match target {
         EffectTarget::Object { id } => {
@@ -35,6 +38,16 @@ pub fn is_legal_target(
             if obj.has_keyword(StaticAbility::Hexproof) && obj.controller != caster {
                 return false;
             }
+            // CR 702.16c: protection prevents targeting by sources of protected quality
+            for span in &obj.definition.abilities {
+                if let OracleSpan::Parsed(Ability::Static(StaticAbility::ProtectionFromColor(c))) =
+                    span
+                {
+                    if source_colors.contains(c) {
+                        return false;
+                    }
+                }
+            }
             true
         }
         EffectTarget::Player { id } => {
@@ -55,12 +68,13 @@ pub fn legal_targets(
     state: &GameState,
     filter: TargetFilter,
     caster: PlayerId,
+    source_colors: &[ManaColor],
 ) -> Vec<EffectTarget> {
     let mut result = Vec::new();
     if matches!(filter, TargetFilter::Creature | TargetFilter::Any) {
         for &id in state.battlefield.keys() {
             let t = EffectTarget::Object { id };
-            if is_legal_target(state, &t, filter, caster) {
+            if is_legal_target(state, &t, filter, caster, source_colors) {
                 result.push(t);
             }
         }
@@ -68,7 +82,7 @@ pub fn legal_targets(
     if matches!(filter, TargetFilter::Player | TargetFilter::Any) {
         for player in &state.players {
             let t = EffectTarget::Player { id: player.id };
-            if is_legal_target(state, &t, filter, caster) {
+            if is_legal_target(state, &t, filter, caster, source_colors) {
                 result.push(t);
             }
         }
@@ -145,7 +159,8 @@ mod tests {
             &gs,
             &target,
             TargetFilter::Creature,
-            PlayerId(0)
+            PlayerId(0),
+            &[],
         ));
     }
 
@@ -158,7 +173,8 @@ mod tests {
             &gs,
             &target,
             TargetFilter::Creature,
-            PlayerId(0)
+            PlayerId(0),
+            &[],
         ));
     }
 
@@ -188,7 +204,8 @@ mod tests {
             &gs,
             &target,
             TargetFilter::Creature,
-            PlayerId(0)
+            PlayerId(0),
+            &[],
         ));
     }
 
@@ -205,13 +222,15 @@ mod tests {
             &gs,
             &target,
             TargetFilter::Creature,
-            PlayerId(0)
+            PlayerId(0),
+            &[],
         ));
         assert!(!is_legal_target(
             &gs,
             &target,
             TargetFilter::Creature,
-            PlayerId(1)
+            PlayerId(1),
+            &[],
         ));
     }
 
@@ -228,7 +247,8 @@ mod tests {
             &gs,
             &target,
             TargetFilter::Creature,
-            PlayerId(0)
+            PlayerId(0),
+            &[],
         ));
     }
 
@@ -245,7 +265,8 @@ mod tests {
             &gs,
             &target,
             TargetFilter::Creature,
-            PlayerId(1)
+            PlayerId(1),
+            &[],
         ));
     }
 
@@ -257,7 +278,8 @@ mod tests {
             &gs,
             &target,
             TargetFilter::Player,
-            PlayerId(1)
+            PlayerId(1),
+            &[],
         ));
     }
 
@@ -265,7 +287,7 @@ mod tests {
     fn any_filter_includes_creatures_and_players() {
         let mut gs = two_player_state();
         let creature_id = place_creature(&mut gs, PlayerId(1), vec![]);
-        let targets = legal_targets(&gs, TargetFilter::Any, PlayerId(0));
+        let targets = legal_targets(&gs, TargetFilter::Any, PlayerId(0), &[]);
         assert!(targets.contains(&EffectTarget::Object { id: creature_id }));
         assert!(targets.contains(&EffectTarget::Player { id: PlayerId(0) }));
         assert!(targets.contains(&EffectTarget::Player { id: PlayerId(1) }));
@@ -275,7 +297,7 @@ mod tests {
     fn creature_filter_excludes_players() {
         let mut gs = two_player_state();
         let creature_id = place_creature(&mut gs, PlayerId(1), vec![]);
-        let targets = legal_targets(&gs, TargetFilter::Creature, PlayerId(0));
+        let targets = legal_targets(&gs, TargetFilter::Creature, PlayerId(0), &[]);
         assert!(targets.contains(&EffectTarget::Object { id: creature_id }));
         assert!(!targets.contains(&EffectTarget::Player { id: PlayerId(0) }));
     }
@@ -284,7 +306,7 @@ mod tests {
     fn player_filter_excludes_creatures() {
         let mut gs = two_player_state();
         let creature_id = place_creature(&mut gs, PlayerId(1), vec![]);
-        let targets = legal_targets(&gs, TargetFilter::Player, PlayerId(0));
+        let targets = legal_targets(&gs, TargetFilter::Player, PlayerId(0), &[]);
         assert!(!targets.contains(&EffectTarget::Object { id: creature_id }));
         assert!(targets.contains(&EffectTarget::Player { id: PlayerId(0) }));
         assert!(targets.contains(&EffectTarget::Player { id: PlayerId(1) }));
@@ -325,5 +347,49 @@ mod tests {
     fn targets_still_legal_true_for_empty_slice() {
         let gs = two_player_state();
         assert!(targets_still_legal(&gs, &[]));
+    }
+
+    #[test]
+    fn protection_from_blue_blocks_blue_spell() {
+        use crate::types::mana::ManaColor;
+        let mut gs = two_player_state();
+        let id = place_creature(
+            &mut gs,
+            PlayerId(1),
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::ProtectionFromColor(ManaColor::Blue),
+            ))],
+        );
+        let target = EffectTarget::Object { id };
+        // Blue spell cannot target the protected creature
+        assert!(!is_legal_target(
+            &gs,
+            &target,
+            TargetFilter::Creature,
+            PlayerId(0),
+            &[ManaColor::Blue],
+        ));
+    }
+
+    #[test]
+    fn protection_from_blue_allows_red_spell() {
+        use crate::types::mana::ManaColor;
+        let mut gs = two_player_state();
+        let id = place_creature(
+            &mut gs,
+            PlayerId(1),
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::ProtectionFromColor(ManaColor::Blue),
+            ))],
+        );
+        let target = EffectTarget::Object { id };
+        // Red spell is not blocked by Protection from Blue
+        assert!(is_legal_target(
+            &gs,
+            &target,
+            TargetFilter::Creature,
+            PlayerId(0),
+            &[ManaColor::Red],
+        ));
     }
 }

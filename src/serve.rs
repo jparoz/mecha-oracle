@@ -446,9 +446,10 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
             });
         } else {
             // Targeted spell: one action per legal target
+            let spell_colors = obj.definition.colors.clone();
             let mut seen = std::collections::HashSet::new();
             for filter in &target_filters {
-                for target in legal_targets(state, *filter, pid) {
+                for target in legal_targets(state, *filter, pid, &spell_colors) {
                     let key = match &target {
                         EffectTarget::Object { id } => format!("o{}", id.0),
                         EffectTarget::Player { id } => format!("p{}", id.0),

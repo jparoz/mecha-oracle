@@ -53,12 +53,17 @@ pub fn activate_ability(
         if ability.target_requirements.len() != declared_targets.len() {
             return Err(EngineError::WrongNumberOfTargets);
         }
+        let source_colors: Vec<crate::types::mana::ManaColor> = state
+            .objects
+            .get(&object_id)
+            .map(|o| o.definition.colors.clone())
+            .unwrap_or_default();
         for (filter, target) in ability
             .target_requirements
             .iter()
             .zip(declared_targets.iter())
         {
-            if !is_legal_target(&state, target, *filter, activating_player) {
+            if !is_legal_target(&state, target, *filter, activating_player, &source_colors) {
                 return Err(EngineError::IllegalTarget);
             }
         }
