@@ -74,6 +74,69 @@ pub fn play_land(
     Ok(check_and_apply_sbas(state))
 }
 
+/// CR 702.21b: Collect WardTrigger stack objects for any declared targets that are
+/// opponent-controlled permanents with Ward. Each Ward ability on such a target generates
+/// one WardTrigger pushed above the triggering spell/ability on the stack.
+fn collect_ward_triggers(
+    state: &mut GameState,
+    triggering_stack_id: crate::types::stack::StackId,
+    caster_id: PlayerId,
+    targets: &[crate::types::effect::EffectTarget],
+) -> Vec<crate::types::StackObject> {
+    use crate::types::ability::{Ability, OracleSpan, StaticAbility, WardCost};
+    use crate::types::effect::EffectTarget;
+    use crate::types::stack::{StackObject, StackPayload};
+
+    let mut triggers = Vec::new();
+    for target in targets {
+        let target_obj_id = match target {
+            EffectTarget::Object { id } => *id,
+            EffectTarget::Player { .. } => continue,
+        };
+        // Only battlefield objects can have Ward (CR 702.21)
+        if !state.battlefield.contains_key(&target_obj_id) {
+            continue;
+        }
+        let target_obj = match state.objects.get(&target_obj_id) {
+            Some(o) => o,
+            None => continue,
+        };
+        // Ward only applies when an opponent's permanent is targeted (CR 702.21b)
+        if target_obj.controller == caster_id {
+            continue;
+        }
+        // Collect ward costs from static abilities
+        let ward_costs: Vec<WardCost> = target_obj
+            .definition
+            .abilities
+            .iter()
+            .filter_map(|span| match span {
+                OracleSpan::Parsed(Ability::Static(StaticAbility::WardMana(cost))) => {
+                    Some(WardCost::Mana(cost.clone()))
+                }
+                OracleSpan::Parsed(Ability::Static(StaticAbility::WardLife(n))) => {
+                    Some(WardCost::Life(*n))
+                }
+                _ => None,
+            })
+            .collect();
+        for cost in ward_costs {
+            let sid = state.alloc_stack_id();
+            triggers.push(StackObject {
+                id: sid,
+                payload: StackPayload::WardTrigger {
+                    counters_if_unpaid: triggering_stack_id,
+                    cost,
+                    paid: false,
+                },
+                controller: caster_id,
+                targets: vec![],
+            });
+        }
+    }
+    triggers
+}
+
 // CR 702.8a, CR 304.1: instants and Flash permanents may be cast at instant speed
 fn is_instant_speed(obj: &crate::types::CardObject) -> bool {
     obj.definition
@@ -205,6 +268,17 @@ pub fn cast_spell(
         let id = t.id;
         state.stack.push(id);
         state.stack_objects.insert(id, t);
+    }
+
+    // CR 702.21b: if any declared target is an opponent's permanent with Ward, push a
+    // WardTrigger above the spell. The spell's controller must pay the Ward cost or the
+    // spell is countered.
+    let spell_targets = state.stack_objects[&stack_id].targets.clone();
+    let ward_triggers = collect_ward_triggers(&mut state, stack_id, player_id, &spell_targets);
+    for wt in ward_triggers {
+        let id = wt.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, wt);
     }
 
     Ok(state)
@@ -812,5 +886,197 @@ mod tests {
             play_land(gs, PlayerId(0), forest_id),
             Err(EngineError::CannotCastNow)
         ));
+    }
+
+    // --- CR 702.21b Ward trigger tests ---
+
+    fn make_ward_creature_def(ward_cost: Vec<ManaPip>) -> CardDefinition {
+        CardDefinition {
+            name: "Ward Bear".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: format!("Ward {{{}}}", ward_cost.len()),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::WardMana(ManaCost { pips: ward_cost }),
+            ))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        }
+    }
+
+    fn make_targeted_instant_def() -> CardDefinition {
+        use crate::types::ability::{SpellAbility, TargetFilter};
+        CardDefinition {
+            name: "Shock".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Red],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Target creature gets -1/-1 until end of turn.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![TargetFilter::Creature],
+                steps: vec![],
+            }))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        }
+    }
+
+    /// CR 702.21b: Targeting an opponent's Ward permanent while casting a spell should push a
+    /// WardTrigger above the spell on the stack.
+    #[test]
+    fn ward_trigger_pushed_above_spell_when_targeting_opponent_ward_creature() {
+        use crate::types::ability::WardCost;
+        use crate::types::effect::EffectTarget;
+        use crate::types::stack::StackPayload;
+        use crate::types::{CardObject, PermanentState};
+
+        let mut gs = make_state();
+        // Opponent (PlayerId(1)) has a creature with WardMana({2}) on the battlefield.
+        let ward_def = make_ward_creature_def(vec![ManaPip::Generic(2)]);
+        let ward_id = gs.alloc_id();
+        let ward_obj = CardObject::new(ward_id, ward_def, PlayerId(1), Zone::Battlefield);
+        gs.battlefield
+            .insert(ward_id, PermanentState::new(&ward_obj.definition));
+        gs.add_object(ward_obj);
+
+        // Caster (PlayerId(0)) casts a targeted instant at the Ward creature.
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 1;
+        let spell_id = put_in_hand(&mut gs, PlayerId(0), make_targeted_instant_def());
+        let gs = cast_spell(
+            gs,
+            PlayerId(0),
+            spell_id,
+            vec![EffectTarget::Object { id: ward_id }],
+        )
+        .unwrap();
+
+        // Stack should have: [bottom] spell, [top] WardTrigger.
+        assert_eq!(gs.stack.len(), 2);
+        let spell_stack_id = gs.stack[0];
+        let ward_trigger_stack_id = gs.stack[1];
+
+        // Bottom of stack is the spell.
+        assert!(matches!(
+            gs.stack_objects[&spell_stack_id].payload,
+            StackPayload::Spell { .. }
+        ));
+        // Top of stack is the WardTrigger referencing the spell.
+        match &gs.stack_objects[&ward_trigger_stack_id].payload {
+            StackPayload::WardTrigger {
+                counters_if_unpaid,
+                cost,
+                paid,
+            } => {
+                assert_eq!(*counters_if_unpaid, spell_stack_id);
+                assert_eq!(
+                    *cost,
+                    WardCost::Mana(ManaCost {
+                        pips: vec![ManaPip::Generic(2)]
+                    })
+                );
+                assert!(!paid);
+            }
+            other => panic!("Expected WardTrigger, got {other:?}"),
+        }
+        // WardTrigger controller is the caster (who must pay).
+        assert_eq!(
+            gs.stack_objects[&ward_trigger_stack_id].controller,
+            PlayerId(0)
+        );
+    }
+
+    /// CR 702.21b: Ward does NOT trigger when targeting your own permanent.
+    #[test]
+    fn ward_trigger_not_pushed_when_targeting_own_ward_creature() {
+        use crate::types::effect::EffectTarget;
+        use crate::types::{CardObject, PermanentState};
+
+        let mut gs = make_state();
+        // Caster (PlayerId(0)) has a creature with WardMana({2}) — targeting own permanent.
+        let ward_def = make_ward_creature_def(vec![ManaPip::Generic(2)]);
+        let ward_id = gs.alloc_id();
+        let ward_obj = CardObject::new(ward_id, ward_def, PlayerId(0), Zone::Battlefield);
+        gs.battlefield
+            .insert(ward_id, PermanentState::new(&ward_obj.definition));
+        gs.add_object(ward_obj);
+
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 1;
+        let spell_id = put_in_hand(&mut gs, PlayerId(0), make_targeted_instant_def());
+        let gs = cast_spell(
+            gs,
+            PlayerId(0),
+            spell_id,
+            vec![EffectTarget::Object { id: ward_id }],
+        )
+        .unwrap();
+
+        // Only the spell on the stack — no WardTrigger.
+        assert_eq!(gs.stack.len(), 1);
+    }
+
+    /// CR 702.21b: Ward life triggers correctly.
+    #[test]
+    fn ward_life_trigger_pushed_above_spell() {
+        use crate::types::ability::WardCost;
+        use crate::types::effect::EffectTarget;
+        use crate::types::stack::StackPayload;
+        use crate::types::{CardObject, PermanentState};
+
+        let mut gs = make_state();
+        // Opponent has a creature with WardLife(3).
+        let ward_def = CardDefinition {
+            name: "Ward Life Bear".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Ward—Pay 3 life.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::WardLife(3),
+            ))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let ward_id = gs.alloc_id();
+        let ward_obj = CardObject::new(ward_id, ward_def, PlayerId(1), Zone::Battlefield);
+        gs.battlefield
+            .insert(ward_id, PermanentState::new(&ward_obj.definition));
+        gs.add_object(ward_obj);
+
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 1;
+        let spell_id = put_in_hand(&mut gs, PlayerId(0), make_targeted_instant_def());
+        let gs = cast_spell(
+            gs,
+            PlayerId(0),
+            spell_id,
+            vec![EffectTarget::Object { id: ward_id }],
+        )
+        .unwrap();
+
+        assert_eq!(gs.stack.len(), 2);
+        let ward_trigger_stack_id = gs.stack[1];
+        match &gs.stack_objects[&ward_trigger_stack_id].payload {
+            StackPayload::WardTrigger { cost, .. } => {
+                assert_eq!(*cost, WardCost::Life(3));
+            }
+            other => panic!("Expected WardTrigger, got {other:?}"),
+        }
     }
 }

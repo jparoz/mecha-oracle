@@ -5,6 +5,69 @@ use crate::types::ability::{Ability, ActivatedAbility, CostComponent, OracleSpan
 use crate::types::effect::EffectStep;
 use crate::types::{GameState, ManaCheckpoint, ObjectId, PaymentPlan, PlayerId, Zone};
 
+/// CR 702.21b: Collect WardTrigger stack objects for any declared targets that are
+/// opponent-controlled permanents with Ward. Each Ward ability on such a target generates
+/// one WardTrigger pushed above the triggering spell/ability on the stack.
+fn collect_ward_triggers(
+    state: &mut GameState,
+    triggering_stack_id: crate::types::stack::StackId,
+    activating_player: PlayerId,
+    targets: &[crate::types::effect::EffectTarget],
+) -> Vec<crate::types::StackObject> {
+    use crate::types::ability::{Ability, OracleSpan, StaticAbility, WardCost};
+    use crate::types::effect::EffectTarget;
+    use crate::types::stack::{StackObject, StackPayload};
+
+    let mut triggers = Vec::new();
+    for target in targets {
+        let target_obj_id = match target {
+            EffectTarget::Object { id } => *id,
+            EffectTarget::Player { .. } => continue,
+        };
+        // Only battlefield objects can have Ward (CR 702.21)
+        if !state.battlefield.contains_key(&target_obj_id) {
+            continue;
+        }
+        let target_obj = match state.objects.get(&target_obj_id) {
+            Some(o) => o,
+            None => continue,
+        };
+        // Ward only applies when an opponent's permanent is targeted (CR 702.21b)
+        if target_obj.controller == activating_player {
+            continue;
+        }
+        // Collect ward costs from static abilities
+        let ward_costs: Vec<WardCost> = target_obj
+            .definition
+            .abilities
+            .iter()
+            .filter_map(|span| match span {
+                OracleSpan::Parsed(Ability::Static(StaticAbility::WardMana(cost))) => {
+                    Some(WardCost::Mana(cost.clone()))
+                }
+                OracleSpan::Parsed(Ability::Static(StaticAbility::WardLife(n))) => {
+                    Some(WardCost::Life(*n))
+                }
+                _ => None,
+            })
+            .collect();
+        for cost in ward_costs {
+            let sid = state.alloc_stack_id();
+            triggers.push(StackObject {
+                id: sid,
+                payload: StackPayload::WardTrigger {
+                    counters_if_unpaid: triggering_stack_id,
+                    cost,
+                    paid: false,
+                },
+                controller: activating_player,
+                targets: vec![],
+            });
+        }
+    }
+    triggers
+}
+
 pub fn activate_ability(
     mut state: GameState,
     object_id: ObjectId,
@@ -227,6 +290,18 @@ pub fn activate_ability(
         // CR 117.3c: activator retains priority after activating a non-mana ability.
         state.consecutive_passes = 0;
         state.priority_player = activating_player;
+
+        // CR 702.21b: if any declared target is an opponent's permanent with Ward, push a
+        // WardTrigger above the activated ability on the stack.
+        let ability_targets = state.stack_objects[&stack_id].targets.clone();
+        let ward_triggers =
+            collect_ward_triggers(&mut state, stack_id, activating_player, &ability_targets);
+        for wt in ward_triggers {
+            let id = wt.id;
+            state.stack.push(id);
+            state.stack_objects.insert(id, wt);
+        }
+
         Ok(state)
     }
 }
@@ -642,5 +717,110 @@ mod tests {
         let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
         assert_eq!(pool.green, 1);
         assert_eq!(pool.snow_green, 1);
+    }
+
+    // --- CR 702.21b Ward trigger tests for activated abilities ---
+
+    fn make_targeted_tap_ability_def() -> CardDefinition {
+        use crate::types::ability::TargetFilter;
+        CardDefinition {
+            name: "Prodigal Sorcerer".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "{T}: Deal 1 damage to target creature.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+                cost: vec![CostComponent::Tap],
+                target_requirements: vec![TargetFilter::Creature],
+                effect: vec![EffectStep::DealDamage(1)],
+            }))],
+            text_annotations: vec![],
+            power: Some(1),
+            toughness: Some(1),
+            colors: vec![],
+        }
+    }
+
+    /// CR 702.21b: Targeting an opponent's Ward permanent via activated ability pushes
+    /// a WardTrigger above the activated ability on the stack.
+    #[test]
+    fn ward_trigger_pushed_above_activated_ability_when_targeting_opponent_ward_creature() {
+        use crate::types::ability::{StaticAbility, WardCost};
+        use crate::types::effect::EffectTarget;
+        use crate::types::mana::ManaCost;
+        use crate::types::stack::StackPayload;
+
+        let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
+
+        // Opponent (PlayerId(1)) has a creature with WardMana({2}).
+        let ward_def = CardDefinition {
+            name: "Ward Bear".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Ward {2}".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::WardMana(ManaCost {
+                    pips: vec![ManaPip::Generic(2)],
+                }),
+            ))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let ward_id = place_on_battlefield(&mut gs, ward_def, PlayerId(1));
+
+        // Caster (PlayerId(0)) has the Prodigal Sorcerer-like creature.
+        let pinger_id = place_on_battlefield(&mut gs, make_targeted_tap_ability_def(), PlayerId(0));
+
+        let gs = activate_ability(
+            gs,
+            pinger_id,
+            0,
+            PlayerId(0),
+            None,
+            None,
+            vec![EffectTarget::Object { id: ward_id }],
+        )
+        .unwrap();
+
+        // Stack: [bottom] activated ability, [top] WardTrigger.
+        assert_eq!(gs.stack.len(), 2);
+        let ability_stack_id = gs.stack[0];
+        let ward_trigger_stack_id = gs.stack[1];
+
+        assert!(matches!(
+            gs.stack_objects[&ability_stack_id].payload,
+            StackPayload::ActivatedAbility { .. }
+        ));
+        match &gs.stack_objects[&ward_trigger_stack_id].payload {
+            StackPayload::WardTrigger {
+                counters_if_unpaid,
+                cost,
+                paid,
+            } => {
+                assert_eq!(*counters_if_unpaid, ability_stack_id);
+                assert_eq!(
+                    *cost,
+                    WardCost::Mana(ManaCost {
+                        pips: vec![ManaPip::Generic(2)]
+                    })
+                );
+                assert!(!paid);
+            }
+            other => panic!("Expected WardTrigger, got {other:?}"),
+        }
+        assert_eq!(
+            gs.stack_objects[&ward_trigger_stack_id].controller,
+            PlayerId(0)
+        );
     }
 }
