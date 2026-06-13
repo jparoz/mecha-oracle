@@ -218,7 +218,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
             state.priority_player = state.active_player;
             check_and_apply_sbas(state)
         }
-        // CR 702.21b: WardTrigger resolution is handled by engine::ward::pay_ward.
+        // CR 702.21a: WardTrigger resolution is handled by engine::ward::pay_ward.
         // If paid is false when it resolves, the triggering spell/ability is countered.
         StackPayload::WardTrigger {
             counters_if_unpaid,

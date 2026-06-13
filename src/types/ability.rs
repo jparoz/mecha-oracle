@@ -124,6 +124,11 @@ impl StaticAbility {
             Self::Fear => "Fear".to_string(),
             Self::Intimidate => "Intimidate".to_string(),
             Self::ProtectionFromColor(c) => {
+                // CR 105.4: colorless is not a color — ProtectionFromColor(Colorless) should never be constructed
+                debug_assert!(
+                    *c != ManaColor::Colorless,
+                    "ProtectionFromColor: Colorless is not a valid color (CR 105.4)"
+                );
                 let color_name = match c {
                     ManaColor::White => "white",
                     ManaColor::Blue => "blue",

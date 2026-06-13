@@ -23,7 +23,7 @@ pub enum StackPayload {
         effect: Effect,
         label: String,
     },
-    /// CR 702.21b: triggered by targeting a permanent with Ward.
+    /// CR 702.21a: triggered by targeting a permanent with Ward.
     /// Counters the triggering spell/ability if the Ward cost is not paid.
     WardTrigger {
         counters_if_unpaid: StackId,
