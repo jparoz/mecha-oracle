@@ -3,7 +3,7 @@ use crate::types::ability::{ActivationCost, AnnotationKind, CostComponent, TextA
 use crate::types::effect::{Effect, EffectStep};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use crate::types::{
-    Ability, IgnoredKind, OracleSpan,
+    Ability, IgnoredKind, LandwalkKind, OracleSpan,
     ability::{ActivatedAbility, StaticAbility},
 };
 
@@ -448,6 +448,76 @@ fn match_keyword(kw: &str) -> OracleSpan {
         return OracleSpan::Parsed(Ability::Cycling(cost));
     }
 
+    // Fear (CR 702.36)
+    if s == "fear" {
+        return OracleSpan::Parsed(Ability::Static(StaticAbility::Fear));
+    }
+
+    // Intimidate (CR 702.13)
+    if s == "intimidate" {
+        return OracleSpan::Parsed(Ability::Static(StaticAbility::Intimidate));
+    }
+
+    // Battle Cry (CR 702.91)
+    if s == "battle cry" {
+        return OracleSpan::Parsed(Ability::Static(StaticAbility::BattleCry));
+    }
+
+    // Ward {cost} (CR 702.21a) — mana cost form e.g. "Ward {2}"
+    if let Some(_rest) = s.strip_prefix("ward ")
+        && let Some(cost) = try_parse_mana_cost(kw["ward ".len()..].trim())
+    {
+        return OracleSpan::Parsed(Ability::Static(StaticAbility::WardMana(cost)));
+    }
+
+    // Protection from [color] (CR 702.16)
+    if let Some(quality) = s.strip_prefix("protection from ") {
+        let color = match quality.trim_end_matches('.') {
+            "white" => Some(ManaColor::White),
+            "blue" => Some(ManaColor::Blue),
+            "black" => Some(ManaColor::Black),
+            "red" => Some(ManaColor::Red),
+            "green" => Some(ManaColor::Green),
+            _ => None,
+        };
+        if let Some(c) = color {
+            return OracleSpan::Parsed(Ability::Static(StaticAbility::ProtectionFromColor(c)));
+        }
+        // Non-color protections remain ParsedUnimplemented
+        return ParsedUnimplemented(kw.to_string());
+    }
+
+    // Landwalk (CR 702.14): ends with "walk", prefix identifies the land type.
+    // "nonbasic landwalk" and "non-basic landwalk" map to LandwalkKind::Nonbasic;
+    // all others map to LandwalkKind::LandType with a title-cased land type name.
+    if let Some(prefix) = s.strip_suffix("walk") {
+        let kind = if prefix == "nonbasic land" || prefix == "non-basic land" {
+            LandwalkKind::Nonbasic
+        } else {
+            let type_name = match prefix.trim_end() {
+                "island" => "Island",
+                "swamp" => "Swamp",
+                "forest" => "Forest",
+                "mountain" => "Mountain",
+                "plains" => "Plains",
+                other => {
+                    let mut chars = other.chars();
+                    return OracleSpan::Parsed(Ability::Static(StaticAbility::Landwalk(
+                        LandwalkKind::LandType(
+                            chars
+                                .next()
+                                .map(|ch| ch.to_uppercase().collect::<String>())
+                                .unwrap_or_default()
+                                + chars.as_str(),
+                        ),
+                    )));
+                }
+            };
+            LandwalkKind::LandType(type_name.to_string())
+        };
+        return OracleSpan::Parsed(Ability::Static(StaticAbility::Landwalk(kind)));
+    }
+
     // ── CR 702 recognised-but-unimplemented keywords ──────────────────────────
     if is_cr702_keyword(s) {
         return ParsedUnimplemented(kw.to_string());
@@ -467,8 +537,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         s,
         // 702.3 Defender is implemented; listed here for documentation completeness.
         // 702.11 hexproof — implemented
-        // 702.13
-        "intimidate" |
+        // 702.13 intimidate — promoted to StaticAbility::Intimidate
         // 702.18 shroud — implemented
         // 702.22
         "banding" |
@@ -476,8 +545,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "flanking" |
         // 702.26
         "phasing" |
-        // 702.36
-        "fear" |
+        // 702.36 fear — promoted to StaticAbility::Fear
         // 702.39
         "provoke" |
         // 702.40
@@ -516,8 +584,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "umbra armor" |
         // 702.90
         "infect" |
-        // 702.91
-        "battle cry" |
+        // 702.91 battle cry — promoted to StaticAbility::BattleCry
         // 702.92
         "living weapon" |
         // 702.93
@@ -640,10 +707,9 @@ fn is_cr702_keyword(s: &str) -> bool {
     s.starts_with("equip") ||
     // 702.11 Hexproof from [quality]
     s.starts_with("hexproof from ") ||
-    // 702.16 Protection from [quality]
-    s.starts_with("protection from") ||
-    // 702.21 Ward [cost] (may also use em-dash: Ward—Pay N life.)
-    s.starts_with("ward") ||
+    // 702.16 Protection from [quality] — fully handled above (ProtectionFromColor or ParsedUnimplemented)
+    // 702.21 Ward [cost] — mana cost form handled above; bare "ward" or unknown forms fall through here
+    s == "ward" ||
     // 702.23 Rampage N
     s.starts_with("rampage ") ||
     // 702.24 Cumulative upkeep—[cost]  (em-dash; whole paragraph matched upstream)
@@ -817,9 +883,7 @@ fn is_cr702_keyword(s: &str) -> bool {
     // 702.185 Warp [cost]
     s.starts_with("warp") ||
     // ── Suffix / compound patterns ────────────────────────────────────────────
-    // 702.14 Landwalk: islandwalk, swampwalk, nonbasic landwalk, etc.
-    // kw_part used so "islandwalk" and "nonbasic landwalk" both match.
-    kw_part.ends_with("walk") ||
+    // 702.14 Landwalk — fully handled above (promoted to StaticAbility::Landwalk)
     // 702.29 Typecycling: mountaincycling {2}, basic landcycling {2}, etc.
     // Split on '{' so cost is stripped before checking the suffix.
     kw_part.ends_with("cycling") ||
@@ -911,6 +975,24 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
         if let Some(dash_pos) = find_at_depth_zero(paragraph, EM_DASH) {
             let left = paragraph[..dash_pos].trim();
             let right = paragraph[dash_pos + EM_DASH.len_utf8()..].trim();
+
+            // Ward em-dash life cost: "Ward—Pay N life." (CR 702.21a)
+            let left_lower = left.to_lowercase();
+            if left_lower == "ward" {
+                let right_lower = right.to_lowercase();
+                let life_str = right_lower
+                    .strip_prefix("pay ")
+                    .and_then(|s| s.trim_end_matches('.').strip_suffix(" life"));
+                if let Some(n_str) = life_str
+                    && let Some(n) = parse_number_word(n_str.trim())
+                {
+                    spans.push(OracleSpan::Parsed(Ability::Static(
+                        StaticAbility::WardLife(n),
+                    )));
+                    continue;
+                }
+                // Unrecognized Ward—... form falls through to normal em-dash handling
+            }
 
             match match_keyword(left) {
                 OracleSpan::ParsedUnimplemented(_) => {
@@ -1260,21 +1342,26 @@ mod tests {
             parse_perm("Kicker {1}{U}", ""),
             vec![unimplemented("Kicker {1}{U}")]
         );
+        // Protection from non-color qualities remain ParsedUnimplemented
         assert_eq!(
-            parse_perm("Protection from black", ""),
-            vec![unimplemented("Protection from black")]
+            parse_perm("Protection from artifacts", ""),
+            vec![unimplemented("Protection from artifacts")]
         );
     }
 
     #[test]
-    fn landwalk_variants_emit_parsed_unimplemented() {
+    fn landwalk_variants_parse_as_static_ability() {
+        use crate::types::LandwalkKind;
+        // Landwalk is now promoted to StaticAbility::Landwalk
         assert_eq!(
             parse_perm("Islandwalk", ""),
-            vec![unimplemented("Islandwalk")]
+            vec![parsed(StaticAbility::Landwalk(LandwalkKind::LandType(
+                "Island".to_string()
+            )))]
         );
         assert_eq!(
             parse_perm("Nonbasic landwalk", ""),
-            vec![unimplemented("Nonbasic landwalk")]
+            vec![parsed(StaticAbility::Landwalk(LandwalkKind::Nonbasic))]
         );
     }
 
@@ -2129,5 +2216,118 @@ mod tests {
         assert!(a2.is_empty());
         let (_, a3) = parse_permanent("Flying", "");
         assert!(a3.is_empty());
+    }
+
+    // ── Promoted keyword families (Task 3) ────────────────────────────────────
+
+    #[test]
+    fn fear_parses_as_static_ability() {
+        let (spans, _) = parse_permanent("Fear", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Fear))]
+        );
+    }
+
+    #[test]
+    fn intimidate_parses_as_static_ability() {
+        let (spans, _) = parse_permanent("Intimidate", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::Intimidate
+            ))]
+        );
+    }
+
+    #[test]
+    fn battle_cry_parses_as_static_ability() {
+        let (spans, _) = parse_permanent("Battle cry", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::BattleCry
+            ))]
+        );
+    }
+
+    #[test]
+    fn ward_mana_parses_as_ward_mana() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let (spans, _) = parse_permanent("Ward {2}", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::WardMana(ManaCost {
+                    pips: vec![ManaPip::Generic(2)]
+                })
+            ))]
+        );
+    }
+
+    #[test]
+    fn ward_life_parses_from_em_dash_paragraph() {
+        // "Ward—Pay 2 life." is a whole paragraph; parse_permanent handles em-dash
+        let (spans, _) = parse_permanent("Ward\u{2014}Pay 2 life.", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::WardLife(2)
+            ))]
+        );
+    }
+
+    #[test]
+    fn islandwalk_parses_as_landwalk() {
+        use crate::types::LandwalkKind;
+        let (spans, _) = parse_permanent("Islandwalk", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string()))
+            ))]
+        );
+    }
+
+    #[test]
+    fn swampwalk_parses_as_landwalk() {
+        use crate::types::LandwalkKind;
+        let (spans, _) = parse_permanent("Swampwalk", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::Landwalk(LandwalkKind::LandType("Swamp".to_string()))
+            ))]
+        );
+    }
+
+    #[test]
+    fn nonbasic_landwalk_parses_as_nonbasic() {
+        use crate::types::LandwalkKind;
+        let (spans, _) = parse_permanent("Nonbasic landwalk", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::Landwalk(LandwalkKind::Nonbasic)
+            ))]
+        );
+    }
+
+    #[test]
+    fn protection_from_blue_parses_as_protection() {
+        use crate::types::mana::ManaColor;
+        let (spans, _) = parse_permanent("Protection from blue", "Test");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::ProtectionFromColor(ManaColor::Blue)
+            ))]
+        );
+    }
+
+    #[test]
+    fn protection_from_artifacts_stays_unimplemented() {
+        let (spans, _) = parse_permanent("Protection from artifacts", "Test");
+        assert!(matches!(&spans[0], OracleSpan::ParsedUnimplemented(_)));
     }
 }
