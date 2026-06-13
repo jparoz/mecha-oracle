@@ -209,7 +209,7 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
 }
 
 /// Collect triggered abilities that fire when creatures are declared as attackers.
-/// Handles: Exalted (CR 702.83b), Melee (CR 702.121b).
+/// Handles: Exalted (CR 702.83b), Melee (CR 702.121b), Battle Cry (CR 702.91b).
 pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
     let attackers = state.combat.attackers.clone();
     let attacking_player = state.active_player;
@@ -282,6 +282,38 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
             controller: attacking_player,
             targets: vec![EffectTarget::Object { id: attacker_id }],
         });
+    }
+
+    // Battle Cry (CR 702.91b): each other attacking creature gets +1/+0 until end of turn.
+    let battle_cry_attackers: Vec<ObjectId> = attackers
+        .iter()
+        .filter(|&&id| {
+            state
+                .battlefield
+                .get(&id)
+                .map(|p| p.has_keyword(StaticAbility::BattleCry))
+                .unwrap_or(false)
+        })
+        .copied()
+        .collect();
+    for source_id in battle_cry_attackers {
+        for &other_id in attackers.iter().filter(|&&id| id != source_id) {
+            let sid = state.alloc_stack_id();
+            use crate::types::effect::EffectTarget;
+            result.push(StackObject {
+                id: sid,
+                payload: StackPayload::TriggeredAbility {
+                    source_id,
+                    effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+                        power: 1,
+                        toughness: 0,
+                    })],
+                    label: "Battle Cry".into(),
+                },
+                controller: attacking_player,
+                targets: vec![EffectTarget::Object { id: other_id }],
+            });
+        }
     }
 
     result
@@ -1029,5 +1061,92 @@ mod tests {
 
         assert_eq!(triggers.len(), 2);
         assert_ne!(triggers[0].id, triggers[1].id);
+    }
+
+    #[test]
+    fn battle_cry_boosts_other_attackers_not_self() {
+        // CR 702.91b: each OTHER attacking creature gets +1/+0
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::EffectTarget;
+        use crate::types::stack::StackPayload;
+
+        let mut gs = two_player_state();
+
+        let battle_cry_def = CardDefinition {
+            name: "Battle Cry Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::BattleCry,
+            ))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let battle_cry_id = place_on_battlefield(&mut gs, battle_cry_def, PlayerId(0));
+
+        let ally_def = CardDefinition {
+            name: "Ally".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: Some(1),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let ally_id = place_on_battlefield(&mut gs, ally_def, PlayerId(0));
+
+        gs.combat.attackers = vec![battle_cry_id, ally_id];
+
+        // Act
+        let triggers = collect_attack_triggers(&mut gs);
+
+        // Assert: exactly one trigger from battle_cry_id, targeting the ally (not itself)
+        let battle_cry_triggers: Vec<_> = triggers
+            .iter()
+            .filter(|t| {
+                matches!(&t.payload, StackPayload::TriggeredAbility { source_id, .. } if *source_id == battle_cry_id)
+            })
+            .collect();
+        assert_eq!(
+            battle_cry_triggers.len(),
+            1,
+            "Battle Cry should generate exactly one boost trigger (for the ally)"
+        );
+
+        let trigger = &battle_cry_triggers[0];
+        assert_eq!(
+            trigger.targets,
+            vec![EffectTarget::Object { id: ally_id }],
+            "Battle Cry boost should target the ally, not the Battle Cry creature"
+        );
+        if let StackPayload::TriggeredAbility { effect, .. } = &trigger.payload {
+            assert!(
+                matches!(
+                    effect[0],
+                    EffectStep::BoostPermanentPT(PTDelta {
+                        power: 1,
+                        toughness: 0
+                    })
+                ),
+                "Battle Cry boost should have +1/+0 modifier"
+            );
+        } else {
+            panic!("Expected TriggeredAbility payload");
+        }
     }
 }
