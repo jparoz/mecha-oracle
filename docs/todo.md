@@ -14,35 +14,15 @@ Keywords below are parsed and shown cyan+underlined in the UI but have no rules 
 
 ## ✅ Unblocked — implementable now
 
-All prerequisite systems exist: targeting (`engine/targeting.rs`), triggered ability
-framework (`engine/triggered.rs` — ETB, cast, attack, block patterns), combat state
-(`combat.attackers`, `blocking_map`), and the full `EffectStep` / `BoostPermanentPT`
-machinery.
+*(Ward, Landwalk, Battle Cry, Fear, Intimidate, Protection from color — all implemented.)*
 
-- **Ward N** (702.21): when this becomes the target of a spell/ability, that spell/ability
-  requires an additional `{N}` payment or it's countered. Hook into `is_legal_target` /
-  the stack resolution path; no new systems needed.
-- **Landwalk variants** (702.14): unblockable if the defending player controls a land whose
-  subtype matches (Plains-walk, Island-walk, etc.). `TypeLine::subtypes` and the
-  battlefield map are both available; just a predicate in `declare_blockers`.
-- **Battle Cry** (702.91): when this attacks, each other attacking creature gets +1/+0 until
-  EOT. Same pattern as Exalted/Melee in `collect_attack_triggers` — generate one
-  `BoostPermanentPT` trigger per other attacker. Only new detail: filter the attacker list
-  to exclude the Battle Cry source.
+### Protection from X — partial (blocking + targeting by color only)
 
----
-
-## 🎨 Color-tracking block (one small prerequisite unblocks three)
-
-Add `fn colors(card: &CardDefinition) -> Vec<ManaColor>` that derives identity from
-`ManaCost` pips — the pip type (`ManaPip`) already carries color. A single helper unblocks:
-
-- **Fear** (702.36): unblockable except by artifact/black creatures — artifact check is a
-  `TypeLine` lookup; black check needs `colors()`.
-- **Intimidate** (702.13): unblockable except by artifact/same-color-as-attacker — same.
-- **Protection from X** (702.16): full DEBT (can't be Damaged, Enchanted, Blocked, or
-  Targeted by X). The targeting leg (`is_legal_target`) is already wired; blocking and
-  damage legs need the `colors()` helper. The enchantment/equipment leg is future work.
+- **Damage prevention (D in DEBT)**: prevent all damage from sources with protected quality — requires a "protection check" in the combat damage path and the DealDamage effect step.
+- **Enchant/Equip prevention (E in DEBT)**: can't be enchanted or equipped by things with protected quality — requires aura attachment rules (future work).
+- **Protection from non-color qualities**: protection from artifacts, from instants, from a specific creature type, from a card name (e.g. "protection from Eldrazi") — each needs a richer `ProtectionQuality` enum beyond just `ManaColor`.
+- **Protection from everything** (CR 702.16e): shorthand for all qualities — needs `StaticAbility::ProtectionFromAll`.
+- **Hexproof from color** (CR 702.11e, e.g. "hexproof from black") — related, but a separate keyword; currently ParsedUnimplemented.
 
 ---
 

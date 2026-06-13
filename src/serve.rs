@@ -15,11 +15,13 @@ use mecha_oracle::engine::mana::{
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
+use mecha_oracle::engine::ward::pay_ward;
 use mecha_oracle::types::ability::{
     Ability, ActivatedAbility, AnnotationKind, CostComponent, OracleSpan, StaticAbility,
     TextAnnotation,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
+use mecha_oracle::types::stack::StackId;
 use mecha_oracle::types::stack::StackPayload;
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
@@ -800,6 +802,10 @@ enum ActionRequest {
     CycleCard {
         object_id: u64,
     },
+    PayWard {
+        /// StackId.0 of the WardTrigger on top of the stack.
+        trigger_id: u64,
+    },
 }
 
 #[derive(Serialize)]
@@ -955,6 +961,11 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
         ActionRequest::CycleCard { object_id } => {
             let player = state.priority_player;
             cycle_card(state, ObjectId(object_id), player, None).map_err(|e| format!("{e:?}"))
+        }
+        // CR 702.21a: pay the Ward cost to prevent the WardTrigger from countering the spell.
+        ActionRequest::PayWard { trigger_id } => {
+            let player = state.priority_player;
+            pay_ward(state, player, StackId(trigger_id)).map_err(|e| format!("{e:?}"))
         }
     }
 }
