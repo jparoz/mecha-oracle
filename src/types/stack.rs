@@ -1,3 +1,4 @@
+use super::ability::WardCost;
 use super::effect::Effect;
 use super::ids::{ObjectId, PlayerId};
 
@@ -21,6 +22,13 @@ pub enum StackPayload {
         source_id: ObjectId,
         effect: Effect,
         label: String,
+    },
+    /// CR 702.21b: triggered by targeting a permanent with Ward.
+    /// Counters the triggering spell/ability if the Ward cost is not paid.
+    WardTrigger {
+        counters_if_unpaid: StackId,
+        cost: WardCost,
+        paid: bool,
     },
 }
 

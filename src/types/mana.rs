@@ -50,6 +50,36 @@ pub struct ManaCost {
     pub pips: Vec<ManaPip>,
 }
 
+impl std::fmt::Display for ManaPip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ManaPip::White => write!(f, "{{W}}"),
+            ManaPip::Blue => write!(f, "{{U}}"),
+            ManaPip::Black => write!(f, "{{B}}"),
+            ManaPip::Red => write!(f, "{{R}}"),
+            ManaPip::Green => write!(f, "{{G}}"),
+            ManaPip::Colorless => write!(f, "{{C}}"),
+            ManaPip::Generic(n) => write!(f, "{{{n}}}"),
+            ManaPip::X => write!(f, "{{X}}"),
+            ManaPip::Snow => write!(f, "{{S}}"),
+            ManaPip::Hybrid(a, b) => write!(f, "{{{a}/{b}}}"),
+            ManaPip::GenericHybrid(n, c) => write!(f, "{{{n}/{c}}}"),
+            ManaPip::ColorlessHybrid(c) => write!(f, "{{C/{c}}}"),
+            ManaPip::Phyrexian(c) => write!(f, "{{{c}/P}}"),
+            ManaPip::HybridPhyrexian(a, b) => write!(f, "{{{a}/{b}/P}}"),
+        }
+    }
+}
+
+impl std::fmt::Display for ManaCost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for pip in &self.pips {
+            write!(f, "{pip}")?;
+        }
+        Ok(())
+    }
+}
+
 impl ManaCost {
     /// CR 202.3: X counts 0; GenericHybrid(n,_) counts n; all others count 1.
     pub fn mana_value(&self) -> u32 {
@@ -231,5 +261,23 @@ mod tests {
         let plan = PaymentPlan::default();
         assert_eq!(plan.blood, 0);
         assert!(plan.x_value.is_none());
+    }
+
+    #[test]
+    fn mana_pip_display() {
+        assert_eq!(ManaPip::Generic(2).to_string(), "{2}");
+        assert_eq!(ManaPip::Blue.to_string(), "{U}");
+        assert_eq!(
+            ManaPip::Hybrid(ManaColor::White, ManaColor::Blue).to_string(),
+            "{W/U}"
+        );
+    }
+
+    #[test]
+    fn mana_cost_display() {
+        let cost = ManaCost {
+            pips: vec![ManaPip::Generic(1), ManaPip::Blue],
+        };
+        assert_eq!(cost.to_string(), "{1}{U}");
     }
 }

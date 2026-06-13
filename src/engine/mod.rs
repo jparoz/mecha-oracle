@@ -8,6 +8,7 @@ pub mod state_based_actions;
 pub mod targeting;
 pub mod triggered;
 pub mod turn;
+pub mod ward;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EngineError {
@@ -31,4 +32,5 @@ pub enum EngineError {
     NotYourPriority,
     WrongNumberOfTargets, // CR 601.2c: wrong number of targets declared
     IllegalTarget,        // CR 601.2c: declared target is not a legal target
+    InsufficientLife,     // CR 702.21: Ward life cost cannot be paid
 }

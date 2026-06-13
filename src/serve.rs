@@ -730,6 +730,13 @@ fn build_game_view(state: &GameState) -> GameView {
                     controller: obj.controller,
                     card: None,
                 },
+                StackPayload::WardTrigger { .. } => StackItemView {
+                    id: sid.0,
+                    kind: "ward_trigger".into(),
+                    label: "Ward trigger".into(),
+                    controller: obj.controller,
+                    card: None,
+                },
             }
         })
         .collect();

@@ -1,6 +1,20 @@
 use super::card::CardType;
 use super::effect::Effect;
-use super::mana::ManaCost;
+use super::mana::{ManaColor, ManaCost};
+
+// CR 702.14
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LandwalkKind {
+    LandType(String), // e.g. "Island", "Swamp", "Forest", "Mountain", "Plains"
+    Nonbasic,
+}
+
+// CR 702.21
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WardCost {
+    Mana(ManaCost),
+    Life(u32),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StaticAbility {
@@ -26,8 +40,15 @@ pub enum StaticAbility {
     BushidoN(u32),
     Melee,
     Prowess,
-    Shroud,   // CR 702.18
-    Hexproof, // CR 702.11
+    Shroud,                         // CR 702.18
+    Hexproof,                       // CR 702.11
+    WardMana(ManaCost),             // CR 702.21 — Ward {cost}
+    WardLife(u32),                  // CR 702.21 — Ward—Pay N life
+    Landwalk(LandwalkKind),         // CR 702.14
+    BattleCry,                      // CR 702.91
+    Fear,                           // CR 702.36
+    Intimidate,                     // CR 702.13
+    ProtectionFromColor(ManaColor), // CR 702.16 (partial — blocking + targeting only)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +116,24 @@ impl StaticAbility {
             Self::Prowess => "Prowess".to_string(),
             Self::Shroud => "Shroud".to_string(),
             Self::Hexproof => "Hexproof".to_string(),
+            Self::WardMana(cost) => format!("Ward {cost}"),
+            Self::WardLife(n) => format!("Ward\u{2014}Pay {n} life"),
+            Self::Landwalk(LandwalkKind::LandType(t)) => format!("{t}walk"),
+            Self::Landwalk(LandwalkKind::Nonbasic) => "Nonbasic landwalk".to_string(),
+            Self::BattleCry => "Battle cry".to_string(),
+            Self::Fear => "Fear".to_string(),
+            Self::Intimidate => "Intimidate".to_string(),
+            Self::ProtectionFromColor(c) => {
+                let color_name = match c {
+                    ManaColor::White => "white",
+                    ManaColor::Blue => "blue",
+                    ManaColor::Black => "black",
+                    ManaColor::Red => "red",
+                    ManaColor::Green => "green",
+                    ManaColor::Colorless => "colorless",
+                };
+                format!("Protection from {color_name}")
+            }
         }
     }
 }
@@ -280,5 +319,36 @@ mod tests {
         assert_eq!(ann.start, 3);
         assert_eq!(ann.end, 10);
         assert_eq!(ann.kind, AnnotationKind::Unparsed);
+    }
+
+    #[test]
+    fn new_static_ability_display_names() {
+        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        assert_eq!(StaticAbility::Fear.display_name(), "Fear");
+        assert_eq!(StaticAbility::Intimidate.display_name(), "Intimidate");
+        assert_eq!(StaticAbility::BattleCry.display_name(), "Battle cry");
+        assert_eq!(
+            StaticAbility::WardMana(ManaCost {
+                pips: vec![ManaPip::Generic(2)]
+            })
+            .display_name(),
+            "Ward {2}"
+        );
+        assert_eq!(
+            StaticAbility::WardLife(2).display_name(),
+            "Ward\u{2014}Pay 2 life"
+        );
+        assert_eq!(
+            StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())).display_name(),
+            "Islandwalk"
+        );
+        assert_eq!(
+            StaticAbility::Landwalk(LandwalkKind::Nonbasic).display_name(),
+            "Nonbasic landwalk"
+        );
+        assert_eq!(
+            StaticAbility::ProtectionFromColor(ManaColor::Blue).display_name(),
+            "Protection from blue"
+        );
     }
 }
