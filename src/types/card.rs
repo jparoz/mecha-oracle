@@ -61,7 +61,7 @@ pub struct CardDefinition {
     pub text_annotations: Vec<TextAnnotation>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
-    pub colors: Vec<ManaColor>, // NEW — authoritative color identity from Scryfall
+    pub colors: Vec<ManaColor>, // CR 105.2 — authoritative card color from Scryfall
 }
 
 impl CardDefinition {

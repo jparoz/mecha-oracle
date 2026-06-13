@@ -570,6 +570,21 @@ mod tests {
     }
 
     #[test]
+    fn scryfall_colors_missing_key_defaults_to_empty() {
+        let v = json!({
+            "name": "Sol Ring",
+            "mana_cost": "{1}",
+            "type_line": "Artifact",
+            "oracle_text": "{T}: Add {C}{C}.",
+            "layout": "normal"
+        });
+        let ParsedEntry::Card(def) = parse_entry(&v).unwrap() else {
+            panic!()
+        };
+        assert_eq!(def.colors, vec![]);
+    }
+
+    #[test]
     fn scryfall_colors_empty_for_colorless_card() {
         let v = json!({
             "name": "Forest",
