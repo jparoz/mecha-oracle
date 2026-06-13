@@ -42,10 +42,9 @@ pub fn is_legal_target(
             for span in &obj.definition.abilities {
                 if let OracleSpan::Parsed(Ability::Static(StaticAbility::ProtectionFromColor(c))) =
                     span
+                    && source_colors.contains(c)
                 {
-                    if source_colors.contains(c) {
-                        return false;
-                    }
+                    return false;
                 }
             }
             true
