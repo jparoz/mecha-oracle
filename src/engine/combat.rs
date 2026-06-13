@@ -208,6 +208,82 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
             return false;
         }
     }
+    // CR 702.36b: Fear — can't be blocked except by artifact or black creatures
+    if attacker_obj.has_keyword(StaticAbility::Fear) {
+        let blocker_is_artifact = blocker_obj
+            .definition
+            .type_line
+            .card_types
+            .contains(&crate::types::card::CardType::Artifact);
+        let blocker_is_black = blocker_obj
+            .definition
+            .colors
+            .contains(&crate::types::mana::ManaColor::Black);
+        if !blocker_is_artifact && !blocker_is_black {
+            return false;
+        }
+    }
+    // CR 702.13b: Intimidate — can't be blocked except by artifact or same-color creature
+    if attacker_obj.has_keyword(StaticAbility::Intimidate) {
+        let blocker_is_artifact = blocker_obj
+            .definition
+            .type_line
+            .card_types
+            .contains(&crate::types::card::CardType::Artifact);
+        let attacker_colors = &attacker_obj.definition.colors;
+        let blocker_colors = &blocker_obj.definition.colors;
+        let shares_color = attacker_colors.iter().any(|c| blocker_colors.contains(c));
+        if !blocker_is_artifact && !shares_color {
+            return false;
+        }
+    }
+    // CR 702.14b: Landwalk — can't be blocked if defending player controls matching land
+    {
+        use crate::types::ability::{Ability, LandwalkKind, StaticAbility as SA};
+        let defending_player = state.opponent_of(state.active_player);
+        for span in &attacker_obj.definition.abilities {
+            if let crate::types::OracleSpan::Parsed(Ability::Static(SA::Landwalk(kind))) = span {
+                let defender_has_land = state.battlefield.iter().any(|(land_id, _)| {
+                    let land_obj = match state.objects.get(land_id) {
+                        Some(o) => o,
+                        None => return false,
+                    };
+                    if land_obj.controller != defending_player {
+                        return false;
+                    }
+                    if !land_obj.definition.type_line.is_land() {
+                        return false;
+                    }
+                    match kind {
+                        LandwalkKind::LandType(t) => {
+                            land_obj.definition.type_line.subtypes.contains(t)
+                        }
+                        LandwalkKind::Nonbasic => !land_obj
+                            .definition
+                            .type_line
+                            .supertypes
+                            .contains(&crate::types::card::Supertype::Basic),
+                    }
+                });
+                if defender_has_land {
+                    return false;
+                }
+            }
+        }
+    }
+    // CR 702.16d: Protection — can't be blocked by sources of the protected quality
+    {
+        use crate::types::ability::{Ability, StaticAbility as SA};
+        let blocker_colors = &blocker_obj.definition.colors;
+        for span in &attacker_obj.definition.abilities {
+            if let crate::types::OracleSpan::Parsed(Ability::Static(SA::ProtectionFromColor(c))) =
+                span
+                && blocker_colors.contains(c)
+            {
+                return false;
+            }
+        }
+    }
     true
 }
 
@@ -1228,5 +1304,224 @@ mod tests {
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         let unknown_attacker = ObjectId(9999);
         assert!(!can_block_attacker(&gs, blocker, unknown_attacker));
+    }
+
+    fn place_creature_with_colors(
+        state: &mut GameState,
+        owner: PlayerId,
+        abilities: Vec<crate::types::OracleSpan>,
+        colors: Vec<crate::types::mana::ManaColor>,
+    ) -> ObjectId {
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities,
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors,
+        };
+        let id = state.alloc_id();
+        let obj = crate::types::CardObject::new(id, def, owner, Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.controller_since_turn = 0;
+        state.battlefield.insert(id, perm);
+        state.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn fear_blocks_non_artifact_non_black_creature() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::mana::ManaColor;
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Fear))],
+            vec![ManaColor::Black],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.active_player = PlayerId(0);
+        // Green blocker — not artifact, not black
+        let blocker =
+            place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![ManaColor::Green]);
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn fear_allows_black_creature_to_block() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::mana::ManaColor;
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Fear))],
+            vec![],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.active_player = PlayerId(0);
+        let blocker =
+            place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![ManaColor::Black]);
+        assert!(can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn intimidate_blocks_different_color_non_artifact() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::mana::ManaColor;
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::Intimidate,
+            ))],
+            vec![ManaColor::Red],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.active_player = PlayerId(0);
+        // Blue blocker shares no color with Red attacker
+        let blocker =
+            place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![ManaColor::Blue]);
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn intimidate_allows_same_color_blocker() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::mana::ManaColor;
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::Intimidate,
+            ))],
+            vec![ManaColor::Red],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.active_player = PlayerId(0);
+        let blocker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(1),
+            vec![],
+            vec![ManaColor::Red, ManaColor::Green],
+        );
+        assert!(can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn islandwalk_unblockable_when_defender_controls_island() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, LandwalkKind, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, Supertype, TypeLine};
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())),
+            ))],
+            vec![],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.active_player = PlayerId(0);
+        // Place an Island under PlayerId(1)'s control
+        let island_def = CardDefinition {
+            name: "Island".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![Supertype::Basic],
+                card_types: vec![CardType::Land],
+                subtypes: vec!["Island".to_string()],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        let land_id = gs.alloc_id();
+        let obj = CardObject::new(land_id, island_def, PlayerId(1), Zone::Battlefield);
+        gs.battlefield
+            .insert(land_id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+        let blocker = place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![]);
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn islandwalk_blockable_when_no_island_on_battlefield() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, LandwalkKind, StaticAbility};
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())),
+            ))],
+            vec![],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.active_player = PlayerId(0);
+        let blocker = place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![]);
+        assert!(can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn protection_from_red_blocks_red_blocker() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::mana::ManaColor;
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::ProtectionFromColor(ManaColor::Red),
+            ))],
+            vec![],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.active_player = PlayerId(0);
+        let blocker =
+            place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![ManaColor::Red]);
+        assert!(!can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn protection_from_red_allows_blue_blocker() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::mana::ManaColor;
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![OracleSpan::Parsed(Ability::Static(
+                StaticAbility::ProtectionFromColor(ManaColor::Red),
+            ))],
+            vec![],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.active_player = PlayerId(0);
+        let blocker =
+            place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![ManaColor::Blue]);
+        assert!(can_block_attacker(&gs, blocker, attacker));
     }
 }
