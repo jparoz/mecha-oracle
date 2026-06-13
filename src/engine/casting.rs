@@ -74,69 +74,6 @@ pub fn play_land(
     Ok(check_and_apply_sbas(state))
 }
 
-/// CR 702.21b: Collect WardTrigger stack objects for any declared targets that are
-/// opponent-controlled permanents with Ward. Each Ward ability on such a target generates
-/// one WardTrigger pushed above the triggering spell/ability on the stack.
-fn collect_ward_triggers(
-    state: &mut GameState,
-    triggering_stack_id: crate::types::stack::StackId,
-    caster_id: PlayerId,
-    targets: &[crate::types::effect::EffectTarget],
-) -> Vec<crate::types::StackObject> {
-    use crate::types::ability::{Ability, OracleSpan, StaticAbility, WardCost};
-    use crate::types::effect::EffectTarget;
-    use crate::types::stack::{StackObject, StackPayload};
-
-    let mut triggers = Vec::new();
-    for target in targets {
-        let target_obj_id = match target {
-            EffectTarget::Object { id } => *id,
-            EffectTarget::Player { .. } => continue,
-        };
-        // Only battlefield objects can have Ward (CR 702.21)
-        if !state.battlefield.contains_key(&target_obj_id) {
-            continue;
-        }
-        let target_obj = match state.objects.get(&target_obj_id) {
-            Some(o) => o,
-            None => continue,
-        };
-        // Ward only applies when an opponent's permanent is targeted (CR 702.21b)
-        if target_obj.controller == caster_id {
-            continue;
-        }
-        // Collect ward costs from static abilities
-        let ward_costs: Vec<WardCost> = target_obj
-            .definition
-            .abilities
-            .iter()
-            .filter_map(|span| match span {
-                OracleSpan::Parsed(Ability::Static(StaticAbility::WardMana(cost))) => {
-                    Some(WardCost::Mana(cost.clone()))
-                }
-                OracleSpan::Parsed(Ability::Static(StaticAbility::WardLife(n))) => {
-                    Some(WardCost::Life(*n))
-                }
-                _ => None,
-            })
-            .collect();
-        for cost in ward_costs {
-            let sid = state.alloc_stack_id();
-            triggers.push(StackObject {
-                id: sid,
-                payload: StackPayload::WardTrigger {
-                    counters_if_unpaid: triggering_stack_id,
-                    cost,
-                    paid: false,
-                },
-                controller: caster_id,
-                targets: vec![],
-            });
-        }
-    }
-    triggers
-}
-
 // CR 702.8a, CR 304.1: instants and Flash permanents may be cast at instant speed
 fn is_instant_speed(obj: &crate::types::CardObject) -> bool {
     obj.definition
@@ -270,11 +207,11 @@ pub fn cast_spell(
         state.stack_objects.insert(id, t);
     }
 
-    // CR 702.21b: if any declared target is an opponent's permanent with Ward, push a
-    // WardTrigger above the spell. The spell's controller must pay the Ward cost or the
-    // spell is countered.
+    // CR 702.21a: if any declared target is an opponent's permanent with Ward, push a
+    // WardTrigger above the spell.
     let spell_targets = state.stack_objects[&stack_id].targets.clone();
-    let ward_triggers = collect_ward_triggers(&mut state, stack_id, player_id, &spell_targets);
+    let ward_triggers =
+        super::ward::collect_ward_triggers(&mut state, stack_id, player_id, &spell_targets);
     for wt in ward_triggers {
         let id = wt.id;
         state.stack.push(id);
@@ -888,7 +825,7 @@ mod tests {
         ));
     }
 
-    // --- CR 702.21b Ward trigger tests ---
+    // --- CR 702.21a Ward trigger tests ---
 
     fn make_ward_creature_def(ward_cost: Vec<ManaPip>) -> CardDefinition {
         CardDefinition {
@@ -934,7 +871,7 @@ mod tests {
         }
     }
 
-    /// CR 702.21b: Targeting an opponent's Ward permanent while casting a spell should push a
+    /// CR 702.21a: Targeting an opponent's Ward permanent while casting a spell should push a
     /// WardTrigger above the spell on the stack.
     #[test]
     fn ward_trigger_pushed_above_spell_when_targeting_opponent_ward_creature() {
@@ -991,14 +928,14 @@ mod tests {
             }
             other => panic!("Expected WardTrigger, got {other:?}"),
         }
-        // WardTrigger controller is the caster (who must pay).
+        // WardTrigger is controlled by the Ward permanent's controller (CR 603.3a).
         assert_eq!(
             gs.stack_objects[&ward_trigger_stack_id].controller,
-            PlayerId(0)
+            PlayerId(1)
         );
     }
 
-    /// CR 702.21b: Ward does NOT trigger when targeting your own permanent.
+    /// CR 702.21a: Ward does NOT trigger when targeting your own permanent.
     #[test]
     fn ward_trigger_not_pushed_when_targeting_own_ward_creature() {
         use crate::types::effect::EffectTarget;
@@ -1027,7 +964,7 @@ mod tests {
         assert_eq!(gs.stack.len(), 1);
     }
 
-    /// CR 702.21b: Ward life triggers correctly.
+    /// CR 702.21a: Ward life triggers correctly.
     #[test]
     fn ward_life_trigger_pushed_above_spell() {
         use crate::types::ability::WardCost;
