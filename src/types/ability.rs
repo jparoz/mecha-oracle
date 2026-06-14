@@ -204,8 +204,11 @@ impl SpellFilter {
         }
     }
 
-    pub fn matches(&self, _card_types: &[CardType]) -> bool {
-        todo!("implemented in Task 2")
+    pub fn matches(&self, card_types: &[CardType]) -> bool {
+        let included_ok = self.included_types.is_empty()
+            || self.included_types.iter().any(|t| card_types.contains(t));
+        let excluded_ok = self.excluded_types.iter().all(|t| !card_types.contains(t));
+        included_ok && excluded_ok
     }
 }
 
@@ -395,5 +398,40 @@ mod tests {
             StaticAbility::ProtectionFromColor(ManaColor::Blue).display_name(),
             "Protection from blue"
         );
+    }
+
+    #[test]
+    fn spell_filter_any_matches_all_types() {
+        let f = SpellFilter::any();
+        assert!(f.matches(&[CardType::Creature]));
+        assert!(f.matches(&[CardType::Instant]));
+        assert!(f.matches(&[CardType::Sorcery]));
+        assert!(f.matches(&[]));
+    }
+
+    #[test]
+    fn spell_filter_noncreature_excludes_creature_spells() {
+        let f = SpellFilter::noncreature();
+        assert!(!f.matches(&[CardType::Creature]));
+        assert!(f.matches(&[CardType::Instant]));
+        assert!(f.matches(&[CardType::Sorcery]));
+        assert!(!f.matches(&[CardType::Creature, CardType::Artifact]));
+    }
+
+    #[test]
+    fn spell_filter_creature_includes_creature_only() {
+        let f = SpellFilter::creature();
+        assert!(f.matches(&[CardType::Creature]));
+        assert!(!f.matches(&[CardType::Instant]));
+        assert!(!f.matches(&[CardType::Sorcery]));
+    }
+
+    #[test]
+    fn spell_filter_instant_or_sorcery_matches_either() {
+        let f = SpellFilter::instant_or_sorcery();
+        assert!(f.matches(&[CardType::Instant]));
+        assert!(f.matches(&[CardType::Sorcery]));
+        assert!(!f.matches(&[CardType::Creature]));
+        assert!(!f.matches(&[]));
     }
 }
