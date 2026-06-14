@@ -473,7 +473,20 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                             .get_player(*id)
                             .map(|p| p.name.clone())
                             .unwrap_or_default(),
-                        EffectTarget::StackObject { .. } => String::new(), // implemented in Task 7
+                        EffectTarget::StackObject { id } => state
+                            .stack_objects
+                            .get(id)
+                            .and_then(|obj| {
+                                if let StackPayload::Spell { card_id } = &obj.payload {
+                                    state
+                                        .objects
+                                        .get(card_id)
+                                        .map(|c| c.definition.name.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_default(),
                     };
                     let target_val = serde_json::to_value(&target).unwrap();
                     actions.push(ActionItemView {
