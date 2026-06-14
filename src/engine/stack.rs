@@ -104,7 +104,10 @@ fn execute_effect_steps(
 /// CR 702.21a: Counter a spell or ability on the stack without it resolving.
 /// For spells, the card moves to the graveyard (CR 608.2b).
 /// For activated abilities, the ability simply ceases to exist (no card to move).
-fn counter_spell_on_stack(state: &mut GameState, stack_id: crate::types::stack::StackId) {
+pub(crate) fn counter_spell_on_stack(
+    state: &mut GameState,
+    stack_id: crate::types::stack::StackId,
+) {
     if let Some(obj) = state.stack_objects.remove(&stack_id) {
         state.stack.retain(|&id| id != stack_id);
         if let StackPayload::Spell { card_id } = obj.payload {
