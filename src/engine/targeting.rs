@@ -9,7 +9,7 @@ use crate::types::{GameState, OracleSpan, PlayerId, Zone};
 pub fn is_legal_target(
     state: &GameState,
     target: &EffectTarget,
-    filter: TargetFilter,
+    filter: &TargetFilter,
     caster: PlayerId,
     source_colors: &[ManaColor],
 ) -> bool {
@@ -26,6 +26,7 @@ pub fn is_legal_target(
                 TargetFilter::Creature => obj.is_creature(),
                 TargetFilter::Player => false,
                 TargetFilter::Any => obj.is_creature(), // planeswalkers/battles: future
+                TargetFilter::Spell(_) => false,        // permanents are not spell targets
             };
             if !passes_filter {
                 return false;
@@ -59,17 +60,22 @@ pub fn is_legal_target(
             }
             matches!(filter, TargetFilter::Player | TargetFilter::Any)
         }
+        EffectTarget::StackObject { .. } => false, // implemented in Task 3
     }
 }
 
 /// Returns all legal targets for `filter` from `caster`'s point of view.
 pub fn legal_targets(
     state: &GameState,
-    filter: TargetFilter,
+    filter: &TargetFilter,
     caster: PlayerId,
     source_colors: &[ManaColor],
 ) -> Vec<EffectTarget> {
     let mut result = Vec::new();
+    if matches!(filter, TargetFilter::Spell(_)) {
+        // implemented in Task 4
+        return result;
+    }
     if matches!(filter, TargetFilter::Creature | TargetFilter::Any) {
         for &id in state.battlefield.keys() {
             let t = EffectTarget::Object { id };
@@ -103,6 +109,7 @@ pub fn targets_still_legal(state: &GameState, targets: &[EffectTarget]) -> bool 
             .map(|o| o.zone == Zone::Battlefield)
             .unwrap_or(false),
         EffectTarget::Player { id } => state.get_player(*id).map(|p| !p.has_lost).unwrap_or(false),
+        EffectTarget::StackObject { .. } => false, // implemented in Task 4
     })
 }
 
@@ -157,7 +164,7 @@ mod tests {
         assert!(is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(0),
             &[],
         ));
@@ -171,7 +178,7 @@ mod tests {
         assert!(!is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(0),
             &[],
         ));
@@ -202,7 +209,7 @@ mod tests {
         assert!(!is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(0),
             &[],
         ));
@@ -220,14 +227,14 @@ mod tests {
         assert!(!is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(0),
             &[],
         ));
         assert!(!is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(1),
             &[],
         ));
@@ -245,7 +252,7 @@ mod tests {
         assert!(!is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(0),
             &[],
         ));
@@ -263,7 +270,7 @@ mod tests {
         assert!(is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(1),
             &[],
         ));
@@ -276,7 +283,7 @@ mod tests {
         assert!(is_legal_target(
             &gs,
             &target,
-            TargetFilter::Player,
+            &TargetFilter::Player,
             PlayerId(1),
             &[],
         ));
@@ -286,7 +293,7 @@ mod tests {
     fn any_filter_includes_creatures_and_players() {
         let mut gs = two_player_state();
         let creature_id = place_creature(&mut gs, PlayerId(1), vec![]);
-        let targets = legal_targets(&gs, TargetFilter::Any, PlayerId(0), &[]);
+        let targets = legal_targets(&gs, &TargetFilter::Any, PlayerId(0), &[]);
         assert!(targets.contains(&EffectTarget::Object { id: creature_id }));
         assert!(targets.contains(&EffectTarget::Player { id: PlayerId(0) }));
         assert!(targets.contains(&EffectTarget::Player { id: PlayerId(1) }));
@@ -296,7 +303,7 @@ mod tests {
     fn creature_filter_excludes_players() {
         let mut gs = two_player_state();
         let creature_id = place_creature(&mut gs, PlayerId(1), vec![]);
-        let targets = legal_targets(&gs, TargetFilter::Creature, PlayerId(0), &[]);
+        let targets = legal_targets(&gs, &TargetFilter::Creature, PlayerId(0), &[]);
         assert!(targets.contains(&EffectTarget::Object { id: creature_id }));
         assert!(!targets.contains(&EffectTarget::Player { id: PlayerId(0) }));
     }
@@ -305,7 +312,7 @@ mod tests {
     fn player_filter_excludes_creatures() {
         let mut gs = two_player_state();
         let creature_id = place_creature(&mut gs, PlayerId(1), vec![]);
-        let targets = legal_targets(&gs, TargetFilter::Player, PlayerId(0), &[]);
+        let targets = legal_targets(&gs, &TargetFilter::Player, PlayerId(0), &[]);
         assert!(!targets.contains(&EffectTarget::Object { id: creature_id }));
         assert!(targets.contains(&EffectTarget::Player { id: PlayerId(0) }));
         assert!(targets.contains(&EffectTarget::Player { id: PlayerId(1) }));
@@ -364,7 +371,7 @@ mod tests {
         assert!(!is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(0),
             &[ManaColor::Blue],
         ));
@@ -386,7 +393,7 @@ mod tests {
         assert!(is_legal_target(
             &gs,
             &target,
-            TargetFilter::Creature,
+            &TargetFilter::Creature,
             PlayerId(0),
             &[ManaColor::Red],
         ));

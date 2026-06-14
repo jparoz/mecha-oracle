@@ -337,7 +337,7 @@ pub fn collect_ward_triggers(
     for target in targets {
         let target_obj_id = match target {
             EffectTarget::Object { id } => *id,
-            EffectTarget::Player { .. } => continue,
+            EffectTarget::Player { .. } | EffectTarget::StackObject { .. } => continue,
         };
         if !state.battlefield.contains_key(&target_obj_id) {
             continue;

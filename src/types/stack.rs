@@ -2,7 +2,7 @@ use super::effect::Effect;
 use super::ids::{ObjectId, PlayerId};
 
 /// A unique identifier for a stack object (CR 405).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct StackId(pub u64);
 
 /// The content of a stack object, which can be a spell or an ability (CR 405.4).

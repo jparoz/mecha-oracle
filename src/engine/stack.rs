@@ -93,8 +93,9 @@ fn execute_effect_steps(
                         player.life -= *n as i32;
                     }
                 }
-                None => {}
+                _ => {}
             },
+            EffectStep::CounterSpell => {} // implemented in Task 5
             EffectStep::Unimplemented(_) => {}
         }
     }

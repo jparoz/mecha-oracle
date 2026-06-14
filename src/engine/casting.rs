@@ -123,7 +123,7 @@ pub fn cast_spell(
             .map(|o| o.definition.colors.clone())
             .unwrap_or_default();
         for (filter, target) in target_requirements.iter().zip(declared_targets.iter()) {
-            if !is_legal_target(&state, target, *filter, player_id, &spell_colors) {
+            if !is_legal_target(&state, target, filter, player_id, &spell_colors) {
                 return Err(EngineError::IllegalTarget);
             }
         }

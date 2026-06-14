@@ -169,12 +169,53 @@ impl CastFilter {
     }
 }
 
-/// Describes what kind of permanent or player can be targeted (CR 115.4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Describes which spells on the stack can be targeted (CR 115.4).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SpellFilter {
+    /// Spell must have at least one of these types; empty = no constraint.
+    pub included_types: Vec<CardType>,
+    /// Spell must have none of these types.
+    pub excluded_types: Vec<CardType>,
+}
+
+impl SpellFilter {
+    pub fn any() -> Self {
+        Self::default()
+    }
+
+    pub fn noncreature() -> Self {
+        Self {
+            included_types: vec![],
+            excluded_types: vec![CardType::Creature],
+        }
+    }
+
+    pub fn creature() -> Self {
+        Self {
+            included_types: vec![CardType::Creature],
+            excluded_types: vec![],
+        }
+    }
+
+    pub fn instant_or_sorcery() -> Self {
+        Self {
+            included_types: vec![CardType::Instant, CardType::Sorcery],
+            excluded_types: vec![],
+        }
+    }
+
+    pub fn matches(&self, _card_types: &[CardType]) -> bool {
+        todo!("implemented in Task 2")
+    }
+}
+
+/// Describes what kind of permanent, player, or spell can be targeted (CR 115.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TargetFilter {
     Creature,
     Player,
-    Any, // CR 115.4: creature, player, planeswalker, battle
+    Any,                // CR 115.4: creature, player, planeswalker, battle
+    Spell(SpellFilter), // CR 115.4: a spell on the stack
 }
 
 /// A spell ability — the text of an instant or sorcery that takes effect when it resolves.

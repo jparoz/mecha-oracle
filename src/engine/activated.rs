@@ -61,7 +61,7 @@ pub fn activate_ability(
             .iter()
             .zip(declared_targets.iter())
         {
-            if !is_legal_target(&state, target, *filter, activating_player, &source_colors) {
+            if !is_legal_target(&state, target, filter, activating_player, &source_colors) {
                 return Err(EngineError::IllegalTarget);
             }
         }

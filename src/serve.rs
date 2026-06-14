@@ -346,6 +346,7 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
                 format!("Boost by {}/{}", delta.power, delta.toughness)
             }
             EffectStep::DealDamage(n) => format!("Deal {n} damage"),
+            EffectStep::CounterSpell => "Counter target spell".to_string(),
             EffectStep::Unimplemented(s) => s.clone(),
         })
         .collect();
@@ -426,7 +427,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                 _ => None,
             })
             .flatten()
-            .copied()
+            .cloned()
             .collect();
 
         let cost_label = obj
@@ -453,10 +454,11 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
             let spell_colors = obj.definition.colors.clone();
             let mut seen = std::collections::HashSet::new();
             for filter in &target_filters {
-                for target in legal_targets(state, *filter, pid, &spell_colors) {
+                for target in legal_targets(state, filter, pid, &spell_colors) {
                     let key = match &target {
                         EffectTarget::Object { id } => format!("o{}", id.0),
                         EffectTarget::Player { id } => format!("p{}", id.0),
+                        EffectTarget::StackObject { id } => format!("s{}", id.0),
                     };
                     if !seen.insert(key) {
                         continue;
@@ -471,6 +473,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                             .get_player(*id)
                             .map(|p| p.name.clone())
                             .unwrap_or_default(),
+                        EffectTarget::StackObject { .. } => String::new(), // implemented in Task 7
                     };
                     let target_val = serde_json::to_value(&target).unwrap();
                     actions.push(ActionItemView {

@@ -1,6 +1,7 @@
 use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
 use super::permanent::PTDelta;
+use super::stack::StackId;
 
 /// A declared target on the stack (CR 115.1).
 /// Struct variants for clean Serde round-tripping via the API.
@@ -9,6 +10,7 @@ use super::permanent::PTDelta;
 pub enum EffectTarget {
     Player { id: PlayerId },
     Object { id: ObjectId },
+    StackObject { id: StackId },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +21,7 @@ pub enum EffectStep {
     GainLife(u32),
     BoostPermanentPT(PTDelta),
     DealDamage(u32),
+    CounterSpell,          // CR 701.5: counter the target spell on the stack
     Unimplemented(String), // parsed but not yet executable; skipped at resolution
 }
 
