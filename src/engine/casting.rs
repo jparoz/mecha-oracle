@@ -837,9 +837,11 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: format!("Ward {{{}}}", ward_cost.len()),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::WardMana(ManaCost { pips: ward_cost }),
-            ))],
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
+                vec![crate::types::ability::CostComponent::Mana(ManaCost {
+                    pips: ward_cost,
+                })],
+            )))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -875,13 +877,13 @@ mod tests {
     /// WardTrigger above the spell on the stack.
     #[test]
     fn ward_trigger_pushed_above_spell_when_targeting_opponent_ward_creature() {
-        use crate::types::ability::WardCost;
+        use crate::types::ability::CostComponent;
         use crate::types::effect::EffectTarget;
         use crate::types::stack::StackPayload;
         use crate::types::{CardObject, PermanentState};
 
         let mut gs = make_state();
-        // Opponent (PlayerId(1)) has a creature with WardMana({2}) on the battlefield.
+        // Opponent (PlayerId(1)) has a creature with Ward({2}) on the battlefield.
         let ward_def = make_ward_creature_def(vec![ManaPip::Generic(2)]);
         let ward_id = gs.alloc_id();
         let ward_obj = CardObject::new(ward_id, ward_def, PlayerId(1), Zone::Battlefield);
@@ -915,16 +917,16 @@ mod tests {
             StackPayload::WardTrigger {
                 counters_if_unpaid,
                 cost,
-                paid,
+                settled,
             } => {
                 assert_eq!(*counters_if_unpaid, spell_stack_id);
                 assert_eq!(
                     *cost,
-                    WardCost::Mana(ManaCost {
+                    vec![CostComponent::Mana(ManaCost {
                         pips: vec![ManaPip::Generic(2)]
-                    })
+                    })]
                 );
-                assert!(!paid);
+                assert!(!settled);
             }
             other => panic!("Expected WardTrigger, got {other:?}"),
         }
@@ -967,13 +969,13 @@ mod tests {
     /// CR 702.21a: Ward life triggers correctly.
     #[test]
     fn ward_life_trigger_pushed_above_spell() {
-        use crate::types::ability::WardCost;
+        use crate::types::ability::CostComponent;
         use crate::types::effect::EffectTarget;
         use crate::types::stack::StackPayload;
         use crate::types::{CardObject, PermanentState};
 
         let mut gs = make_state();
-        // Opponent has a creature with WardLife(3).
+        // Opponent has a creature with Ward—Pay 3 life.
         let ward_def = CardDefinition {
             name: "Ward Life Bear".into(),
             mana_cost: None,
@@ -983,9 +985,9 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Ward—Pay 3 life.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::WardLife(3),
-            ))],
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
+                vec![CostComponent::PayLife(3)],
+            )))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1011,7 +1013,7 @@ mod tests {
         let ward_trigger_stack_id = gs.stack[1];
         match &gs.stack_objects[&ward_trigger_stack_id].payload {
             StackPayload::WardTrigger { cost, .. } => {
-                assert_eq!(*cost, WardCost::Life(3));
+                assert_eq!(*cost, vec![CostComponent::PayLife(3)]);
             }
             other => panic!("Expected WardTrigger, got {other:?}"),
         }

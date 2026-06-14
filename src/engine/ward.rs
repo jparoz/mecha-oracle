@@ -3,7 +3,7 @@
 
 use super::EngineError;
 use crate::types::stack::{StackId, StackPayload};
-use crate::types::{GameState, PlayerId, StackObject, WardCost};
+use crate::types::{GameState, PlayerId, StackObject};
 
 /// CR 702.21a: Collect WardTrigger stack objects for any declared targets that are
 /// opponent-controlled permanents with Ward. Each Ward ability on such a target generates
@@ -15,7 +15,7 @@ pub fn collect_ward_triggers(
     acting_player: PlayerId,
     targets: &[crate::types::effect::EffectTarget],
 ) -> Vec<StackObject> {
-    use crate::types::ability::{Ability, OracleSpan, StaticAbility, WardCost};
+    use crate::types::ability::{Ability, CostComponent, OracleSpan, StaticAbility};
     use crate::types::effect::EffectTarget;
     use crate::types::stack::{StackObject, StackPayload};
 
@@ -37,21 +37,18 @@ pub fn collect_ward_triggers(
             continue;
         }
         let ward_permanent_controller = target_obj.controller;
-        let ward_costs: Vec<WardCost> = target_obj
+        let ward_cost_sets: Vec<Vec<CostComponent>> = target_obj
             .definition
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Parsed(Ability::Static(StaticAbility::WardMana(cost))) => {
-                    Some(WardCost::Mana(cost.clone()))
-                }
-                OracleSpan::Parsed(Ability::Static(StaticAbility::WardLife(n))) => {
-                    Some(WardCost::Life(*n))
+                OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(components))) => {
+                    Some(components.clone())
                 }
                 _ => None,
             })
             .collect();
-        for cost in ward_costs {
+        for cost in ward_cost_sets {
             let sid = state.alloc_stack_id();
             // CR 603.3a: triggered ability is controlled by the controller of its source
             triggers.push(StackObject {
@@ -59,7 +56,7 @@ pub fn collect_ward_triggers(
                 payload: StackPayload::WardTrigger {
                     counters_if_unpaid: triggering_stack_id,
                     cost,
-                    paid: false,
+                    settled: false,
                 },
                 controller: ward_permanent_controller,
                 targets: vec![],
@@ -71,7 +68,7 @@ pub fn collect_ward_triggers(
 
 /// CR 702.21a: Pay the Ward cost for a WardTrigger on top of the stack.
 /// The player paying is the spell's controller (who cast the targeting spell).
-/// After payment, marks the trigger as paid so it resolves without countering.
+/// After payment, marks the trigger as settled so it resolves without countering.
 pub fn pay_ward(
     mut state: GameState,
     player_id: PlayerId,
@@ -82,50 +79,53 @@ pub fn pay_ward(
         return Err(EngineError::NotYourPriority);
     }
 
-    // Step 2: get the WardTrigger payload; check if already paid.
-    let (cost, already_paid) = {
+    // Step 2: get the WardTrigger payload; check if already settled.
+    let (cost, already_settled) = {
         let obj = state
             .stack_objects
             .get(&trigger_id)
             .ok_or(EngineError::CardNotFound)?;
         match &obj.payload {
-            StackPayload::WardTrigger { cost, paid, .. } => (cost.clone(), *paid),
+            StackPayload::WardTrigger { cost, settled, .. } => (cost.clone(), *settled),
             _ => return Err(EngineError::NotYourPriority),
         }
     };
 
-    if already_paid {
+    if already_settled {
         return Ok(state);
     }
 
     // Step 3: pay the cost.
-    match &cost {
-        WardCost::Mana(mana_cost) => {
-            let plan = {
-                let player = state
-                    .get_player(player_id)
-                    .ok_or(EngineError::CardNotFound)?;
-                super::mana::greedy_payment_plan(mana_cost, &player.mana_pool, player.life)
-                    .ok_or(EngineError::InsufficientMana)?
-            };
-            state = super::mana::pay_mana_cost(state, player_id, mana_cost, &plan)?;
-        }
-        WardCost::Life(n) => {
-            let n = *n;
-            let player = state
-                .get_player_mut(player_id)
-                .ok_or(EngineError::CardNotFound)?;
-            if player.life < n as i32 {
-                return Err(EngineError::InsufficientLife);
+    for component in &cost {
+        match component {
+            crate::types::ability::CostComponent::Mana(mana_cost) => {
+                let plan = {
+                    let player = state
+                        .get_player(player_id)
+                        .ok_or(EngineError::CardNotFound)?;
+                    super::mana::greedy_payment_plan(mana_cost, &player.mana_pool, player.life)
+                        .ok_or(EngineError::InsufficientMana)?
+                };
+                state = super::mana::pay_mana_cost(state, player_id, mana_cost, &plan)?;
             }
-            player.life -= n as i32;
+            crate::types::ability::CostComponent::PayLife(n) => {
+                let n = *n;
+                let player = state
+                    .get_player_mut(player_id)
+                    .ok_or(EngineError::CardNotFound)?;
+                if player.life < n as i32 {
+                    return Err(EngineError::InsufficientLife);
+                }
+                player.life -= n as i32;
+            }
+            _ => {}
         }
     }
 
-    // Step 4: mark the trigger as paid.
+    // Step 4: mark the trigger as settled.
     let obj = state.stack_objects.get_mut(&trigger_id).unwrap();
-    if let StackPayload::WardTrigger { paid, .. } = &mut obj.payload {
-        *paid = true;
+    if let StackPayload::WardTrigger { settled, .. } = &mut obj.payload {
+        *settled = true;
     }
 
     Ok(state)
@@ -134,6 +134,7 @@ pub fn pay_ward(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::ability::CostComponent;
     use crate::types::mana::{ManaCost, ManaPip};
     use crate::types::stack::{StackObject, StackPayload};
     use crate::types::{GameState, Player, PlayerId};
@@ -145,14 +146,14 @@ mod tests {
         ])
     }
 
-    fn push_ward_trigger(state: &mut GameState, cost: WardCost) -> StackId {
+    fn push_ward_trigger(state: &mut GameState, cost: Vec<CostComponent>) -> StackId {
         let sid = state.alloc_stack_id();
         let obj = StackObject {
             id: sid,
             payload: StackPayload::WardTrigger {
                 counters_if_unpaid: StackId(0),
                 cost,
-                paid: false,
+                settled: false,
             },
             controller: PlayerId(1),
             targets: vec![],
@@ -167,17 +168,19 @@ mod tests {
         let mut gs = make_two_player_state();
         // Give caster (PlayerId(0)) 2 colorless mana
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 2;
-        let cost = WardCost::Mana(ManaCost {
+        let cost = vec![CostComponent::Mana(ManaCost {
             pips: vec![ManaPip::Generic(2)],
-        });
+        })];
         let trigger_id = push_ward_trigger(&mut gs, cost);
 
         let gs = pay_ward(gs, PlayerId(0), trigger_id).unwrap();
 
-        // Trigger should be marked paid
+        // Trigger should be marked settled
         let obj = gs.stack_objects.get(&trigger_id).unwrap();
         match &obj.payload {
-            StackPayload::WardTrigger { paid, .. } => assert!(*paid, "trigger should be paid"),
+            StackPayload::WardTrigger { settled, .. } => {
+                assert!(*settled, "trigger should be settled")
+            }
             _ => panic!("expected WardTrigger"),
         }
         // Mana should be spent
@@ -192,15 +195,17 @@ mod tests {
     fn pay_ward_life_marks_paid_and_deducts_life() {
         let mut gs = make_two_player_state();
         // PlayerId(0) starts with 20 life
-        let cost = WardCost::Life(2);
+        let cost = vec![CostComponent::PayLife(2)];
         let trigger_id = push_ward_trigger(&mut gs, cost);
 
         let gs = pay_ward(gs, PlayerId(0), trigger_id).unwrap();
 
-        // Trigger should be marked paid
+        // Trigger should be marked settled
         let obj = gs.stack_objects.get(&trigger_id).unwrap();
         match &obj.payload {
-            StackPayload::WardTrigger { paid, .. } => assert!(*paid, "trigger should be paid"),
+            StackPayload::WardTrigger { settled, .. } => {
+                assert!(*settled, "trigger should be settled")
+            }
             _ => panic!("expected WardTrigger"),
         }
         // Life should be reduced by 2
@@ -215,9 +220,9 @@ mod tests {
     fn pay_ward_fails_insufficient_mana() {
         let mut gs = make_two_player_state();
         // Player has 0 mana, ward costs {2}
-        let cost = WardCost::Mana(ManaCost {
+        let cost = vec![CostComponent::Mana(ManaCost {
             pips: vec![ManaPip::Generic(2)],
-        });
+        })];
         let trigger_id = push_ward_trigger(&mut gs, cost);
 
         let result = pay_ward(gs, PlayerId(0), trigger_id);
@@ -232,7 +237,7 @@ mod tests {
         let mut gs = make_two_player_state();
         // Give player only 3 life; ward costs 5 life
         gs.get_player_mut(PlayerId(0)).unwrap().life = 3;
-        let cost = WardCost::Life(5);
+        let cost = vec![CostComponent::PayLife(5)];
         let trigger_id = push_ward_trigger(&mut gs, cost);
 
         let result = pay_ward(gs, PlayerId(0), trigger_id);
@@ -245,7 +250,7 @@ mod tests {
     #[test]
     fn pay_ward_fails_when_trigger_not_on_top() {
         let mut gs = make_two_player_state();
-        let cost = WardCost::Life(1);
+        let cost = vec![CostComponent::PayLife(1)];
         let trigger_id = push_ward_trigger(&mut gs, cost);
         // Push another object on top, making trigger_id no longer top
         let other_sid = StackId(999);
@@ -267,8 +272,8 @@ mod tests {
             id: sid,
             payload: StackPayload::WardTrigger {
                 counters_if_unpaid: StackId(0),
-                cost: WardCost::Life(2),
-                paid: true, // already paid
+                cost: vec![CostComponent::PayLife(2)],
+                settled: true, // already settled
             },
             controller: PlayerId(1),
             targets: vec![],

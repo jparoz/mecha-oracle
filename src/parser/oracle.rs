@@ -467,7 +467,10 @@ fn match_keyword(kw: &str) -> OracleSpan {
     if let Some(_rest) = s.strip_prefix("ward ")
         && let Some(cost) = try_parse_mana_cost(kw["ward ".len()..].trim())
     {
-        return OracleSpan::Parsed(Ability::Static(StaticAbility::WardMana(cost)));
+        use crate::types::ability::CostComponent;
+        return OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(vec![
+            CostComponent::Mana(cost),
+        ])));
     }
 
     // Protection from [color] (CR 702.16)
@@ -986,9 +989,10 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
                 if let Some(n_str) = life_str
                     && let Some(n) = parse_number_word(n_str.trim())
                 {
-                    spans.push(OracleSpan::Parsed(Ability::Static(
-                        StaticAbility::WardLife(n),
-                    )));
+                    use crate::types::ability::CostComponent;
+                    spans.push(OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
+                        vec![CostComponent::PayLife(n)],
+                    ))));
                     continue;
                 }
                 // Unrecognized Ward—... form falls through to normal em-dash handling
@@ -2253,27 +2257,29 @@ mod tests {
 
     #[test]
     fn ward_mana_parses_as_ward_mana() {
+        use crate::types::ability::CostComponent;
         use crate::types::mana::{ManaCost, ManaPip};
         let (spans, _) = parse_permanent("Ward {2}", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::WardMana(ManaCost {
+            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
+                vec![CostComponent::Mana(ManaCost {
                     pips: vec![ManaPip::Generic(2)]
-                })
-            ))]
+                })]
+            )))]
         );
     }
 
     #[test]
     fn ward_life_parses_from_em_dash_paragraph() {
         // "Ward—Pay 2 life." is a whole paragraph; parse_permanent handles em-dash
+        use crate::types::ability::CostComponent;
         let (spans, _) = parse_permanent("Ward\u{2014}Pay 2 life.", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::WardLife(2)
-            ))]
+            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
+                vec![CostComponent::PayLife(2)]
+            )))]
         );
     }
 

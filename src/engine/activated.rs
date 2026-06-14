@@ -689,7 +689,7 @@ mod tests {
     /// a WardTrigger above the activated ability on the stack.
     #[test]
     fn ward_trigger_pushed_above_activated_ability_when_targeting_opponent_ward_creature() {
-        use crate::types::ability::{StaticAbility, WardCost};
+        use crate::types::ability::{CostComponent, StaticAbility};
         use crate::types::effect::EffectTarget;
         use crate::types::mana::ManaCost;
         use crate::types::stack::StackPayload;
@@ -697,7 +697,7 @@ mod tests {
         let mut gs = two_player_state();
         gs.step = crate::types::Step::PreCombatMain;
 
-        // Opponent (PlayerId(1)) has a creature with WardMana({2}).
+        // Opponent (PlayerId(1)) has a creature with Ward({2}).
         let ward_def = CardDefinition {
             name: "Ward Bear".into(),
             mana_cost: None,
@@ -707,11 +707,11 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Ward {2}".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::WardMana(ManaCost {
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
+                vec![CostComponent::Mana(ManaCost {
                     pips: vec![ManaPip::Generic(2)],
-                }),
-            ))],
+                })],
+            )))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -746,16 +746,16 @@ mod tests {
             StackPayload::WardTrigger {
                 counters_if_unpaid,
                 cost,
-                paid,
+                settled,
             } => {
                 assert_eq!(*counters_if_unpaid, ability_stack_id);
                 assert_eq!(
                     *cost,
-                    WardCost::Mana(ManaCost {
+                    vec![CostComponent::Mana(ManaCost {
                         pips: vec![ManaPip::Generic(2)]
-                    })
+                    })]
                 );
-                assert!(!paid);
+                assert!(!settled);
             }
             other => panic!("Expected WardTrigger, got {other:?}"),
         }

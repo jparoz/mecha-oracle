@@ -9,13 +9,6 @@ pub enum LandwalkKind {
     Nonbasic,
 }
 
-// CR 702.21
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WardCost {
-    Mana(ManaCost),
-    Life(u32),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StaticAbility {
     Flying,
@@ -42,8 +35,7 @@ pub enum StaticAbility {
     Prowess,
     Shroud,                         // CR 702.18
     Hexproof,                       // CR 702.11
-    WardMana(ManaCost),             // CR 702.21 — Ward {cost}
-    WardLife(u32),                  // CR 702.21 — Ward—Pay N life
+    Ward(Vec<CostComponent>),       // CR 702.21
     Landwalk(LandwalkKind),         // CR 702.14
     BattleCry,                      // CR 702.91
     Fear,                           // CR 702.36
@@ -116,8 +108,15 @@ impl StaticAbility {
             Self::Prowess => "Prowess".to_string(),
             Self::Shroud => "Shroud".to_string(),
             Self::Hexproof => "Hexproof".to_string(),
-            Self::WardMana(cost) => format!("Ward {cost}"),
-            Self::WardLife(n) => format!("Ward\u{2014}Pay {n} life"),
+            Self::Ward(components) => {
+                if let [CostComponent::Mana(c)] = components.as_slice() {
+                    format!("Ward {c}")
+                } else if let [CostComponent::PayLife(n)] = components.as_slice() {
+                    format!("Ward\u{2014}Pay {n} life")
+                } else {
+                    "Ward".to_string()
+                }
+            }
             Self::Landwalk(LandwalkKind::LandType(t)) => format!("{t}walk"),
             Self::Landwalk(LandwalkKind::Nonbasic) => "Nonbasic landwalk".to_string(),
             Self::BattleCry => "Battle cry".to_string(),
@@ -333,14 +332,14 @@ mod tests {
         assert_eq!(StaticAbility::Intimidate.display_name(), "Intimidate");
         assert_eq!(StaticAbility::BattleCry.display_name(), "Battle cry");
         assert_eq!(
-            StaticAbility::WardMana(ManaCost {
+            StaticAbility::Ward(vec![CostComponent::Mana(ManaCost {
                 pips: vec![ManaPip::Generic(2)]
-            })
+            })])
             .display_name(),
             "Ward {2}"
         );
         assert_eq!(
-            StaticAbility::WardLife(2).display_name(),
+            StaticAbility::Ward(vec![CostComponent::PayLife(2)]).display_name(),
             "Ward\u{2014}Pay 2 life"
         );
         assert_eq!(
