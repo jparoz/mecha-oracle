@@ -499,7 +499,7 @@ function confirmPayment() {
 }
 
 function cancelPayment() {
-  if (!paymentContext) return;
+  if (!paymentContext || paymentContext.declineable) return;
   const needsReset = currentState && currentState.can_reset_mana;
   paymentContext = null;
   renderPaymentPanel();

@@ -297,7 +297,7 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
   padding: 16px 24px;
   min-width: 260px;
   text-align: center;
-  z-index: 200;
+  z-index: 250;
   box-shadow: 0 4px 24px rgba(0,0,0,0.5);
 }
 .payment-title {
