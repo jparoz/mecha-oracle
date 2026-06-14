@@ -8,7 +8,9 @@ use mecha_oracle::cards::CardDatabase;
 use mecha_oracle::engine::activated::activate_ability;
 use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{can_block_attacker, declare_attackers, declare_blockers};
-use mecha_oracle::engine::costs::can_pay_cost_components;
+use mecha_oracle::engine::costs::{
+    can_pay_cost_components, pay_stack_cost, resolve_stack_cost_decline,
+};
 use mecha_oracle::engine::cycling::cycle_card;
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::stack::pass_priority;
@@ -19,7 +21,7 @@ use mecha_oracle::types::ability::{
     TextAnnotation,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
-use mecha_oracle::types::stack::StackPayload;
+use mecha_oracle::types::stack::{StackId, StackPayload};
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -143,12 +145,13 @@ struct StackItemView {
     label: String,
     controller: PlayerId,
     card: Option<CardView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cost_label: Option<String>,
 }
 
 #[derive(Serialize)]
 struct ActionItemView {
     label: String,
-    can_pay_cost: bool,
     #[serde(flatten)]
     kind: ActionItemKind,
 }
@@ -395,7 +398,6 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
         if can_play {
             actions.push(ActionItemView {
                 label: "Play land".to_string(),
-                can_pay_cost: true,
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "play_land",
@@ -430,7 +432,6 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
             // Untargeted spell
             actions.push(ActionItemView {
                 label: format!("Cast {}", obj.definition.name),
-                can_pay_cost: true,
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "cast_spell",
@@ -465,7 +466,6 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                     let target_val = serde_json::to_value(&target).unwrap();
                     actions.push(ActionItemView {
                         label: format!("Cast {} → {}", obj.definition.name, target_name),
-                        can_pay_cost: true,
                         kind: ActionItemKind::Server {
                             action: serde_json::json!({
                                 "type": "cast_spell",
@@ -487,7 +487,6 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
         {
             actions.push(ActionItemView {
                 label: format!("Cycle ({})", format_mana_cost(cost)),
-                can_pay_cost: true,
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "cycle_card",
@@ -519,7 +518,6 @@ fn compute_battlefield_actions(
         if can_atk {
             actions.push(ActionItemView {
                 label: "Declare as attacker".to_string(),
-                can_pay_cost: true,
                 kind: ActionItemKind::ToggleAttacker {
                     object_id: obj.id.0,
                 },
@@ -541,7 +539,6 @@ fn compute_battlefield_actions(
                 .unwrap_or("Unknown");
             actions.push(ActionItemView {
                 label: format!("Block {atk_name}"),
-                can_pay_cost: true,
                 kind: ActionItemKind::AssignBlocker {
                     blocker_id: obj.id.0,
                     attacker_id: atk_id.0,
@@ -576,7 +573,6 @@ fn compute_battlefield_actions(
             }
             actions.push(ActionItemView {
                 label: format_activated_ability(ability),
-                can_pay_cost: true, // temporary — removed in Task 7
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "activate_ability",
@@ -675,6 +671,18 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
     }
 }
 
+fn format_ward_cost_label(components: &[CostComponent]) -> String {
+    components
+        .iter()
+        .filter_map(|c| match c {
+            CostComponent::Mana(m) => Some(format!("{m}")),
+            CostComponent::PayLife(n) => Some(format!("Pay {n} life")),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn build_game_view(state: &GameState) -> GameView {
     let stack: Vec<StackItemView> = state
         .stack
@@ -709,6 +717,7 @@ fn build_game_view(state: &GameState) -> GameView {
                             is_blocking: false,
                             actions: vec![],
                         }),
+                        cost_label: None,
                     }
                 }
                 StackPayload::TriggeredAbility { label, .. } => StackItemView {
@@ -717,6 +726,7 @@ fn build_game_view(state: &GameState) -> GameView {
                     label: label.clone(),
                     controller: obj.controller,
                     card: None,
+                    cost_label: None,
                 },
                 StackPayload::ActivatedAbility { label, .. } => StackItemView {
                     id: sid.0,
@@ -724,14 +734,19 @@ fn build_game_view(state: &GameState) -> GameView {
                     label: label.clone(),
                     controller: obj.controller,
                     card: None,
+                    cost_label: None,
                 },
-                StackPayload::WardTrigger { .. } => StackItemView {
-                    id: sid.0,
-                    kind: "ward_trigger".into(),
-                    label: "Ward trigger".into(),
-                    controller: obj.controller,
-                    card: None,
-                },
+                StackPayload::WardTrigger { cost, .. } => {
+                    let cl = format_ward_cost_label(cost);
+                    StackItemView {
+                        id: sid.0,
+                        kind: "ward_trigger".into(),
+                        label: format!("Ward trigger \u{2014} {cl}"),
+                        controller: obj.controller,
+                        card: None,
+                        cost_label: Some(cl),
+                    }
+                }
             }
         })
         .collect();
@@ -792,9 +807,13 @@ enum ActionRequest {
     CycleCard {
         object_id: u64,
     },
-    PayWard {
-        /// StackId.0 of the WardTrigger on top of the stack.
-        trigger_id: u64,
+    /// CR 116.1: Pay the cost of a cost-bearing stack object (e.g. ward trigger).
+    PayCost {
+        stack_id: u64,
+    },
+    /// CR 702.21a: Decline an optional stack cost; the targeted spell is countered.
+    DeclineCost {
+        stack_id: u64,
     },
 }
 
@@ -950,10 +969,13 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             let player = state.priority_player;
             cycle_card(state, ObjectId(object_id), player).map_err(|e| format!("{e:?}"))
         }
-        // PayWard superseded by PayCost (Task 7 will remove this variant).
-        ActionRequest::PayWard { trigger_id } => Err(format!(
-            "PayWard is being removed; use PayCost instead: trigger_id={trigger_id}"
-        )),
+        ActionRequest::PayCost { stack_id } => {
+            let player = state.priority_player;
+            pay_stack_cost(state, player, StackId(stack_id)).map_err(|e| format!("{e:?}"))
+        }
+        ActionRequest::DeclineCost { stack_id } => {
+            resolve_stack_cost_decline(state, StackId(stack_id)).map_err(|e| format!("{e:?}"))
+        }
     }
 }
 
@@ -1057,7 +1079,7 @@ pub async fn run(shuffle: bool, deck_path: &str) {
 fn has_payable_server_action(card: &CardView) -> bool {
     card.actions
         .iter()
-        .any(|a| a.can_pay_cost && matches!(a.kind, ActionItemKind::Server { .. }))
+        .any(|a| matches!(a.kind, ActionItemKind::Server { .. }))
 }
 
 #[cfg(test)]
