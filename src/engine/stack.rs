@@ -95,7 +95,13 @@ fn execute_effect_steps(
                 }
                 _ => {}
             },
-            EffectStep::CounterSpell => {} // implemented in Task 5
+            // CR 701.5: move the targeted stack object to the graveyard (if a spell)
+            // or simply remove it (if an ability). counter_spell_on_stack handles both.
+            EffectStep::CounterSpell => {
+                if let Some(EffectTarget::StackObject { id }) = targets.first() {
+                    counter_spell_on_stack(&mut state, *id);
+                }
+            }
             EffectStep::Unimplemented(_) => {}
         }
     }
@@ -1058,5 +1064,98 @@ mod tests {
         assert!(gs.stack_objects.contains_key(&spell_stack_id));
         // Card still in Stack zone
         assert_eq!(gs.objects[&card_id].zone, Zone::Stack);
+    }
+
+    #[test]
+    fn counter_spell_step_counters_targeted_stack_spell() {
+        use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
+        use crate::types::effect::EffectTarget;
+        use crate::types::mana::ManaColor;
+
+        let mut gs = make_state();
+
+        // Put a target creature spell on the stack (player 1's Bears).
+        let target_def = CardDefinition {
+            name: "Bears".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let bears_card_id = gs.alloc_id();
+        let bears_obj = CardObject::new(bears_card_id, target_def, PlayerId(1), Zone::Stack);
+        gs.add_object(bears_obj);
+        let bears_sid = gs.alloc_stack_id();
+        gs.stack.push(bears_sid);
+        gs.stack_objects.insert(
+            bears_sid,
+            StackObject {
+                id: bears_sid,
+                payload: StackPayload::Spell {
+                    card_id: bears_card_id,
+                },
+                controller: PlayerId(1),
+                targets: vec![],
+            },
+        );
+
+        // Put a Counterspell on the stack above Bears, targeting Bears.
+        let counter_def = CardDefinition {
+            name: "Counterspell".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Blue, ManaPip::Blue],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Counter target spell.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![TargetFilter::Spell(SpellFilter::any())],
+                steps: vec![EffectStep::CounterSpell],
+            }))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![ManaColor::Blue],
+        };
+        let counter_card_id = gs.alloc_id();
+        let counter_obj = CardObject::new(counter_card_id, counter_def, PlayerId(0), Zone::Stack);
+        gs.add_object(counter_obj);
+        let counter_sid = gs.alloc_stack_id();
+        gs.stack.push(counter_sid);
+        gs.stack_objects.insert(
+            counter_sid,
+            StackObject {
+                id: counter_sid,
+                payload: StackPayload::Spell {
+                    card_id: counter_card_id,
+                },
+                controller: PlayerId(0),
+                targets: vec![EffectTarget::StackObject { id: bears_sid }],
+            },
+        );
+
+        // Resolve Counterspell (top of stack).
+        let gs = resolve_top(gs);
+
+        // Bears countered: removed from stack, card in player 1's graveyard.
+        assert!(!gs.stack.contains(&bears_sid));
+        assert!(!gs.stack_objects.contains_key(&bears_sid));
+        assert_eq!(gs.objects[&bears_card_id].zone, Zone::Graveyard);
+        assert!(gs.graveyards[&PlayerId(1)].contains(&bears_card_id));
+        // Counterspell itself resolved to player 0's graveyard.
+        assert_eq!(gs.objects[&counter_card_id].zone, Zone::Graveyard);
+        assert!(gs.graveyards[&PlayerId(0)].contains(&counter_card_id));
+        assert!(gs.stack.is_empty());
     }
 }
