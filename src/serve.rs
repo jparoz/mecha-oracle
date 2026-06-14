@@ -388,8 +388,10 @@ fn compute_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<Ac
 fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<ActionItemView> {
     let mut actions = Vec::new();
 
+    let is_land = obj.definition.type_line.is_land();
+
     // Play land (no mana cost — always structurally valid when conditions met)
-    if obj.definition.type_line.is_land() {
+    if is_land {
         let can_play = state.active_player == pid
             && state.priority_player == pid
             && state.lands_played_this_turn == 0
@@ -406,11 +408,10 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                 },
             });
         }
-        return actions;
     }
 
-    // Cast spell
-    if obj.definition.mana_cost.is_some() && can_cast_structural(state, pid, obj) {
+    // Cast spell (lands cannot be cast)
+    if !is_land && obj.definition.mana_cost.is_some() && can_cast_structural(state, pid, obj) {
         // Collect target requirements from all SpellEffect abilities
         let target_filters: Vec<_> = obj
             .definition
@@ -428,6 +429,13 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
             .copied()
             .collect();
 
+        let cost_label = obj
+            .definition
+            .mana_cost
+            .as_ref()
+            .map(format_mana_cost_braced)
+            .unwrap_or_default();
+
         if target_filters.is_empty() {
             // Untargeted spell
             actions.push(ActionItemView {
@@ -435,7 +443,8 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "cast_spell",
-                        "object_id": obj.id.0
+                        "object_id": obj.id.0,
+                        "cost_label": cost_label
                     }),
                 },
             });
@@ -470,7 +479,8 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                             action: serde_json::json!({
                                 "type": "cast_spell",
                                 "object_id": obj.id.0,
-                                "targets": [target_val]
+                                "targets": [target_val],
+                                "cost_label": cost_label
                             }),
                         },
                     });
@@ -490,7 +500,8 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "cycle_card",
-                        "object_id": obj.id.0
+                        "object_id": obj.id.0,
+                        "cost_label": format_mana_cost_braced(cost)
                     }),
                 },
             });
@@ -578,7 +589,8 @@ fn compute_battlefield_actions(
                         "type": "activate_ability",
                         "object_id": obj.id.0,
                         "ability_index": i,
-                        "mana_ability": produces_mana
+                        "mana_ability": produces_mana,
+                        "cost_label": format_ability_cost_label(&ability.cost)
                     }),
                 },
             });
@@ -679,6 +691,20 @@ fn format_ward_cost_label(components: &[CostComponent]) -> String {
             CostComponent::Mana(m) => Some(format!("{m}")),
             CostComponent::PayLife(n) => Some(format!("Pay {n} life")),
             _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn format_ability_cost_label(cost: &[CostComponent]) -> String {
+    cost.iter()
+        .map(|c| match c {
+            CostComponent::Tap => "{T}".to_string(),
+            CostComponent::Mana(m) => format_mana_cost_braced(m),
+            CostComponent::PayLife(n) => format!("Pay {n} life"),
+            CostComponent::Sacrifice(n, _) => format!("Sacrifice {n}"),
+            CostComponent::Discard(n, _) => format!("Discard {n}"),
+            CostComponent::Unimplemented(s) => s.clone(),
         })
         .collect::<Vec<_>>()
         .join(", ")

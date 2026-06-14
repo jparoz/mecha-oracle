@@ -424,8 +424,7 @@ function dispatchAction(item) {
         if (t === 'cast_spell' || t === 'cycle_card' ||
             (t === 'activate_ability' && !item.action.mana_ability)) {
             const kind = t === 'activate_ability' ? 'activate' : t === 'cycle_card' ? 'cycle' : 'cast';
-            const costLabel = item.label;
-            enterPaymentContext(kind, costLabel, item.action, false, null);
+            enterPaymentContext(kind, item.label, item.action.cost_label || '', item.action, false, null);
             return;
         }
         sendAction(item.action);
@@ -451,10 +450,45 @@ function buildPopupItems(actions) {
     }));
 }
 
-// kind: "cast" | "activate" | "ward"
-function enterPaymentContext(kind, costLabel, confirmAction, declineable, declineAction) {
-  paymentContext = { kind, costLabel, confirmAction, declineable, declineAction };
+// kind: "cast" | "activate" | "cycle" | "ward"
+// actionLabel: human-readable description (e.g. "Cast Counterspell", "Ward trigger — {2}")
+// costLabel: pure cost string (e.g. "{U}{U}", "{T}, {G}", "Pay 2 life")
+function enterPaymentContext(kind, actionLabel, costLabel, confirmAction, declineable, declineAction) {
+  paymentContext = { kind, actionLabel, costLabel, confirmAction, declineable, declineAction };
   renderPaymentPanel();
+}
+
+function canPayCost(costLabel, pool) {
+  if (!costLabel) return true;
+  const pips = costLabel.match(/\{([^}]+)\}/g) || [];
+  let generic = 0;
+  const colored = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+  for (const pip of pips) {
+    const inner = pip.slice(1, -1);
+    if (inner === 'T' || inner === 'Q') continue; // tap/untap: structural only
+    const n = parseInt(inner, 10);
+    if (!isNaN(n)) { generic += n; continue; }
+    if (inner === 'X') continue; // X costs: skip (no client-side validation)
+    if (inner.includes('/')) continue; // hybrid/phyrexian: skip
+    const col = inner.toUpperCase();
+    if (col in colored) colored[col]++;
+    else generic++;
+  }
+  const lifeMatch = costLabel.match(/Pay (\d+) life/);
+  if (lifeMatch) {
+    const myPid = currentState.priority_player;
+    const myPlayer = myPid === 0 ? currentState.p1 : currentState.p2;
+    if ((myPlayer?.life || 0) < parseInt(lifeMatch[1], 10)) return false;
+  }
+  if ((pool.w || 0) < colored.W) return false;
+  if ((pool.u || 0) < colored.U) return false;
+  if ((pool.b || 0) < colored.B) return false;
+  if ((pool.r || 0) < colored.R) return false;
+  if ((pool.g || 0) < colored.G) return false;
+  if ((pool.c || 0) < colored.C) return false;
+  const poolTotal = (pool.w||0)+(pool.u||0)+(pool.b||0)+(pool.r||0)+(pool.g||0)+(pool.c||0);
+  const coloredUsed = colored.W+colored.U+colored.B+colored.R+colored.G+colored.C;
+  return poolTotal - coloredUsed >= generic;
 }
 
 function renderPaymentPanel() {
@@ -464,31 +498,14 @@ function renderPaymentPanel() {
     return;
   }
   panel.style.display = '';
-  document.getElementById('payment-title').textContent =
-    paymentContext.kind === 'ward'     ? 'Ward — pay to protect your spell'
-    : paymentContext.kind === 'cast'   ? 'Cast — pay cost'
-    : paymentContext.kind === 'cycle'  ? 'Cycle — pay cost'
-    : 'Activate — pay cost';
+  document.getElementById('payment-title').textContent = paymentContext.actionLabel || 'Pay cost';
   document.getElementById('payment-cost').textContent = paymentContext.costLabel || '(no cost)';
+  document.getElementById('payment-pool').textContent = '';
 
-  // Mana pool from current state — server sends per-player with keys w/u/b/r/g/c
   const myPid = currentState.priority_player;
   const myPlayer = myPid === 0 ? currentState.p1 : currentState.p2;
   const pool = myPlayer ? myPlayer.mana_pool : {};
-  const poolParts = [];
-  if (pool.w) poolParts.push(`W\xd7${pool.w}`);
-  if (pool.u) poolParts.push(`U\xd7${pool.u}`);
-  if (pool.b) poolParts.push(`B\xd7${pool.b}`);
-  if (pool.r) poolParts.push(`R\xd7${pool.r}`);
-  if (pool.g) poolParts.push(`G\xd7${pool.g}`);
-  if (pool.c) poolParts.push(`C\xd7${pool.c}`);
-  document.getElementById('payment-pool').textContent =
-    'Pool: ' + (poolParts.length ? poolParts.join(' ') : 'empty');
-
-  // TODO: compute remaining-to-pay from cost string vs pool (non-trivial for colored mana)
-  document.getElementById('payment-remaining').textContent = '';
-
-  document.getElementById('payment-confirm').disabled = false;
+  document.getElementById('payment-confirm').disabled = !canPayCost(paymentContext.costLabel, pool);
   document.getElementById('payment-cancel').style.display  = paymentContext.declineable ? 'none' : '';
   document.getElementById('payment-decline').style.display = paymentContext.declineable ? '' : 'none';
 }
@@ -524,7 +541,8 @@ function maybeEnterWardContext(s) {
   if (top.kind !== 'ward_trigger') return;
   enterPaymentContext(
     'ward',
-    top.cost_label || 'unknown cost',
+    top.label || 'Ward trigger',
+    top.cost_label || '',
     { type: 'pay_cost', stack_id: top.id },
     true,
     { type: 'decline_cost', stack_id: top.id }
