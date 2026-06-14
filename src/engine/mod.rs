@@ -32,5 +32,5 @@ pub enum EngineError {
     NotYourPriority,
     WrongNumberOfTargets, // CR 601.2c: wrong number of targets declared
     IllegalTarget,        // CR 601.2c: declared target is not a legal target
-    InsufficientLife,     // CR 702.21: Ward life cost cannot be paid
+    InsufficientLife,     // CR 116.5: player cannot pay a life cost component
 }

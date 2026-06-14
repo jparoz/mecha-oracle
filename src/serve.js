@@ -421,8 +421,9 @@ function findCard(cardId, pid) {
 function dispatchAction(item) {
     if (item.kind === 'server') {
         const t = item.action.type;
-        if (t === 'cast_spell' || t === 'activate_ability' || t === 'cycle_card') {
-            const kind = t === 'activate_ability' ? 'activate' : 'cast';
+        if (t === 'cast_spell' || t === 'cycle_card' ||
+            (t === 'activate_ability' && !item.action.mana_ability)) {
+            const kind = t === 'activate_ability' ? 'activate' : t === 'cycle_card' ? 'cycle' : 'cast';
             const costLabel = item.label;
             enterPaymentContext(kind, costLabel, item.action, false, null);
             return;
@@ -466,6 +467,7 @@ function renderPaymentPanel() {
   document.getElementById('payment-title').textContent =
     paymentContext.kind === 'ward'     ? 'Ward — pay to protect your spell'
     : paymentContext.kind === 'cast'   ? 'Cast — pay cost'
+    : paymentContext.kind === 'cycle'  ? 'Cycle — pay cost'
     : 'Activate — pay cost';
   document.getElementById('payment-cost').textContent = paymentContext.costLabel || '(no cost)';
 
@@ -483,6 +485,7 @@ function renderPaymentPanel() {
   document.getElementById('payment-pool').textContent =
     'Pool: ' + (poolParts.length ? poolParts.join(' ') : 'empty');
 
+  // TODO: compute remaining-to-pay from cost string vs pool (non-trivial for colored mana)
   document.getElementById('payment-remaining').textContent = '';
 
   document.getElementById('payment-confirm').disabled = false;

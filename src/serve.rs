@@ -577,7 +577,8 @@ fn compute_battlefield_actions(
                     action: serde_json::json!({
                         "type": "activate_ability",
                         "object_id": obj.id.0,
-                        "ability_index": i
+                        "ability_index": i,
+                        "mana_ability": produces_mana
                     }),
                 },
             });
