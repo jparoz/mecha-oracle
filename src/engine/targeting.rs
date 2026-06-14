@@ -94,7 +94,12 @@ pub fn legal_targets(
 ) -> Vec<EffectTarget> {
     let mut result = Vec::new();
     if matches!(filter, TargetFilter::Spell(_)) {
-        // implemented in Task 4
+        for &id in &state.stack {
+            let t = EffectTarget::StackObject { id };
+            if is_legal_target(state, &t, filter, caster, source_colors) {
+                result.push(t);
+            }
+        }
         return result;
     }
     if matches!(filter, TargetFilter::Creature | TargetFilter::Any) {
@@ -130,7 +135,11 @@ pub fn targets_still_legal(state: &GameState, targets: &[EffectTarget]) -> bool 
             .map(|o| o.zone == Zone::Battlefield)
             .unwrap_or(false),
         EffectTarget::Player { id } => state.get_player(*id).map(|p| !p.has_lost).unwrap_or(false),
-        EffectTarget::StackObject { .. } => false, // implemented in Task 4
+        EffectTarget::StackObject { id } => state
+            .stack_objects
+            .get(id)
+            .map(|o| matches!(o.payload, StackPayload::Spell { .. }))
+            .unwrap_or(false),
     })
 }
 
@@ -550,5 +559,84 @@ mod tests {
             PlayerId(0),
             &[],
         ));
+    }
+
+    #[test]
+    fn legal_targets_spell_any_returns_matching_stack_spells() {
+        use crate::types::ability::SpellFilter;
+        use crate::types::card::CardType;
+        let mut gs = two_player_state();
+        let (_, sid) = push_instant_on_stack(&mut gs, PlayerId(0), vec![CardType::Creature]);
+        let targets = legal_targets(
+            &gs,
+            &TargetFilter::Spell(SpellFilter::any()),
+            PlayerId(1),
+            &[],
+        );
+        assert_eq!(targets, vec![EffectTarget::StackObject { id: sid }]);
+    }
+
+    #[test]
+    fn legal_targets_spell_filter_excludes_creature_spell() {
+        use crate::types::ability::SpellFilter;
+        use crate::types::card::CardType;
+        let mut gs = two_player_state();
+        let (_, _sid) = push_instant_on_stack(&mut gs, PlayerId(0), vec![CardType::Creature]);
+        let targets = legal_targets(
+            &gs,
+            &TargetFilter::Spell(SpellFilter::noncreature()),
+            PlayerId(1),
+            &[],
+        );
+        assert!(targets.is_empty());
+    }
+
+    #[test]
+    fn legal_targets_spell_filter_excludes_triggered_abilities() {
+        use crate::types::ObjectId;
+        use crate::types::ability::SpellFilter;
+        let mut gs = two_player_state();
+        let sid = gs.alloc_stack_id();
+        gs.stack.push(sid);
+        gs.stack_objects.insert(
+            sid,
+            crate::types::stack::StackObject {
+                id: sid,
+                payload: crate::types::stack::StackPayload::TriggeredAbility {
+                    source_id: ObjectId(99),
+                    effect: vec![],
+                    label: "test".into(),
+                },
+                controller: PlayerId(0),
+                targets: vec![],
+            },
+        );
+        let targets = legal_targets(
+            &gs,
+            &TargetFilter::Spell(SpellFilter::any()),
+            PlayerId(1),
+            &[],
+        );
+        assert!(targets.is_empty());
+    }
+
+    #[test]
+    fn targets_still_legal_true_for_spell_on_stack() {
+        use crate::types::card::CardType;
+        let mut gs = two_player_state();
+        let (_, sid) = push_instant_on_stack(&mut gs, PlayerId(0), vec![CardType::Instant]);
+        let targets = vec![EffectTarget::StackObject { id: sid }];
+        assert!(targets_still_legal(&gs, &targets));
+    }
+
+    #[test]
+    fn targets_still_legal_false_after_spell_countered() {
+        use crate::engine::stack::counter_spell_on_stack;
+        use crate::types::card::CardType;
+        let mut gs = two_player_state();
+        let (_, sid) = push_instant_on_stack(&mut gs, PlayerId(0), vec![CardType::Instant]);
+        let targets = vec![EffectTarget::StackObject { id: sid }];
+        counter_spell_on_stack(&mut gs, sid);
+        assert!(!targets_still_legal(&gs, &targets));
     }
 }
