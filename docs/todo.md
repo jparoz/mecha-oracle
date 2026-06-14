@@ -114,3 +114,15 @@ Currently `casting.rs` only handles standard `ManaCost` payment.
 - **Soulbond** (702.95): pair with another creature when either ETBs; both gain an ability
   while paired. Needs a `paired_with: Option<ObjectId>` field on `PermanentState` and
   pair/unpair logic on zone changes.
+
+---
+
+## 🔁 Conditional counter spells
+
+Cards like Mana Leak ({1}{U}), Quench ({U}{U}), Syncopate ({X}{U}), and Condescend require
+"counter target spell unless its controller pays {N}" semantics. This requires:
+
+- A payment obligation directed at the targeted spell's controller (not the counterspell caster) — similar to Ward, but triggered at resolution rather than at targeting time.
+- Extend `StackPayload` with a `ConditionalCounter` variant (analogous to `WardTrigger`) that sits on the stack when the countered spell's controller still has a window to pay.
+- Or model as a two-step resolution: the counterspell resolves into a triggered ability ("unless paid, counter that spell") using the existing cost/payment infrastructure in `engine/costs.rs`.
+- See CR 116.2b (players may take actions during cost-payment windows) and the Ward implementation in `engine/triggered.rs` and `engine/costs.rs` for the pattern to follow.
