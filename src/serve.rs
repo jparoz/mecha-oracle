@@ -388,7 +388,7 @@ fn compute_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<Ac
 fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<ActionItemView> {
     let mut actions = Vec::new();
 
-    // Play land (no mana cost — always can_pay_cost: true when structurally valid)
+    // Play land (no mana cost — always structurally valid when conditions met)
     if obj.definition.type_line.is_land() {
         let can_play = state.active_player == pid
             && state.priority_player == pid
@@ -507,7 +507,7 @@ fn compute_battlefield_actions(
 ) -> Vec<ActionItemView> {
     let mut actions = Vec::new();
 
-    // Attacker toggle (no cost — can_pay_cost always true)
+    // Attacker toggle (no cost)
     if state.step() == Step::DeclareAttackers && pid == state.active_player {
         let cmt = state.controllers_most_recent_turn(pid);
         let can_atk = state
@@ -525,7 +525,7 @@ fn compute_battlefield_actions(
         }
     }
 
-    // Blocker assignment (no cost — can_pay_cost always true)
+    // Blocker assignment (no cost)
     if state.step() == Step::DeclareBlockers && pid != state.active_player {
         for &atk_id in &state.combat.attackers {
             // can_block_attacker delegates to perm.can_block() (tapped, Decayed) internally
