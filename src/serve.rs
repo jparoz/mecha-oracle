@@ -10,9 +10,7 @@ use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{can_block_attacker, declare_attackers, declare_blockers};
 use mecha_oracle::engine::costs::can_pay_cost_components;
 use mecha_oracle::engine::cycling::cycle_card;
-use mecha_oracle::engine::mana::{
-    can_pay_mana, greedy_payment_plan, reset_mana, tap_land_for_mana,
-};
+use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
@@ -410,12 +408,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
     }
 
     // Cast spell
-    if let Some(cost) = &obj.definition.mana_cost
-        && can_cast_structural(state, pid, obj)
-    {
-        let player = state.get_player(pid).unwrap();
-        let mana_ok = greedy_payment_plan(cost, &player.mana_pool, player.life).is_some();
-
+    if obj.definition.mana_cost.is_some() && can_cast_structural(state, pid, obj) {
         // Collect target requirements from all SpellEffect abilities
         let target_filters: Vec<_> = obj
             .definition
@@ -437,7 +430,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
             // Untargeted spell
             actions.push(ActionItemView {
                 label: format!("Cast {}", obj.definition.name),
-                can_pay_cost: mana_ok,
+                can_pay_cost: true,
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "cast_spell",
@@ -472,7 +465,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                     let target_val = serde_json::to_value(&target).unwrap();
                     actions.push(ActionItemView {
                         label: format!("Cast {} → {}", obj.definition.name, target_name),
-                        can_pay_cost: mana_ok,
+                        can_pay_cost: true,
                         kind: ActionItemKind::Server {
                             action: serde_json::json!({
                                 "type": "cast_spell",
@@ -492,11 +485,9 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
         if let OracleSpan::Parsed(Ability::Cycling(cost)) = span
             && state.priority_player == pid
         {
-            let player = state.get_player(pid).unwrap();
-            let mana_ok = can_pay_mana(cost, &player.mana_pool, player.life);
             actions.push(ActionItemView {
                 label: format!("Cycle ({})", format_mana_cost(cost)),
-                can_pay_cost: mana_ok,
+                can_pay_cost: true,
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "cycle_card",
