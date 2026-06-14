@@ -6,6 +6,7 @@ let blockersAssignment = {}; // blocker_id (number) -> attacker_id (number)
 let gyData = { 1: [], 2: [] };
 let toastTimer = null;
 let popupDismissHandler = null;
+let paymentContext = null; // null when no payment is in progress
 
 
 // ── Toast ────────────────────────────────────────────────────────────────────
@@ -153,6 +154,8 @@ function describeAction(action) {
       return `<span class="log-engine">— P${passerLabel} passed priority —</span>`;
     }
     case 'reset_mana': return `<span class="who">P${apLabel}</span> reset mana`;
+    case 'pay_cost':    return `<span class="who">P${currentState.priority_player + 1}</span> paid ward cost`;
+    case 'decline_cost': return `<span class="who">P${currentState.priority_player + 1}</span> declined ward — spell countered`;
     default: return JSON.stringify(action);
   }
 }
@@ -209,6 +212,8 @@ function render(s) {
 
   renderActionBar(s);
   renderStack(s.stack ?? []);
+  maybeEnterWardContext(s);
+  renderPaymentPanel();
 }
 
 function renderMana(elId, pool, canReset) {
@@ -254,7 +259,7 @@ function cardHTML(card, s, pid, zone) {
   if (isSelected) classes += ' selected';
 
   if (!isSelected && !card.is_attacking && !card.is_blocking) {
-    if (card.actions && card.actions.some(a => a.can_pay_cost)) {
+    if (card.actions && card.actions.length > 0) {
       classes += ' actionable';
     } else {
       classes += ' dim';
@@ -415,6 +420,13 @@ function findCard(cardId, pid) {
 
 function dispatchAction(item) {
     if (item.kind === 'server') {
+        const t = item.action.type;
+        if (t === 'cast_spell' || t === 'activate_ability' || t === 'cycle_card') {
+            const kind = t === 'activate_ability' ? 'activate' : 'cast';
+            const costLabel = item.label;
+            enterPaymentContext(kind, costLabel, item.action, false, null);
+            return;
+        }
         sendAction(item.action);
     } else if (item.kind === 'toggle_attacker') {
         const idx = attackersSelected.indexOf(item.object_id);
@@ -433,9 +445,87 @@ function dispatchAction(item) {
 function buildPopupItems(actions) {
     return actions.map(a => ({
         label: a.label,
-        disabled: !a.can_pay_cost,
-        onClick: a.can_pay_cost ? () => dispatchAction(a) : () => {},
+        disabled: false,
+        onClick: () => dispatchAction(a),
     }));
+}
+
+// kind: "cast" | "activate" | "ward"
+function enterPaymentContext(kind, costLabel, confirmAction, declineable, declineAction) {
+  paymentContext = { kind, costLabel, confirmAction, declineable, declineAction };
+  renderPaymentPanel();
+}
+
+function renderPaymentPanel() {
+  const panel = document.getElementById('payment-panel');
+  if (!paymentContext || !currentState) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+  document.getElementById('payment-title').textContent =
+    paymentContext.kind === 'ward'     ? 'Ward — pay to protect your spell'
+    : paymentContext.kind === 'cast'   ? 'Cast — pay cost'
+    : 'Activate — pay cost';
+  document.getElementById('payment-cost').textContent = paymentContext.costLabel || '(no cost)';
+
+  // Mana pool from current state — server sends per-player with keys w/u/b/r/g/c
+  const myPid = currentState.priority_player;
+  const myPlayer = myPid === 0 ? currentState.p1 : currentState.p2;
+  const pool = myPlayer ? myPlayer.mana_pool : {};
+  const poolParts = [];
+  if (pool.w) poolParts.push(`W\xd7${pool.w}`);
+  if (pool.u) poolParts.push(`U\xd7${pool.u}`);
+  if (pool.b) poolParts.push(`B\xd7${pool.b}`);
+  if (pool.r) poolParts.push(`R\xd7${pool.r}`);
+  if (pool.g) poolParts.push(`G\xd7${pool.g}`);
+  if (pool.c) poolParts.push(`C\xd7${pool.c}`);
+  document.getElementById('payment-pool').textContent =
+    'Pool: ' + (poolParts.length ? poolParts.join(' ') : 'empty');
+
+  document.getElementById('payment-remaining').textContent = '';
+
+  document.getElementById('payment-confirm').disabled = false;
+  document.getElementById('payment-cancel').style.display  = paymentContext.declineable ? 'none' : '';
+  document.getElementById('payment-decline').style.display = paymentContext.declineable ? '' : 'none';
+}
+
+function confirmPayment() {
+  if (!paymentContext) return;
+  const action = paymentContext.confirmAction;
+  paymentContext = null;
+  renderPaymentPanel();
+  sendAction(action);
+}
+
+function cancelPayment() {
+  if (!paymentContext) return;
+  const needsReset = currentState && currentState.can_reset_mana;
+  paymentContext = null;
+  renderPaymentPanel();
+  if (needsReset) sendAction({ type: 'reset_mana' });
+}
+
+function declinePayment() {
+  if (!paymentContext || !paymentContext.declineable) return;
+  const action = paymentContext.declineAction;
+  paymentContext = null;
+  renderPaymentPanel();
+  sendAction(action);
+}
+
+function maybeEnterWardContext(s) {
+  if (paymentContext !== null) return;
+  if (!s.stack || s.stack.length === 0) return;
+  const top = s.stack[s.stack.length - 1];
+  if (top.kind !== 'ward_trigger') return;
+  enterPaymentContext(
+    'ward',
+    top.cost_label || 'unknown cost',
+    { type: 'pay_cost', stack_id: top.id },
+    true,
+    { type: 'decline_cost', stack_id: top.id }
+  );
 }
 
 // autoDispatchIfSingle=true for left-click; false for right-click (always show popup)
@@ -447,9 +537,7 @@ function handleCardClick(cardId, pid, event, autoDispatchIfSingle) {
     const actions = card ? card.actions : [];
 
     if (autoDispatchIfSingle) {
-        if (actions.length === 1 && actions[0].can_pay_cost) {
-            dispatchAction(actions[0]); return;
-        }
+        if (actions.length === 1) { dispatchAction(actions[0]); return; }
         if (actions.length === 0) return;
     }
 

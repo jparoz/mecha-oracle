@@ -85,6 +85,19 @@
 <!-- Popup disambiguation menu -->
 <div id="popup"></div>
 
+<!-- Payment context panel (hidden when not in a payment flow) -->
+<div id="payment-panel" class="payment-panel" style="display:none">
+  <div class="payment-title" id="payment-title">Pay cost</div>
+  <div class="payment-cost" id="payment-cost"></div>
+  <div class="payment-pool" id="payment-pool"></div>
+  <div class="payment-remaining" id="payment-remaining"></div>
+  <div class="payment-buttons">
+    <button id="payment-confirm" onclick="confirmPayment()">Pay</button>
+    <button id="payment-cancel" onclick="cancelPayment()" style="display:none">Cancel</button>
+    <button id="payment-decline" onclick="declinePayment()" style="display:none">Decline</button>
+  </div>
+</div>
+
 <script src="/static/app.js"></script>
 </body>
 </html>
