@@ -7,7 +7,7 @@ This file (docs/todo.md) is a running scratchpad I'll keep of bugs/issues as I f
 
 # Ensure that linter is clean before finalising a block of work
 
-Before finishing a block of work, ensure that `cargo clippy --all-targets` output is clean, and fix anything that comes up. Use `cargo clippy --fix` as a first step.
+Before finishing a block of work, ensure that `cargo clippy --all-targets` output is clean, and fix anything that comes up. Use `cargo clippy --fix` as a first step. If you grep the output, be sure to include all output levels in the filter (e.g. error, warning, etc.).
 
 # Note on running cargo test
 
