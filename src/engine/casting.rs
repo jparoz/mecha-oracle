@@ -1009,4 +1009,229 @@ mod tests {
             other => panic!("Expected WardTrigger, got {other:?}"),
         }
     }
+
+    // --- Counterspell integration tests (CR 701.5, CR 608.2b) ---
+
+    fn make_counterspell_def() -> CardDefinition {
+        use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
+        use crate::types::mana::ManaColor;
+        CardDefinition {
+            name: "Counterspell".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Blue, ManaPip::Blue],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Counter target spell.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![TargetFilter::Spell(SpellFilter::any())],
+                steps: vec![EffectStep::CounterSpell],
+            }))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![ManaColor::Blue],
+        }
+    }
+
+    fn make_negate_def() -> CardDefinition {
+        use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
+        use crate::types::mana::ManaColor;
+        CardDefinition {
+            name: "Negate".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(1), ManaPip::Blue],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Counter target noncreature spell.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![TargetFilter::Spell(SpellFilter::noncreature())],
+                steps: vec![EffectStep::CounterSpell],
+            }))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![ManaColor::Blue],
+        }
+    }
+
+    /// P0 casts Grizzly Bears; P0 passes; P1 counters with Counterspell; both pass → Bears countered.
+    #[test]
+    fn counterspell_counters_opponent_creature_spell() {
+        use crate::engine::stack::pass_priority;
+        use crate::types::effect::EffectTarget;
+
+        let db = test_db();
+        let mut gs = make_state();
+
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
+        let bears_id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![]).unwrap();
+        let bears_sid = gs.stack[0];
+
+        let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
+
+        gs.get_player_mut(PlayerId(1)).unwrap().mana_pool.blue += 2;
+        let counter_id = put_in_hand(&mut gs, PlayerId(1), make_counterspell_def());
+        let gs = cast_spell(
+            gs,
+            PlayerId(1),
+            counter_id,
+            vec![EffectTarget::StackObject { id: bears_sid }],
+        )
+        .unwrap();
+
+        // P1 retains priority; P1 passes, P0 passes → resolve Counterspell.
+        let gs = pass_priority(gs, PlayerId(1)).unwrap();
+        let gs = pass_priority(gs, PlayerId(0)).unwrap();
+
+        assert!(!gs.battlefield.contains_key(&bears_id));
+        assert_eq!(gs.objects[&bears_id].zone, Zone::Graveyard);
+        assert!(gs.graveyards[&PlayerId(0)].contains(&bears_id));
+        assert_eq!(gs.objects[&counter_id].zone, Zone::Graveyard);
+        assert!(gs.stack.is_empty());
+    }
+
+    /// P0 casts an instant (noncreature); P0 passes; P1 counters with Negate; both pass → instant countered.
+    #[test]
+    fn negate_counters_opponent_noncreature_spell() {
+        use crate::engine::stack::pass_priority;
+        use crate::types::ability::SpellAbility;
+        use crate::types::effect::EffectTarget;
+        use crate::types::mana::ManaColor;
+
+        let mut gs = make_state();
+
+        let draw_def = CardDefinition {
+            name: "Opt".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Blue],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: "Draw a card.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+                target_requirements: vec![],
+                steps: vec![EffectStep::DrawCard(1)],
+            }))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![ManaColor::Blue],
+        };
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 1;
+        let draw_id = put_in_hand(&mut gs, PlayerId(0), draw_def);
+        let gs = cast_spell(gs, PlayerId(0), draw_id, vec![]).unwrap();
+        let draw_sid = gs.stack[0];
+
+        let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
+
+        gs.get_player_mut(PlayerId(1)).unwrap().mana_pool.blue += 2;
+        let negate_id = put_in_hand(&mut gs, PlayerId(1), make_negate_def());
+        let gs = cast_spell(
+            gs,
+            PlayerId(1),
+            negate_id,
+            vec![EffectTarget::StackObject { id: draw_sid }],
+        )
+        .unwrap();
+
+        let gs = pass_priority(gs, PlayerId(1)).unwrap();
+        let gs = pass_priority(gs, PlayerId(0)).unwrap();
+
+        assert_eq!(gs.objects[&draw_id].zone, Zone::Graveyard);
+        assert!(gs.graveyards[&PlayerId(0)].contains(&draw_id));
+        assert!(gs.stack.is_empty());
+    }
+
+    /// P1 tries to Negate P0's Grizzly Bears (a creature spell) → IllegalTarget.
+    #[test]
+    fn negate_cannot_target_creature_spell() {
+        use crate::engine::stack::pass_priority;
+        use crate::types::effect::EffectTarget;
+
+        let db = test_db();
+        let mut gs = make_state();
+
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
+        let bears_id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![]).unwrap();
+        let bears_sid = gs.stack[0];
+
+        let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
+
+        gs.get_player_mut(PlayerId(1)).unwrap().mana_pool.blue += 2;
+        let negate_id = put_in_hand(&mut gs, PlayerId(1), make_negate_def());
+        let result = cast_spell(
+            gs,
+            PlayerId(1),
+            negate_id,
+            vec![EffectTarget::StackObject { id: bears_sid }],
+        );
+
+        assert!(matches!(result, Err(EngineError::IllegalTarget)));
+    }
+
+    /// P0's Counterspell fizzles when its Bears target is already countered before resolution.
+    /// CR 608.2b: if all targets are illegal at resolution, the spell is countered.
+    #[test]
+    fn counterspell_fizzles_when_target_already_gone() {
+        use crate::engine::stack::{counter_spell_on_stack, pass_priority};
+        use crate::types::effect::EffectTarget;
+
+        let db = test_db();
+        let mut gs = make_state();
+
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
+        let bears_id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![]).unwrap();
+        let bears_sid = gs.stack[0];
+
+        let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
+
+        gs.get_player_mut(PlayerId(1)).unwrap().mana_pool.blue += 2;
+        let counter_id = put_in_hand(&mut gs, PlayerId(1), make_counterspell_def());
+        let gs = cast_spell(
+            gs,
+            PlayerId(1),
+            counter_id,
+            vec![EffectTarget::StackObject { id: bears_sid }],
+        )
+        .unwrap();
+
+        // P1 passes, then Bears are removed from the stack before resolution.
+        let mut gs = pass_priority(gs, PlayerId(1)).unwrap();
+        counter_spell_on_stack(&mut gs, bears_sid);
+
+        // P0 passes → Counterspell resolves but fizzles (target gone — CR 608.2b).
+        let gs = pass_priority(gs, PlayerId(0)).unwrap();
+
+        // Counterspell fizzled to graveyard without effect.
+        assert_eq!(gs.objects[&counter_id].zone, Zone::Graveyard);
+        // Bears already countered; in graveyard.
+        assert_eq!(gs.objects[&bears_id].zone, Zone::Graveyard);
+        assert!(gs.stack.is_empty());
+    }
 }
