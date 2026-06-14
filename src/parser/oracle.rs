@@ -1165,6 +1165,31 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
             }
         }
     }
+    // Counter patterns — CR 701.5: "counter target [type] spell."
+    // lc has trailing periods stripped, so patterns have no trailing period.
+    // More-specific patterns checked before "counter target spell" to prevent
+    // early exit on the generic pattern eating "counter target noncreature spell".
+    {
+        use crate::types::ability::SpellFilter;
+        use crate::types::effect::EffectStep;
+        let counter_patterns: &[(&str, fn() -> SpellFilter)] = &[
+            (
+                "counter target instant or sorcery spell",
+                SpellFilter::instant_or_sorcery,
+            ),
+            ("counter target noncreature spell", SpellFilter::noncreature),
+            ("counter target creature spell", SpellFilter::creature),
+            ("counter target spell", SpellFilter::any),
+        ];
+        for (pattern, make_filter) in counter_patterns {
+            if lc == *pattern {
+                return SpellAbility {
+                    target_requirements: vec![TargetFilter::Spell(make_filter())],
+                    steps: vec![EffectStep::CounterSpell],
+                };
+            }
+        }
+    }
     // No targeting pattern found — untargeted spell
     SpellAbility {
         target_requirements: vec![],
@@ -1924,12 +1949,64 @@ mod tests {
     }
 
     #[test]
-    fn counterspell_fully_unimplemented() {
+    fn counterspell_parses_to_counter_any_spell() {
+        use crate::types::ability::{SpellFilter, TargetFilter};
+        use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target spell.", "");
+        assert_eq!(result.len(), 1);
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect, got {:?}", result[0]);
+        };
         assert_eq!(
-            result,
-            vec![spell_effect(vec![unimpl("Counter target spell"),])]
+            sa.target_requirements,
+            vec![TargetFilter::Spell(SpellFilter::any())]
         );
+        assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
+    }
+
+    #[test]
+    fn negate_parses_to_counter_noncreature_spell() {
+        use crate::types::ability::{SpellFilter, TargetFilter};
+        use crate::types::effect::EffectStep;
+        let result = parse_spell("Counter target noncreature spell.", "");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect");
+        };
+        assert_eq!(
+            sa.target_requirements,
+            vec![TargetFilter::Spell(SpellFilter::noncreature())]
+        );
+        assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
+    }
+
+    #[test]
+    fn essence_scatter_parses_to_counter_creature_spell() {
+        use crate::types::ability::{SpellFilter, TargetFilter};
+        use crate::types::effect::EffectStep;
+        let result = parse_spell("Counter target creature spell.", "");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect");
+        };
+        assert_eq!(
+            sa.target_requirements,
+            vec![TargetFilter::Spell(SpellFilter::creature())]
+        );
+        assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
+    }
+
+    #[test]
+    fn dispel_parses_to_counter_instant_or_sorcery_spell() {
+        use crate::types::ability::{SpellFilter, TargetFilter};
+        use crate::types::effect::EffectStep;
+        let result = parse_spell("Counter target instant or sorcery spell.", "");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect");
+        };
+        assert_eq!(
+            sa.target_requirements,
+            vec![TargetFilter::Spell(SpellFilter::instant_or_sorcery())]
+        );
+        assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
     }
 
     #[test]
