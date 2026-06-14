@@ -1,8 +1,4 @@
-use super::{
-    EngineError,
-    mana::{greedy_payment_plan, pay_mana_cost},
-    state_based_actions::check_and_apply_sbas,
-};
+use super::{EngineError, state_based_actions::check_and_apply_sbas};
 use crate::engine::triggered::collect_cast_triggers;
 use crate::types::ability::{CastFilter, StaticAbility};
 use crate::types::card::CardType;
@@ -165,14 +161,9 @@ pub fn cast_spell(
             .ok_or(EngineError::CannotCastNow)?
     };
 
-    let plan = {
-        let player = state
-            .get_player(player_id)
-            .ok_or(EngineError::CardNotFound)?;
-        greedy_payment_plan(&cost, &player.mana_pool, player.life)
-            .ok_or(EngineError::InsufficientMana)?
-    };
-    state = pay_mana_cost(state, player_id, &cost, &plan)?;
+    use crate::types::ability::CostComponent;
+    state =
+        super::costs::pay_cost_components(state, player_id, &[CostComponent::Mana(cost.clone())])?;
     state.mana_checkpoint = None;
     state
         .hands

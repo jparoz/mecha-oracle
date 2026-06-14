@@ -5,9 +5,10 @@ use axum::{
     routing::{get, post},
 };
 use mecha_oracle::cards::CardDatabase;
-use mecha_oracle::engine::activated::{activate_ability, can_pay_cost};
+use mecha_oracle::engine::activated::activate_ability;
 use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{can_block_attacker, declare_attackers, declare_blockers};
+use mecha_oracle::engine::costs::can_pay_cost_components;
 use mecha_oracle::engine::cycling::cycle_card;
 use mecha_oracle::engine::mana::{
     can_pay_mana, greedy_payment_plan, reset_mana, tap_land_for_mana,
@@ -579,10 +580,12 @@ fn compute_battlefield_actions(
         // Mana abilities don't need priority; non-mana abilities do (CR 117.1b)
         let structural_ok = produces_mana || state.priority_player == pid;
         if structural_ok {
-            let cost_ok = can_pay_cost(state, obj.id, ability, pid);
+            if !can_pay_cost_components(state, pid, Some(obj.id), &ability.cost) {
+                continue;
+            }
             actions.push(ActionItemView {
                 label: format_activated_ability(ability),
-                can_pay_cost: cost_ok,
+                can_pay_cost: true, // temporary — removed in Task 7
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "activate_ability",
@@ -793,8 +796,6 @@ enum ActionRequest {
         #[serde(default)]
         x_value: Option<u32>,
         #[serde(default)]
-        payment_plan: Option<mecha_oracle::types::mana::PaymentPlan>,
-        #[serde(default)]
         targets: Vec<mecha_oracle::types::effect::EffectTarget>,
     },
     CycleCard {
@@ -941,7 +942,6 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             object_id,
             ability_index,
             x_value,
-            payment_plan,
             targets,
         } => {
             let player = state.priority_player;
@@ -951,14 +951,13 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
                 ability_index,
                 player,
                 x_value,
-                payment_plan,
                 targets,
             )
             .map_err(|e| format!("{e:?}"))
         }
         ActionRequest::CycleCard { object_id } => {
             let player = state.priority_player;
-            cycle_card(state, ObjectId(object_id), player, None).map_err(|e| format!("{e:?}"))
+            cycle_card(state, ObjectId(object_id), player).map_err(|e| format!("{e:?}"))
         }
         // PayWard superseded by PayCost (Task 7 will remove this variant).
         ActionRequest::PayWard { trigger_id } => Err(format!(

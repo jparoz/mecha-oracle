@@ -1,9 +1,9 @@
 use super::EngineError;
-use crate::engine::mana::{can_pay_mana, greedy_payment_plan, pay_mana_cost};
+use crate::engine::costs::pay_cost_components;
 use crate::types::ability::Ability;
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
-use crate::types::{GameState, ObjectId, OracleSpan, PaymentPlan, PlayerId, Zone};
+use crate::types::{GameState, ObjectId, OracleSpan, PlayerId, Zone};
 
 /// CR 702.29: Cycling — pay the cycling cost and discard this card (cost), then draw a card (effect).
 /// The draw effect is placed on the stack. The card is discarded immediately as part of the cost.
@@ -11,7 +11,6 @@ pub fn cycle_card(
     mut state: GameState,
     card_id: ObjectId,
     player_id: PlayerId,
-    payment_plan: Option<PaymentPlan>,
 ) -> Result<GameState, EngineError> {
     if state.priority_player != player_id {
         return Err(EngineError::NotYourPriority);
@@ -43,26 +42,12 @@ pub fn cycle_card(
         })
         .ok_or(EngineError::AbilityIndexOutOfRange)?;
 
-    // Check and pay mana cost.
-    {
-        let player = state
-            .get_player(player_id)
-            .ok_or(EngineError::CardNotFound)?;
-        if !can_pay_mana(&cycling_cost, &player.mana_pool, player.life) {
-            return Err(EngineError::InsufficientMana);
-        }
-    }
-    let plan = match payment_plan {
-        Some(p) => p,
-        None => {
-            let player = state
-                .get_player(player_id)
-                .ok_or(EngineError::CardNotFound)?;
-            greedy_payment_plan(&cycling_cost, &player.mana_pool, player.life)
-                .ok_or(EngineError::InsufficientMana)?
-        }
-    };
-    state = pay_mana_cost(state, player_id, &cycling_cost, &plan)?;
+    use crate::types::ability::CostComponent;
+    state = pay_cost_components(
+        state,
+        player_id,
+        &[CostComponent::Mana(cycling_cost.clone())],
+    )?;
 
     // Pay the discard cost: move the card from hand to graveyard.
     state
@@ -171,7 +156,7 @@ mod tests {
         };
         let card_id = put_in_hand(&mut gs, PlayerId(0), cycling_card_def(cost));
 
-        let gs = cycle_card(gs, card_id, PlayerId(0), None).unwrap();
+        let gs = cycle_card(gs, card_id, PlayerId(0)).unwrap();
 
         // Card moved to graveyard (cost).
         assert!(!gs.hands[&PlayerId(0)].contains(&card_id));
@@ -194,7 +179,7 @@ mod tests {
         };
         let card_id = put_in_hand(&mut gs, PlayerId(0), cycling_card_def(cost));
 
-        let gs = cycle_card(gs, card_id, PlayerId(0), None).unwrap();
+        let gs = cycle_card(gs, card_id, PlayerId(0)).unwrap();
         let gs = resolve_top(gs);
 
         assert_eq!(gs.hands[&PlayerId(0)].len(), 1); // drew a card
@@ -210,7 +195,7 @@ mod tests {
         };
         let card_id = put_in_hand(&mut gs, PlayerId(0), cycling_card_def(cost));
         assert!(matches!(
-            cycle_card(gs, card_id, PlayerId(0), None),
+            cycle_card(gs, card_id, PlayerId(0)),
             Err(EngineError::InsufficientMana)
         ));
     }
@@ -228,7 +213,7 @@ mod tests {
         gs.libraries.get_mut(&PlayerId(0)).unwrap().push(id);
         gs.add_object(obj);
         assert!(matches!(
-            cycle_card(gs, id, PlayerId(0), None),
+            cycle_card(gs, id, PlayerId(0)),
             Err(EngineError::CardNotInHand)
         ));
     }
@@ -253,7 +238,7 @@ mod tests {
         };
         let card_id = put_in_hand(&mut gs, PlayerId(0), def);
         assert!(matches!(
-            cycle_card(gs, card_id, PlayerId(0), None),
+            cycle_card(gs, card_id, PlayerId(0)),
             Err(EngineError::AbilityIndexOutOfRange)
         ));
     }
@@ -265,7 +250,7 @@ mod tests {
         let cost = ManaCost { pips: vec![] };
         let card_id = put_in_hand(&mut gs, PlayerId(0), cycling_card_def(cost));
         assert!(matches!(
-            cycle_card(gs, card_id, PlayerId(0), None),
+            cycle_card(gs, card_id, PlayerId(0)),
             Err(EngineError::NotYourPriority)
         ));
     }

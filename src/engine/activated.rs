@@ -1,17 +1,15 @@
 use super::EngineError;
-use crate::engine::mana::{can_pay_mana, greedy_payment_plan, pay_mana_cost};
-use crate::types::ability::StaticAbility;
+use crate::engine::costs::{can_pay_cost_components, pay_cost_components};
 use crate::types::ability::{Ability, ActivatedAbility, CostComponent, OracleSpan};
 use crate::types::effect::EffectStep;
-use crate::types::{GameState, ManaCheckpoint, ObjectId, PaymentPlan, PlayerId, Zone};
+use crate::types::{GameState, ManaCheckpoint, ObjectId, PlayerId, Zone};
 
 pub fn activate_ability(
     mut state: GameState,
     object_id: ObjectId,
     ability_index: usize,
     activating_player: PlayerId,
-    x_value: Option<u32>,
-    payment_plan: Option<PaymentPlan>,
+    _x_value: Option<u32>,
     declared_targets: Vec<crate::types::effect::EffectTarget>,
 ) -> Result<GameState, EngineError> {
     // Validate object
@@ -69,29 +67,18 @@ pub fn activate_ability(
         }
     }
 
-    // Check costs (read-only)
-    for component in &ability.cost {
-        match component {
-            CostComponent::Tap => {
+    // CR 602.2: verify structural feasibility before mutating state.
+    if !can_pay_cost_components(&state, activating_player, Some(object_id), &ability.cost) {
+        for component in &ability.cost {
+            if let CostComponent::Tap = component {
                 let perm = state.battlefield.get(&object_id).unwrap();
                 if perm.tapped {
                     return Err(EngineError::AlreadyTapped);
                 }
-                let cmt = state.controllers_most_recent_turn(activating_player);
-                if perm.summoning_sick(cmt) && !perm.has_keyword(StaticAbility::Haste) {
-                    return Err(EngineError::SummoningSick);
-                }
+                return Err(EngineError::SummoningSick);
             }
-            CostComponent::Mana(cost) => {
-                let player = state
-                    .get_player(activating_player)
-                    .ok_or(EngineError::CardNotFound)?;
-                if !can_pay_mana(cost, &player.mana_pool, player.life) {
-                    return Err(EngineError::InsufficientMana);
-                }
-            }
-            _ => {} // Unimplemented, PayLife, Sacrifice, Discard — not enforced
         }
+        return Err(EngineError::NotYourPriority);
     }
 
     // If this is a mana ability, create checkpoint before paying anything
@@ -108,45 +95,28 @@ pub fn activate_ability(
         });
     }
 
-    // Pay costs
-    for component in ability.cost.iter() {
-        match component {
-            CostComponent::Tap => {
-                if produces_mana {
-                    state
-                        .mana_checkpoint
-                        .as_mut()
-                        .unwrap()
-                        .tapped_lands
-                        .push(object_id);
-                }
-                state.battlefield.get_mut(&object_id).unwrap().tapped = true;
+    // Pay costs.
+    for component in &ability.cost {
+        if let CostComponent::Tap = component {
+            if produces_mana {
+                state
+                    .mana_checkpoint
+                    .as_mut()
+                    .unwrap()
+                    .tapped_lands
+                    .push(object_id);
             }
-            CostComponent::Mana(cost) => {
-                let plan = match &payment_plan {
-                    Some(p) => {
-                        let mut p = p.clone();
-                        if let Some(xv) = x_value {
-                            p.x_value = Some(xv);
-                        }
-                        p
-                    }
-                    None => {
-                        let player = state
-                            .get_player(activating_player)
-                            .ok_or(EngineError::CardNotFound)?;
-                        let mut p = greedy_payment_plan(cost, &player.mana_pool, player.life)
-                            .ok_or(EngineError::InsufficientMana)?;
-                        if let Some(xv) = x_value {
-                            p.x_value = Some(xv);
-                        }
-                        p
-                    }
-                };
-                state = pay_mana_cost(state, activating_player, cost, &plan)?;
-            }
-            _ => {}
+            state.battlefield.get_mut(&object_id).unwrap().tapped = true;
         }
+    }
+    let non_tap: Vec<_> = ability
+        .cost
+        .iter()
+        .filter(|c| !matches!(c, CostComponent::Tap))
+        .cloned()
+        .collect();
+    if !non_tap.is_empty() {
+        state = pay_cost_components(state, activating_player, &non_tap)?;
     }
 
     if produces_mana {
@@ -247,45 +217,10 @@ pub fn activate_ability(
     }
 }
 
-pub fn can_pay_cost(
-    state: &GameState,
-    object_id: ObjectId,
-    ability: &ActivatedAbility,
-    player: PlayerId,
-) -> bool {
-    for component in &ability.cost {
-        match component {
-            CostComponent::Tap => {
-                let perm = match state.battlefield.get(&object_id) {
-                    Some(p) => p,
-                    None => return false,
-                };
-                if perm.tapped {
-                    return false;
-                }
-                let cmt = state.controllers_most_recent_turn(player);
-                if perm.summoning_sick(cmt) && !perm.has_keyword(StaticAbility::Haste) {
-                    return false;
-                }
-            }
-            CostComponent::Mana(cost) => {
-                let p = match state.get_player(player) {
-                    Some(p) => p,
-                    None => return false,
-                };
-                if !can_pay_mana(cost, &p.mana_pool, p.life) {
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::costs::can_pay_cost_components;
     use crate::types::ability::{Ability, ActivatedAbility, CostComponent};
     use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::effect::EffectStep;
@@ -413,7 +348,7 @@ mod tests {
     fn tap_mana_ability_taps_and_adds_mana() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
         assert!(gs.battlefield[&id].tapped);
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
     }
@@ -422,7 +357,7 @@ mod tests {
     fn tap_mana_ability_creates_checkpoint() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
         assert!(gs.mana_checkpoint.is_some());
         assert_eq!(gs.mana_checkpoint.as_ref().unwrap().tapped_lands, vec![id]);
     }
@@ -433,7 +368,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         gs.battlefield.get_mut(&id).unwrap().tapped = true;
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
+            activate_ability(gs, id, 0, PlayerId(0), None, vec![]),
             Err(EngineError::AlreadyTapped)
         ));
     }
@@ -444,7 +379,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         gs.battlefield.get_mut(&id).unwrap().controller_since_turn = u32::MAX;
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
+            activate_ability(gs, id, 0, PlayerId(0), None, vec![]),
             Err(EngineError::SummoningSick)
         ));
     }
@@ -454,7 +389,7 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_draw_def(), PlayerId(0));
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
+            activate_ability(gs, id, 0, PlayerId(0), None, vec![]),
             Err(EngineError::InsufficientMana)
         ));
     }
@@ -467,7 +402,7 @@ mod tests {
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 1;
         put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
 
         // Mana was spent but effect not yet applied
         assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
@@ -484,7 +419,7 @@ mod tests {
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 1;
         put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
         let gs = resolve_top(gs);
 
         assert_eq!(gs.hands[&PlayerId(0)].len(), 1);
@@ -500,7 +435,7 @@ mod tests {
         gs.priority_player = PlayerId(1); // opponent has priority
 
         assert!(matches!(
-            activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]),
+            activate_ability(gs, id, 0, PlayerId(0), None, vec![]),
             Err(EngineError::NotYourPriority)
         ));
     }
@@ -513,7 +448,7 @@ mod tests {
         put_in_library(&mut gs, PlayerId(0));
         put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
 
         assert_eq!(gs.libraries[&PlayerId(0)].len(), 2); // not milled yet
         assert_eq!(gs.stack.len(), 1);
@@ -528,7 +463,7 @@ mod tests {
         let card1 = put_in_library(&mut gs, PlayerId(0));
         let card2 = put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
         let gs = resolve_top(gs);
 
         assert!(gs.libraries[&PlayerId(0)].is_empty());
@@ -544,7 +479,7 @@ mod tests {
         let id = place_on_battlefield(&mut gs, make_mill_def(), PlayerId(0));
         let card1 = put_in_library(&mut gs, PlayerId(0)); // only 1 card, mill 2
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
         let gs = resolve_top(gs);
 
         assert!(gs.libraries[&PlayerId(0)].is_empty());
@@ -583,7 +518,7 @@ mod tests {
         put_in_library(&mut gs, PlayerId(0));
         put_in_library(&mut gs, PlayerId(0));
 
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
         assert_eq!(gs.stack.len(), 1);
 
         let gs = resolve_top(gs);
@@ -595,7 +530,7 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         assert!(matches!(
-            activate_ability(gs, id, 99, PlayerId(0), None, None, vec![]),
+            activate_ability(gs, id, 99, PlayerId(0), None, vec![]),
             Err(EngineError::AbilityIndexOutOfRange)
         ));
     }
@@ -604,12 +539,8 @@ mod tests {
     fn can_pay_cost_true_when_untapped_and_mana_sufficient() {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
-        let ability = ActivatedAbility {
-            cost: vec![CostComponent::Tap],
-            target_requirements: vec![],
-            effect: vec![EffectStep::AddMana(ManaPool::default())],
-        };
-        assert!(can_pay_cost(&gs, id, &ability, PlayerId(0)));
+        let cost = vec![CostComponent::Tap];
+        assert!(can_pay_cost_components(&gs, PlayerId(0), Some(id), &cost));
     }
 
     #[test]
@@ -617,12 +548,8 @@ mod tests {
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, make_tap_green_def(), PlayerId(0));
         gs.battlefield.get_mut(&id).unwrap().tapped = true;
-        let ability = ActivatedAbility {
-            cost: vec![CostComponent::Tap],
-            target_requirements: vec![],
-            effect: vec![],
-        };
-        assert!(!can_pay_cost(&gs, id, &ability, PlayerId(0)));
+        let cost = vec![CostComponent::Tap];
+        assert!(!can_pay_cost_components(&gs, PlayerId(0), Some(id), &cost));
     }
 
     #[test]
@@ -654,7 +581,7 @@ mod tests {
         };
         let mut gs = two_player_state();
         let id = place_on_battlefield(&mut gs, snow_elves_def, PlayerId(0));
-        let gs = activate_ability(gs, id, 0, PlayerId(0), None, None, vec![]).unwrap();
+        let gs = activate_ability(gs, id, 0, PlayerId(0), None, vec![]).unwrap();
         let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
         assert_eq!(pool.green, 1);
         assert_eq!(pool.snow_green, 1);
@@ -727,7 +654,6 @@ mod tests {
             pinger_id,
             0,
             PlayerId(0),
-            None,
             None,
             vec![EffectTarget::Object { id: ward_id }],
         )
