@@ -9,7 +9,6 @@ pub mod state_based_actions;
 pub mod targeting;
 pub mod triggered;
 pub mod turn;
-pub mod ward;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum EngineError {

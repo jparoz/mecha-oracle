@@ -231,7 +231,7 @@ pub fn activate_ability(
         // CR 702.21a: if any declared target is an opponent's permanent with Ward, push a
         // WardTrigger above the activated ability on the stack.
         let ability_targets = state.stack_objects[&stack_id].targets.clone();
-        let ward_triggers = super::ward::collect_ward_triggers(
+        let ward_triggers = super::triggered::collect_ward_triggers(
             &mut state,
             stack_id,
             activating_player,

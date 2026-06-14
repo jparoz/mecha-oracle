@@ -211,7 +211,7 @@ pub fn cast_spell(
     // WardTrigger above the spell.
     let spell_targets = state.stack_objects[&stack_id].targets.clone();
     let ward_triggers =
-        super::ward::collect_ward_triggers(&mut state, stack_id, player_id, &spell_targets);
+        super::triggered::collect_ward_triggers(&mut state, stack_id, player_id, &spell_targets);
     for wt in ward_triggers {
         let id = wt.id;
         state.stack.push(id);

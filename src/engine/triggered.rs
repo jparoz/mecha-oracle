@@ -319,6 +319,65 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
     result
 }
 
+/// CR 702.21a: Collect WardTrigger stack objects for any declared targets that are
+/// opponent-controlled permanents with Ward. Each Ward ability on such a target generates
+/// one WardTrigger pushed above the triggering spell/ability on the stack.
+/// The trigger is controlled by the Ward permanent's controller (CR 603.3a).
+pub fn collect_ward_triggers(
+    state: &mut GameState,
+    triggering_stack_id: crate::types::stack::StackId,
+    acting_player: PlayerId,
+    targets: &[crate::types::effect::EffectTarget],
+) -> Vec<crate::types::stack::StackObject> {
+    use crate::types::ability::{Ability, CostComponent, OracleSpan, StaticAbility};
+    use crate::types::effect::EffectTarget;
+    use crate::types::stack::{StackObject, StackPayload};
+
+    let mut triggers = Vec::new();
+    for target in targets {
+        let target_obj_id = match target {
+            EffectTarget::Object { id } => *id,
+            EffectTarget::Player { .. } => continue,
+        };
+        if !state.battlefield.contains_key(&target_obj_id) {
+            continue;
+        }
+        let target_obj = match state.objects.get(&target_obj_id) {
+            Some(o) => o,
+            None => continue,
+        };
+        if target_obj.controller == acting_player {
+            continue;
+        }
+        let ward_permanent_controller = target_obj.controller;
+        let ward_cost_sets: Vec<Vec<CostComponent>> = target_obj
+            .definition
+            .abilities
+            .iter()
+            .filter_map(|span| match span {
+                OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(components))) => {
+                    Some(components.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        for cost in ward_cost_sets {
+            let sid = state.alloc_stack_id();
+            triggers.push(StackObject {
+                id: sid,
+                payload: StackPayload::WardTrigger {
+                    counters_if_unpaid: triggering_stack_id,
+                    cost,
+                    settled: false,
+                },
+                controller: ward_permanent_controller,
+                targets: vec![],
+            });
+        }
+    }
+    triggers
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
