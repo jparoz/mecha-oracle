@@ -1,6 +1,7 @@
 use crate::types::ability::{Ability, StaticAbility, TargetFilter};
 use crate::types::effect::EffectTarget;
 use crate::types::mana::ManaColor;
+use crate::types::stack::StackPayload;
 use crate::types::{GameState, OracleSpan, PlayerId, Zone};
 
 // CR 115.4: a target is legal if it exists in the targeted zone, satisfies the
@@ -60,7 +61,27 @@ pub fn is_legal_target(
             }
             matches!(filter, TargetFilter::Player | TargetFilter::Any)
         }
-        EffectTarget::StackObject { .. } => false, // implemented in Task 3
+        EffectTarget::StackObject { id } => {
+            // CR 115.4: a spell on the stack is a legal target for TargetFilter::Spell
+            // if it exists and its card types satisfy the spell filter.
+            // CR 702.11a/702.18a: shroud/hexproof protect permanents, not spells on the stack.
+            if let TargetFilter::Spell(spell_filter) = filter {
+                let Some(sobj) = state.stack_objects.get(id) else {
+                    return false;
+                };
+                let StackPayload::Spell { card_id } = &sobj.payload else {
+                    return false; // triggered/activated abilities are not spells
+                };
+                let card_types = state
+                    .objects
+                    .get(card_id)
+                    .map(|o| o.definition.type_line.card_types.as_slice())
+                    .unwrap_or(&[]);
+                spell_filter.matches(card_types)
+            } else {
+                false
+            }
+        }
     }
 }
 
@@ -396,6 +417,138 @@ mod tests {
             &TargetFilter::Creature,
             PlayerId(0),
             &[ManaColor::Red],
+        ));
+    }
+
+    fn push_instant_on_stack(
+        state: &mut GameState,
+        owner: PlayerId,
+        card_types: Vec<crate::types::card::CardType>,
+    ) -> (crate::types::ObjectId, crate::types::stack::StackId) {
+        use crate::types::card::{CardDefinition, TypeLine};
+        use crate::types::stack::{StackObject, StackPayload};
+        use crate::types::{CardObject, Zone};
+        let def = CardDefinition {
+            name: "Stack Spell".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types,
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        let card_id = state.alloc_id();
+        let obj = CardObject::new(card_id, def, owner, Zone::Stack);
+        state.add_object(obj);
+        let stack_id = state.alloc_stack_id();
+        let sobj = StackObject {
+            id: stack_id,
+            payload: StackPayload::Spell { card_id },
+            controller: owner,
+            targets: vec![],
+        };
+        state.stack.push(stack_id);
+        state.stack_objects.insert(stack_id, sobj);
+        (card_id, stack_id)
+    }
+
+    #[test]
+    fn spell_on_stack_is_legal_for_spell_any() {
+        use crate::types::ability::SpellFilter;
+        use crate::types::card::CardType;
+        let mut gs = two_player_state();
+        let (_, sid) = push_instant_on_stack(&mut gs, PlayerId(0), vec![CardType::Creature]);
+        let target = EffectTarget::StackObject { id: sid };
+        assert!(is_legal_target(
+            &gs,
+            &target,
+            &TargetFilter::Spell(SpellFilter::any()),
+            PlayerId(1),
+            &[],
+        ));
+    }
+
+    #[test]
+    fn creature_spell_not_legal_for_noncreature_filter() {
+        use crate::types::ability::SpellFilter;
+        use crate::types::card::CardType;
+        let mut gs = two_player_state();
+        let (_, sid) = push_instant_on_stack(&mut gs, PlayerId(0), vec![CardType::Creature]);
+        let target = EffectTarget::StackObject { id: sid };
+        assert!(!is_legal_target(
+            &gs,
+            &target,
+            &TargetFilter::Spell(SpellFilter::noncreature()),
+            PlayerId(1),
+            &[],
+        ));
+    }
+
+    #[test]
+    fn instant_spell_legal_for_noncreature_filter() {
+        use crate::types::ability::SpellFilter;
+        use crate::types::card::CardType;
+        let mut gs = two_player_state();
+        let (_, sid) = push_instant_on_stack(&mut gs, PlayerId(0), vec![CardType::Instant]);
+        let target = EffectTarget::StackObject { id: sid };
+        assert!(is_legal_target(
+            &gs,
+            &target,
+            &TargetFilter::Spell(SpellFilter::noncreature()),
+            PlayerId(1),
+            &[],
+        ));
+    }
+
+    #[test]
+    fn triggered_ability_not_legal_spell_target() {
+        use crate::types::ObjectId;
+        use crate::types::ability::SpellFilter;
+        use crate::types::stack::{StackObject, StackPayload};
+        let mut gs = two_player_state();
+        let sid = gs.alloc_stack_id();
+        gs.stack.push(sid);
+        gs.stack_objects.insert(
+            sid,
+            StackObject {
+                id: sid,
+                payload: StackPayload::TriggeredAbility {
+                    source_id: ObjectId(99),
+                    effect: vec![],
+                    label: "test".into(),
+                },
+                controller: PlayerId(0),
+                targets: vec![],
+            },
+        );
+        let target = EffectTarget::StackObject { id: sid };
+        assert!(!is_legal_target(
+            &gs,
+            &target,
+            &TargetFilter::Spell(SpellFilter::any()),
+            PlayerId(1),
+            &[],
+        ));
+    }
+
+    #[test]
+    fn battlefield_object_not_legal_for_spell_filter() {
+        use crate::types::ability::SpellFilter;
+        let mut gs = two_player_state();
+        let id = place_creature(&mut gs, PlayerId(1), vec![]);
+        let target = EffectTarget::Object { id };
+        assert!(!is_legal_target(
+            &gs,
+            &target,
+            &TargetFilter::Spell(SpellFilter::any()),
+            PlayerId(0),
+            &[],
         ));
     }
 }
