@@ -82,16 +82,24 @@ pub fn pay_stack_cost(
     if state.stack.last() != Some(&stack_id) {
         return Err(EngineError::NotYourPriority);
     }
-    let cost: Vec<CostComponent> = {
+    // Check if trigger is already settled before attempting payment.
+    let (cost, already_settled) = {
         let obj = state
             .stack_objects
             .get(&stack_id)
             .ok_or(EngineError::CardNotFound)?;
         match &obj.payload {
-            StackPayload::WardTrigger { cost, .. } => cost.clone(),
+            StackPayload::WardTrigger { cost, settled, .. } => (cost.clone(), *settled),
             _ => return Err(EngineError::NotYourPriority),
         }
     };
+    if already_settled {
+        state.stack_objects.remove(&stack_id);
+        state.stack.retain(|&id| id != stack_id);
+        state.consecutive_passes = 0;
+        state.priority_player = state.active_player;
+        return Ok(state);
+    }
     state = pay_cost_components(state, player_id, &cost)?;
     state.stack_objects.remove(&stack_id);
     state.stack.retain(|&id| id != stack_id);
@@ -343,6 +351,40 @@ mod tests {
 
         let result = pay_stack_cost(gs, PlayerId(0), trigger_sid);
         assert!(matches!(result, Err(EngineError::NotYourPriority)));
+    }
+
+    #[test]
+    fn pay_stack_cost_insufficient_mana_returns_error() {
+        let mut gs = two_player_state();
+        // Player has 0 mana; ward costs {2}
+        let spell_sid = push_spell(&mut gs);
+        let trigger_sid = push_ward_trigger(
+            &mut gs,
+            vec![CostComponent::Mana(ManaCost {
+                pips: vec![ManaPip::Generic(2)],
+            })],
+            spell_sid,
+        );
+
+        let result = pay_stack_cost(gs, PlayerId(0), trigger_sid);
+        assert!(
+            matches!(result, Err(EngineError::InsufficientMana)),
+            "expected InsufficientMana, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn pay_stack_cost_insufficient_life_returns_error() {
+        let mut gs = two_player_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().life = 1;
+        let spell_sid = push_spell(&mut gs);
+        let trigger_sid = push_ward_trigger(&mut gs, vec![CostComponent::PayLife(5)], spell_sid);
+
+        let result = pay_stack_cost(gs, PlayerId(0), trigger_sid);
+        assert!(
+            matches!(result, Err(EngineError::InsufficientLife)),
+            "expected InsufficientLife, got {result:?}"
+        );
     }
 
     // ── resolve_stack_cost_decline ───────────────────────────────────────
