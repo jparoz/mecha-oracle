@@ -48,4 +48,14 @@ mod tests {
         let round_trip: EffectTarget = serde_json::from_str(&json).unwrap();
         assert_eq!(round_trip, t);
     }
+
+    #[test]
+    fn effect_target_stack_object_serializes_and_deserializes() {
+        use crate::types::stack::StackId;
+        let t = EffectTarget::StackObject { id: StackId(7) };
+        let json = serde_json::to_string(&t).unwrap();
+        assert_eq!(json, r#"{"kind":"stack_object","id":7}"#);
+        let round_trip: EffectTarget = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip, t);
+    }
 }
