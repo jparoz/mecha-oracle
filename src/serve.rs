@@ -738,13 +738,18 @@ fn build_game_view(state: &GameState) -> GameView {
                 },
                 StackPayload::WardTrigger { cost, .. } => {
                     let cl = format_ward_cost_label(cost);
+                    let label = if cl.is_empty() {
+                        "Ward trigger".to_string()
+                    } else {
+                        format!("Ward trigger \u{2014} {cl}")
+                    };
                     StackItemView {
                         id: sid.0,
                         kind: "ward_trigger".into(),
-                        label: format!("Ward trigger \u{2014} {cl}"),
+                        label,
                         controller: obj.controller,
                         card: None,
-                        cost_label: Some(cl),
+                        cost_label: if cl.is_empty() { None } else { Some(cl) },
                     }
                 }
             }
