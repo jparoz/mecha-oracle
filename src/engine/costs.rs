@@ -1,5 +1,6 @@
 use super::EngineError;
 use crate::engine::mana::{greedy_payment_plan, pay_mana_cost};
+use crate::engine::stack::execute_effect_steps;
 use crate::types::ability::CostComponent;
 use crate::types::stack::{StackId, StackPayload};
 use crate::types::{GameState, ObjectId, PlayerId};
@@ -69,6 +70,60 @@ pub fn can_pay_cost_components(
         }
     }
     true
+}
+
+// CR 118.12: pay an inline cost obligation and execute on_paid + continuation steps.
+pub fn pay_pending_cost(
+    mut state: GameState,
+    player_id: PlayerId,
+) -> Result<GameState, EngineError> {
+    let pending = match state.pending_payment.take() {
+        Some(p) => p,
+        None => return Err(EngineError::NotYourPriority),
+    };
+    if pending.paying_player != player_id {
+        state.pending_payment = Some(pending);
+        return Err(EngineError::NotYourPriority);
+    }
+    state = pay_cost_components(state, player_id, &pending.cost)?;
+    state = execute_effect_steps(
+        state,
+        pending.controller,
+        &pending.on_paid,
+        &pending.targets,
+    );
+    state = execute_effect_steps(
+        state,
+        pending.controller,
+        &pending.continuation,
+        &pending.targets,
+    );
+    state.consecutive_passes = 0;
+    state.priority_player = state.active_player;
+    Ok(state)
+}
+
+// CR 118.12: decline an inline cost obligation; execute on_declined + continuation steps.
+pub fn decline_pending_cost(mut state: GameState) -> Result<GameState, EngineError> {
+    let pending = state
+        .pending_payment
+        .take()
+        .ok_or(EngineError::NotYourPriority)?;
+    state = execute_effect_steps(
+        state,
+        pending.controller,
+        &pending.on_declined,
+        &pending.targets,
+    );
+    state = execute_effect_steps(
+        state,
+        pending.controller,
+        &pending.continuation,
+        &pending.targets,
+    );
+    state.consecutive_passes = 0;
+    state.priority_player = state.active_player;
+    Ok(state)
 }
 
 // CR 702.21a: Pay the ward cost for a WardTrigger on top of the stack.
@@ -401,6 +456,119 @@ mod tests {
         assert!(!gs.stack.contains(&spell_sid));
         let gy = gs.graveyards.get(&PlayerId(0)).unwrap();
         assert!(!gy.is_empty(), "countered spell should be in graveyard");
+    }
+
+    // ── pay_pending_cost / decline_pending_cost ─────────────────────────
+
+    #[test]
+    fn pay_pending_cost_clears_payment_and_runs_on_paid() {
+        use crate::types::ability::CostComponent;
+        use crate::types::effect::EffectStep;
+        use crate::types::game_state::PendingPayment;
+        use crate::types::mana::{ManaCost, ManaPip};
+
+        let mut gs = two_player_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 3;
+        let cost = vec![CostComponent::Mana(ManaCost {
+            pips: vec![ManaPip::Generic(3)],
+        })];
+        gs.pending_payment = Some(PendingPayment {
+            paying_player: PlayerId(0),
+            cost: cost.clone(),
+            on_paid: vec![],
+            on_declined: vec![EffectStep::CounterSpell],
+            continuation: vec![],
+            targets: vec![],
+            controller: PlayerId(1),
+        });
+
+        let gs = pay_pending_cost(gs, PlayerId(0)).unwrap();
+
+        assert!(gs.pending_payment.is_none());
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.colorless, 0);
+    }
+
+    #[test]
+    fn pay_pending_cost_wrong_player_returns_error() {
+        use crate::types::ability::CostComponent;
+        use crate::types::effect::EffectStep;
+        use crate::types::game_state::PendingPayment;
+
+        let mut gs = two_player_state();
+        gs.pending_payment = Some(PendingPayment {
+            paying_player: PlayerId(0),
+            cost: vec![CostComponent::PayLife(1)],
+            on_paid: vec![],
+            on_declined: vec![EffectStep::CounterSpell],
+            continuation: vec![],
+            targets: vec![],
+            controller: PlayerId(1),
+        });
+
+        let result = pay_pending_cost(gs, PlayerId(1)); // wrong player
+        assert!(matches!(result, Err(EngineError::NotYourPriority)));
+    }
+
+    #[test]
+    fn decline_pending_cost_executes_on_declined_and_clears() {
+        use crate::types::ability::CostComponent;
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::{EffectStep, EffectTarget};
+        use crate::types::game_state::PendingPayment;
+        use crate::types::mana::ManaCost;
+        use crate::types::stack::{StackObject, StackPayload};
+        use crate::types::{CardObject, Zone};
+
+        let mut gs = two_player_state();
+
+        // Put a spell on the stack so CounterSpell has something to counter
+        let card_id = gs.alloc_id();
+        let def = CardDefinition {
+            name: "Victim".into(),
+            mana_cost: Some(ManaCost { pips: vec![] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        let obj = CardObject::new(card_id, def, PlayerId(1), Zone::Stack);
+        gs.add_object(obj);
+        let sid = gs.alloc_stack_id();
+        gs.stack_objects.insert(
+            sid,
+            StackObject {
+                id: sid,
+                payload: StackPayload::Spell { card_id },
+                controller: PlayerId(1),
+                targets: vec![],
+            },
+        );
+        gs.stack.push(sid);
+
+        gs.pending_payment = Some(PendingPayment {
+            paying_player: PlayerId(1),
+            cost: vec![CostComponent::PayLife(3)],
+            on_paid: vec![],
+            on_declined: vec![EffectStep::CounterSpell],
+            continuation: vec![],
+            targets: vec![EffectTarget::StackObject { id: sid }],
+            controller: PlayerId(0),
+        });
+
+        let gs = decline_pending_cost(gs).unwrap();
+
+        assert!(gs.pending_payment.is_none());
+        assert!(!gs.stack.contains(&sid));
+        assert!(!gs.stack_objects.contains_key(&sid));
+        let gy = gs.graveyards.get(&PlayerId(1)).unwrap();
+        assert!(gy.contains(&card_id));
     }
 
     #[test]

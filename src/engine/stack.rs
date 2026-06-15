@@ -30,14 +30,14 @@ pub fn pass_priority(mut state: GameState, player_id: PlayerId) -> Result<GameSt
 
 // CR 608.2b: execute each effect step for the given controller.
 // Shared by instant/sorcery spell resolution and triggered/activated ability resolution.
-fn execute_effect_steps(
+pub(crate) fn execute_effect_steps(
     mut state: GameState,
     controller: PlayerId,
     steps: &[EffectStep],
     targets: &[crate::types::effect::EffectTarget],
 ) -> GameState {
     use crate::types::effect::EffectTarget;
-    for step in steps {
+    for (i, step) in steps.iter().enumerate() {
         match step {
             EffectStep::DrawCard(n) => {
                 for _ in 0..*n {
@@ -102,24 +102,35 @@ fn execute_effect_steps(
                     counter_spell_on_stack(&mut state, *id);
                 }
             }
-            // CR 118.12: pause resolution and record the pending payment obligation.
-            // `pay_pending_cost`/`decline_pending_cost` will resume from on_paid/on_declined.
+            // CR 118.12: pause resolution and raise a cost-payment obligation.
+            // The paying player is derived from the first StackObject target's controller
+            // (the caster of the targeted spell). Falls back to the resolving controller.
             EffectStep::Payment {
                 cost,
                 on_paid,
                 on_declined,
             } => {
+                let paying_player = targets
+                    .iter()
+                    .find_map(|t| {
+                        if let EffectTarget::StackObject { id } = t {
+                            state.stack_objects.get(id).map(|o| o.controller)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(controller);
+                let continuation = steps[i + 1..].to_vec();
                 state.pending_payment = Some(crate::types::game_state::PendingPayment {
-                    paying_player: controller,
+                    paying_player,
                     cost: cost.clone(),
                     on_paid: on_paid.clone(),
                     on_declined: on_declined.clone(),
-                    continuation: vec![],
+                    continuation,
                     targets: targets.to_vec(),
                     controller,
                 });
-                // Remaining steps in this batch are deferred; break out.
-                break;
+                return state; // early return; remaining steps stored in continuation
             }
             EffectStep::Unimplemented(_) => {}
         }
@@ -241,6 +252,14 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                 }
             }
 
+            // If a Payment step paused resolution, give priority to the paying player.
+            if let Some(pp) = &state.pending_payment {
+                let paying_player = pp.paying_player;
+                state.consecutive_passes = 0;
+                state.priority_player = paying_player;
+                return check_and_apply_sbas(state);
+            }
+
             // CR 117.3b: after triggered abilities are put on the stack, active player
             // receives priority (distinct from CR 117.3c where the caster retains priority
             // after casting a spell or activating an ability).
@@ -262,6 +281,15 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                 return check_and_apply_sbas(state);
             }
             state = execute_effect_steps(state, controller, &effect, &targets);
+
+            // If a Payment step paused resolution, give priority to the paying player.
+            if let Some(pp) = &state.pending_payment {
+                let paying_player = pp.paying_player;
+                state.consecutive_passes = 0;
+                state.priority_player = paying_player;
+                return check_and_apply_sbas(state);
+            }
+
             state.consecutive_passes = 0;
             state.priority_player = state.active_player;
             check_and_apply_sbas(state)
@@ -1083,6 +1111,71 @@ mod tests {
         assert!(gs.stack_objects.contains_key(&spell_stack_id));
         // Card still in Stack zone
         assert_eq!(gs.objects[&card_id].zone, Zone::Stack);
+    }
+
+    #[test]
+    fn payment_step_sets_pending_payment() {
+        use crate::types::ability::{Cost, CostComponent};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::{EffectStep, EffectTarget};
+        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::stack::{StackObject, StackPayload};
+        use crate::types::{CardObject, Zone};
+
+        let mut gs = make_state();
+
+        // Put a target spell on the stack (the spell being "paid against")
+        let target_card_id = gs.alloc_id();
+        let def = CardDefinition {
+            name: "Target Spell".into(),
+            mana_cost: Some(ManaCost { pips: vec![] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        let target_obj = CardObject::new(target_card_id, def, PlayerId(1), Zone::Stack);
+        gs.add_object(target_obj);
+        let target_sid = gs.alloc_stack_id();
+        gs.stack_objects.insert(
+            target_sid,
+            StackObject {
+                id: target_sid,
+                payload: StackPayload::Spell {
+                    card_id: target_card_id,
+                },
+                controller: PlayerId(1),
+                targets: vec![],
+            },
+        );
+        gs.stack.push(target_sid);
+
+        let cost: Cost = vec![CostComponent::Mana(ManaCost {
+            pips: vec![ManaPip::Generic(3)],
+        })];
+        let steps = vec![EffectStep::Payment {
+            cost: cost.clone(),
+            on_paid: vec![],
+            on_declined: vec![EffectStep::CounterSpell],
+        }];
+        let targets = vec![EffectTarget::StackObject { id: target_sid }];
+
+        let gs = execute_effect_steps(gs, PlayerId(0), &steps, &targets);
+
+        assert!(gs.pending_payment.is_some());
+        let pp = gs.pending_payment.as_ref().unwrap();
+        assert_eq!(pp.paying_player, PlayerId(1)); // target spell's controller
+        assert_eq!(pp.cost, cost);
+        assert_eq!(pp.on_declined, vec![EffectStep::CounterSpell]);
+        // target spell still on stack (not countered yet)
+        assert!(gs.stack.contains(&target_sid));
     }
 
     #[test]
