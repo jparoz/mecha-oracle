@@ -1,3 +1,4 @@
+use super::ability::Cost;
 use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
 use super::permanent::PTDelta;
@@ -21,7 +22,14 @@ pub enum EffectStep {
     GainLife(u32),
     BoostPermanentPT(PTDelta),
     DealDamage(u32),
-    CounterSpell,          // CR 701.5: counter the target spell on the stack
+    CounterSpell, // CR 701.5: counter the target spell on the stack
+    /// CR 118.12: inline cost-payment obligation raised during resolution.
+    /// Pauses effect resolution; `pay_pending_cost`/`decline_pending_cost` resume it.
+    Payment {
+        cost: Cost,
+        on_paid: Effect,
+        on_declined: Effect,
+    },
     Unimplemented(String), // parsed but not yet executable; skipped at resolution
 }
 
@@ -30,6 +38,20 @@ pub type Effect = Vec<EffectStep>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn payment_step_construction() {
+        use crate::types::ability::CostComponent;
+        use crate::types::mana::{ManaCost, ManaPip};
+        let step = EffectStep::Payment {
+            cost: vec![CostComponent::Mana(ManaCost {
+                pips: vec![ManaPip::Generic(3)],
+            })],
+            on_paid: vec![],
+            on_declined: vec![EffectStep::CounterSpell],
+        };
+        assert!(matches!(step, EffectStep::Payment { .. }));
+    }
 
     #[test]
     fn effect_target_object_serializes_and_deserializes() {

@@ -1,4 +1,6 @@
+use super::ability::Cost;
 use super::card_object::CardObject;
+use super::effect::{Effect, EffectTarget};
 use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
 use super::permanent::PermanentState;
@@ -87,6 +89,26 @@ impl CombatState {
     }
 }
 
+/// CR 118.12: an inline cost-payment obligation raised during the resolution
+/// of a spell or ability. Set by `EffectStep::Payment`; cleared by
+/// `pay_pending_cost` or `decline_pending_cost`.
+#[derive(Debug, Clone)]
+pub struct PendingPayment {
+    /// The player who must pay or decline.
+    pub paying_player: PlayerId,
+    pub cost: Cost,
+    /// Steps to execute if the player pays (often empty).
+    pub on_paid: Effect,
+    /// Steps to execute if the player declines (e.g. [CounterSpell]).
+    pub on_declined: Effect,
+    /// Steps after the payment decision that always run (for future use).
+    pub continuation: Effect,
+    /// Targets from the resolving stack object; passed to on_paid/on_declined.
+    pub targets: Vec<EffectTarget>,
+    /// Controller of the spell/ability containing the Payment step.
+    pub controller: PlayerId,
+}
+
 #[derive(Debug, Clone)]
 pub struct GameState {
     /// All card objects that exist in the game, keyed by their unique id.
@@ -114,6 +136,7 @@ pub struct GameState {
     pub(crate) extra_steps: VecDeque<Step>,
     pub next_object_id: u64,
     pub game_over: bool,
+    pub pending_payment: Option<PendingPayment>,
 }
 
 impl GameState {
@@ -150,6 +173,7 @@ impl GameState {
             extra_steps: VecDeque::new(),
             next_object_id: 1,
             game_over: false,
+            pending_payment: None,
         }
     }
 
@@ -311,5 +335,11 @@ mod tests {
     fn new_game_stack_objects_is_empty() {
         let gs = two_player_state();
         assert!(gs.stack_objects.is_empty());
+    }
+
+    #[test]
+    fn pending_payment_starts_none() {
+        let gs = two_player_state();
+        assert!(gs.pending_payment.is_none());
     }
 }

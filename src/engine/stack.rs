@@ -102,6 +102,25 @@ fn execute_effect_steps(
                     counter_spell_on_stack(&mut state, *id);
                 }
             }
+            // CR 118.12: pause resolution and record the pending payment obligation.
+            // `pay_pending_cost`/`decline_pending_cost` will resume from on_paid/on_declined.
+            EffectStep::Payment {
+                cost,
+                on_paid,
+                on_declined,
+            } => {
+                state.pending_payment = Some(crate::types::game_state::PendingPayment {
+                    paying_player: controller,
+                    cost: cost.clone(),
+                    on_paid: on_paid.clone(),
+                    on_declined: on_declined.clone(),
+                    continuation: vec![],
+                    targets: targets.to_vec(),
+                    controller,
+                });
+                // Remaining steps in this batch are deferred; break out.
+                break;
+            }
             EffectStep::Unimplemented(_) => {}
         }
     }

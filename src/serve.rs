@@ -347,6 +347,7 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
             }
             EffectStep::DealDamage(n) => format!("Deal {n} damage"),
             EffectStep::CounterSpell => "Counter target spell".to_string(),
+            EffectStep::Payment { .. } => "Pay cost".to_string(),
             EffectStep::Unimplemented(s) => s.clone(),
         })
         .collect();

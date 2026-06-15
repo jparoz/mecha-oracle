@@ -18,7 +18,7 @@ pub use ability::{
 pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;
 pub use effect::{Effect, EffectStep, EffectTarget};
-pub use game_state::{CombatState, GameState, ManaCheckpoint, Phase, Step};
+pub use game_state::{CombatState, GameState, ManaCheckpoint, PendingPayment, Phase, Step};
 pub use ids::{ObjectId, PlayerId};
 pub use mana::{ManaColor, ManaCost, ManaPip, ManaPool, PaymentPlan};
 pub use permanent::{PTDelta, PermanentState};
