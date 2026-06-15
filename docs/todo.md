@@ -117,12 +117,3 @@ Currently `casting.rs` only handles standard `ManaCost` payment.
 
 ---
 
-## 🔁 Conditional counter spells
-
-Cards like Mana Leak ({1}{U}), Quench ({U}{U}), Syncopate ({X}{U}), and Condescend require
-"counter target spell unless its controller pays {N}" semantics. This requires:
-
-- A payment obligation directed at the targeted spell's controller (not the counterspell caster) — similar to Ward, but triggered at resolution rather than at targeting time.
-- The generic `EffectStep::Payment` + `EffectStep::CounterSpell` pattern (already used for Ward) is the right vehicle. The spell resolves into an `EffectStep::Payment { cost, on_paid: [], on_declined: [CounterSpell] }` where the target is the StackObject being countered.
-- Parser needs to recognize "counter target spell unless its controller pays {N}" and emit the appropriate `SpellAbility` with a `Payment` step.
-- See CR 116.2b (players may take actions during cost-payment windows) and Ward in `engine/triggered.rs` for the pattern to follow.
