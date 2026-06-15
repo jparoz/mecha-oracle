@@ -1108,6 +1108,118 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
     (spans, annotations)
 }
 
+/// Try to parse a "counter target [color] [type] spell [restrictions]" paragraph.
+/// Returns None if the paragraph isn't a counter pattern. (CR 701.5)
+///
+/// Handles:
+///   - bare type: "counter target spell"
+///   - typed: "counter target creature spell", "counter target noncreature spell",
+///     "counter target instant or sorcery spell"
+///   - color prefix: "counter target red or green spell",
+///     "counter target blue spell"
+///   - mana-value suffix: "counter target spell with mana value 4 or greater"
+///     "counter target spell with mana value 3 or less"
+fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellAbility> {
+    use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
+    use crate::types::effect::EffectStep;
+    use crate::types::mana::ManaColor;
+
+    // Must start with "counter target "
+    let rest = lc.strip_prefix("counter target ")?;
+
+    // 1. Try color prefix: "[color] spell" or "[color] or [color] spell"
+    let color_names: &[(&str, ManaColor)] = &[
+        ("white", ManaColor::White),
+        ("blue", ManaColor::Blue),
+        ("black", ManaColor::Black),
+        ("red", ManaColor::Red),
+        ("green", ManaColor::Green),
+    ];
+
+    let mut colors: Vec<ManaColor> = Vec::new();
+    let rest = {
+        let mut matched_rest = rest;
+        'outer: for (name1, c1) in color_names {
+            // Try "color1 or color2 spell"
+            let color_or_prefix = format!("{name1} or ");
+            if let Some(after_c1) = rest.strip_prefix(color_or_prefix.as_str()) {
+                for (name2, c2) in color_names {
+                    let type_prefix = format!("{name2} spell");
+                    if after_c1.starts_with(type_prefix.as_str()) {
+                        colors = vec![*c1, *c2];
+                        matched_rest = &after_c1[name2.len() + 1..]; // skip "[name2] "
+                        break 'outer;
+                    }
+                }
+            }
+            // Try "color1 spell"
+            let single_prefix = format!("{name1} ");
+            if let Some(after_c1) = rest.strip_prefix(single_prefix.as_str())
+                && after_c1.starts_with("spell")
+            {
+                colors = vec![*c1];
+                matched_rest = after_c1;
+                break 'outer;
+            }
+        }
+        matched_rest
+    };
+
+    // 2. Parse type word: "instant or sorcery spell", "noncreature spell",
+    //    "creature spell", "spell"
+    let (base_filter, rest) = if let Some(r) = rest.strip_prefix("instant or sorcery spell") {
+        (SpellFilter::instant_or_sorcery(), r)
+    } else if let Some(r) = rest.strip_prefix("noncreature spell") {
+        (SpellFilter::noncreature(), r)
+    } else if let Some(r) = rest.strip_prefix("creature spell") {
+        (SpellFilter::creature(), r)
+    } else if let Some(r) = rest.strip_prefix("spell") {
+        (SpellFilter::any(), r)
+    } else {
+        return None; // unrecognised type
+    };
+
+    let rest = rest.trim();
+
+    // 3. Parse "with mana value N or greater/less" suffix
+    let (rest, min_mv, max_mv) = parse_mana_value_suffix(rest);
+
+    // 4. Nothing else should remain (period already stripped by caller)
+    if !rest.is_empty() {
+        return None;
+    }
+
+    let filter = SpellFilter {
+        any_of_colors: colors,
+        min_mana_value: min_mv,
+        max_mana_value: max_mv,
+        ..base_filter
+    };
+
+    Some(SpellAbility {
+        target_requirements: vec![TargetFilter::Spell(filter)],
+        steps: vec![EffectStep::CounterSpell],
+    })
+}
+
+/// Strip "with mana value N or greater" / "with mana value N or less".
+/// Returns (remaining, min_mana_value, max_mana_value). (CR 202.3)
+fn parse_mana_value_suffix(s: &str) -> (&str, Option<u32>, Option<u32>) {
+    if let Some(rest) = s.strip_prefix("with mana value ") {
+        if let Some(rest) = rest.strip_suffix(" or greater")
+            && let Ok(n) = rest.parse::<u32>()
+        {
+            return ("", Some(n), None);
+        }
+        if let Some(rest) = rest.strip_suffix(" or less")
+            && let Ok(n) = rest.parse::<u32>()
+        {
+            return ("", None, Some(n));
+        }
+    }
+    (s, None, None)
+}
+
 /// Detects targeting patterns in a spell paragraph and returns a SpellAbility.
 ///
 /// Pattern A (target at front): "Target creature ..." → Creature filter; strip prefix.
@@ -1165,31 +1277,9 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
             }
         }
     }
-    // Counter patterns — CR 701.5: "counter target [type] spell."
-    // lc has trailing periods stripped, so patterns have no trailing period.
-    // More-specific patterns checked before "counter target spell" to prevent
-    // early exit on the generic pattern eating "counter target noncreature spell".
-    {
-        use crate::types::ability::SpellFilter;
-        use crate::types::effect::EffectStep;
-        type CounterPattern = (&'static str, fn() -> SpellFilter);
-        let counter_patterns: &[CounterPattern] = &[
-            (
-                "counter target instant or sorcery spell",
-                SpellFilter::instant_or_sorcery,
-            ),
-            ("counter target noncreature spell", SpellFilter::noncreature),
-            ("counter target creature spell", SpellFilter::creature),
-            ("counter target spell", SpellFilter::any),
-        ];
-        for (pattern, make_filter) in counter_patterns {
-            if lc == *pattern {
-                return SpellAbility {
-                    target_requirements: vec![TargetFilter::Spell(make_filter())],
-                    steps: vec![EffectStep::CounterSpell],
-                };
-            }
-        }
+    // Counter patterns — CR 701.5
+    if let Some(spell_ability) = try_parse_counter(lc.as_str()) {
+        return spell_ability;
     }
     // No targeting pattern found — untargeted spell
     SpellAbility {
@@ -2413,5 +2503,75 @@ mod tests {
     fn protection_from_artifacts_stays_unimplemented() {
         let (spans, _) = parse_permanent("Protection from artifacts", "Test");
         assert!(matches!(&spans[0], OracleSpan::ParsedUnimplemented(_)));
+    }
+
+    // ── Conditional counter-spell parsing (Task 6) ────────────────────────────
+
+    #[test]
+    fn disdainful_stroke_parses_min_mana_value() {
+        use crate::types::ability::{Ability, OracleSpan, TargetFilter};
+        use crate::types::effect::EffectStep;
+        let text = "Counter target spell with mana value 4 or greater.";
+        let (spans, _) = parse_instant_or_sorcery(text, "Disdainful Stroke");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+            panic!()
+        };
+        assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
+        let TargetFilter::Spell(f) = &sa.target_requirements[0] else {
+            panic!()
+        };
+        assert_eq!(f.min_mana_value, Some(4));
+        assert_eq!(f.max_mana_value, None);
+        assert!(f.any_of_colors.is_empty());
+    }
+
+    #[test]
+    fn max_mana_value_spell_parses_correctly() {
+        use crate::types::ability::{Ability, OracleSpan, TargetFilter};
+        use crate::types::effect::EffectStep;
+        let text = "Counter target spell with mana value 3 or less.";
+        let (spans, _) = parse_instant_or_sorcery(text, "Test");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+            panic!()
+        };
+        assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
+        let TargetFilter::Spell(f) = &sa.target_requirements[0] else {
+            panic!()
+        };
+        assert_eq!(f.max_mana_value, Some(3));
+        assert_eq!(f.min_mana_value, None);
+    }
+
+    #[test]
+    fn flashfreeze_parses_color_filter() {
+        use crate::types::ability::{Ability, OracleSpan, TargetFilter};
+        use crate::types::effect::EffectStep;
+        use crate::types::mana::ManaColor;
+        let text = "Counter target red or green spell.";
+        let (spans, _) = parse_instant_or_sorcery(text, "Flashfreeze");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+            panic!()
+        };
+        assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
+        let TargetFilter::Spell(f) = &sa.target_requirements[0] else {
+            panic!()
+        };
+        assert!(f.any_of_colors.contains(&ManaColor::Red));
+        assert!(f.any_of_colors.contains(&ManaColor::Green));
+    }
+
+    #[test]
+    fn single_color_filter_parses_correctly() {
+        use crate::types::ability::{Ability, OracleSpan, TargetFilter};
+        use crate::types::mana::ManaColor;
+        let text = "Counter target blue spell.";
+        let (spans, _) = parse_instant_or_sorcery(text, "Test");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+            panic!()
+        };
+        let TargetFilter::Spell(f) = &sa.target_requirements[0] else {
+            panic!()
+        };
+        assert_eq!(f.any_of_colors, vec![ManaColor::Blue]);
     }
 }
