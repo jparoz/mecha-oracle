@@ -1184,7 +1184,14 @@ fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellAbility> {
     // 3. Parse "with mana value N or greater/less" suffix
     let (rest, min_mv, max_mv) = parse_mana_value_suffix(rest);
 
-    // 4. Nothing else should remain (period already stripped by caller)
+    let rest = rest.trim();
+
+    // 4. Parse "unless its controller pays {N}" or "unless its controller pays N life"
+    let (rest, payment_cost) = parse_unless_suffix(rest);
+
+    let rest = rest.trim();
+
+    // 5. Nothing else should remain (period already stripped by caller)
     if !rest.is_empty() {
         return None;
     }
@@ -1196,9 +1203,19 @@ fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellAbility> {
         ..base_filter
     };
 
+    let steps = if let Some(cost) = payment_cost {
+        vec![EffectStep::Payment {
+            cost,
+            on_paid: vec![],
+            on_declined: vec![EffectStep::CounterSpell],
+        }]
+    } else {
+        vec![EffectStep::CounterSpell]
+    };
+
     Some(SpellAbility {
         target_requirements: vec![TargetFilter::Spell(filter)],
-        steps: vec![EffectStep::CounterSpell],
+        steps,
     })
 }
 
@@ -1218,6 +1235,37 @@ fn parse_mana_value_suffix(s: &str) -> (&str, Option<u32>, Option<u32>) {
         }
     }
     (s, None, None)
+}
+
+/// Strip "unless its controller pays {N}" or "unless its controller pays N life".
+/// Returns (remaining_string, Some(cost_components)) or (original, None). (CR 118.12)
+fn parse_unless_suffix(s: &str) -> (&str, Option<crate::types::ability::Cost>) {
+    use crate::types::ability::CostComponent;
+    use crate::types::mana::{ManaCost, ManaPip};
+
+    const PREFIX: &str = "unless its controller pays ";
+    let Some(tail) = s.strip_prefix(PREFIX) else {
+        return (s, None);
+    };
+    // Try "{N}" mana cost
+    if let Some(inner) = tail.strip_prefix('{')
+        && let Some(n_str) = inner.strip_suffix('}')
+        && let Ok(n) = n_str.parse::<u32>()
+    {
+        return (
+            "",
+            Some(vec![CostComponent::Mana(ManaCost {
+                pips: vec![ManaPip::Generic(n)],
+            })]),
+        );
+    }
+    // Try "N life"
+    if let Some(n_str) = tail.strip_suffix(" life")
+        && let Ok(n) = n_str.parse::<u32>()
+    {
+        return ("", Some(vec![CostComponent::PayLife(n)]));
+    }
+    (s, None) // unrecognised unless suffix — leave as-is
 }
 
 /// Detects targeting patterns in a spell paragraph and returns a SpellAbility.
@@ -2573,5 +2621,72 @@ mod tests {
             panic!()
         };
         assert_eq!(f.any_of_colors, vec![ManaColor::Blue]);
+    }
+
+    // ── Conditional counter-spell parsing (Task 7) ────────────────────────────
+
+    #[test]
+    fn mana_leak_parses_unless_mana() {
+        use crate::types::ability::{Ability, CostComponent, OracleSpan};
+        use crate::types::effect::EffectStep;
+        use crate::types::mana::{ManaCost, ManaPip};
+        let text = "Counter target spell unless its controller pays {3}.";
+        let (spans, _) = parse_instant_or_sorcery(text, "Mana Leak");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+            panic!()
+        };
+        assert_eq!(sa.steps.len(), 1);
+        let EffectStep::Payment {
+            cost,
+            on_paid,
+            on_declined,
+        } = &sa.steps[0]
+        else {
+            panic!()
+        };
+        assert_eq!(
+            cost,
+            &vec![CostComponent::Mana(ManaCost {
+                pips: vec![ManaPip::Generic(3)]
+            })]
+        );
+        assert!(on_paid.is_empty());
+        assert_eq!(on_declined, &vec![EffectStep::CounterSpell]);
+    }
+
+    #[test]
+    fn quench_parses_unless_two_mana() {
+        use crate::types::ability::{Ability, OracleSpan};
+        use crate::types::effect::EffectStep;
+        use crate::types::mana::{ManaCost, ManaPip};
+        let text = "Counter target spell unless its controller pays {2}.";
+        let (spans, _) = parse_instant_or_sorcery(text, "Quench");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+            panic!()
+        };
+        let EffectStep::Payment { cost, .. } = &sa.steps[0] else {
+            panic!()
+        };
+        assert_eq!(
+            cost,
+            &vec![crate::types::ability::CostComponent::Mana(ManaCost {
+                pips: vec![ManaPip::Generic(2)]
+            })]
+        );
+    }
+
+    #[test]
+    fn life_payment_counter_parses_unless_life() {
+        use crate::types::ability::{Ability, CostComponent, OracleSpan};
+        use crate::types::effect::EffectStep;
+        let text = "Counter target spell unless its controller pays 3 life.";
+        let (spans, _) = parse_instant_or_sorcery(text, "Test");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+            panic!()
+        };
+        let EffectStep::Payment { cost, .. } = &sa.steps[0] else {
+            panic!()
+        };
+        assert_eq!(cost, &vec![CostComponent::PayLife(3)]);
     }
 }
