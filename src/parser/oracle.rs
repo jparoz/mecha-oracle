@@ -1,5 +1,5 @@
 use crate::types::OracleSpan::ParsedUnimplemented;
-use crate::types::ability::{ActivationCost, AnnotationKind, CostComponent, TextAnnotation};
+use crate::types::ability::{AnnotationKind, Cost, CostComponent, TextAnnotation};
 use crate::types::effect::{Effect, EffectStep};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use crate::types::{
@@ -170,7 +170,7 @@ fn parse_number_word(s: &str) -> Option<u32> {
     }
 }
 
-fn parse_activation_cost(s: &str) -> ActivationCost {
+fn parse_activation_cost(s: &str) -> Cost {
     s.split(',')
         .map(|t| t.trim())
         .filter(|t| !t.is_empty())

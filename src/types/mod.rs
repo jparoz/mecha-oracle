@@ -11,7 +11,7 @@ pub mod stack;
 pub mod zone;
 
 pub use ability::{
-    Ability, ActivatedAbility, ActivationCost, CardFilter, CastFilter, CostComponent, IgnoredKind,
+    Ability, ActivatedAbility, CardFilter, CastFilter, Cost, CostComponent, IgnoredKind,
     LandwalkKind, OracleSpan, PermanentFilter, SpellAbility, StaticAbility, TargetFilter,
     TriggerEvent, TriggeredAbility,
 };

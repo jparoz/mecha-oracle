@@ -56,12 +56,12 @@ pub struct TriggeredAbility {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivatedAbility {
-    pub cost: ActivationCost,
+    pub cost: Cost,
     pub target_requirements: Vec<TargetFilter>,
     pub effect: Effect,
 }
 
-pub type ActivationCost = Vec<CostComponent>;
+pub type Cost = Vec<CostComponent>;
 
 // EffectStep and Effect are defined in effect.rs and re-exported via types/mod.rs.
 
@@ -433,5 +433,11 @@ mod tests {
         assert!(f.matches(&[CardType::Sorcery]));
         assert!(!f.matches(&[CardType::Creature]));
         assert!(!f.matches(&[]));
+    }
+
+    #[test]
+    fn cost_type_alias_is_vec_cost_component() {
+        let c: Cost = vec![CostComponent::Tap];
+        assert_eq!(c.len(), 1);
     }
 }
