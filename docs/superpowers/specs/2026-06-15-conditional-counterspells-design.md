@@ -58,15 +58,15 @@ Logic additions (both must hold alongside the existing `included`/`excluded` che
 
 Mana value computation (CR 202.3): sum the converted pip values from `ManaCost::pips`. Generic pips contribute their face value; coloured pips contribute 1 each; X pips contribute 0 (X = 0 for this purpose). This is a pure function on `ManaCost` and lives in `engine/targeting.rs` alongside the call site.
 
-### 1c. `EffectStep::IfPaid` (`types/effect.rs`)
+### 1c. `EffectStep::Payment` (`types/effect.rs`)
 
 New variant:
 
 ```rust
-IfPaid {
+Payment {
     cost: Cost,
-    then: Effect,   // steps to run if the player pays
-    else_: Effect,  // steps to run if the player declines
+    on_paid: Effect,    // steps to run if the player pays
+    on_declined: Effect, // steps to run if the player declines
 }
 ```
 
@@ -74,19 +74,19 @@ IfPaid {
 
 Example — Mana Leak:
 ```rust
-EffectStep::IfPaid {
+EffectStep::Payment {
     cost: vec![CostComponent::Mana(ManaCost { pips: vec![ManaPip::Generic(3)] })],
-    then: vec![],
-    else_: vec![EffectStep::CounterSpell],
+    on_paid: vec![],
+    on_declined: vec![EffectStep::CounterSpell],
 }
 ```
 
 Example — Ward {2}:
 ```rust
-EffectStep::IfPaid {
+EffectStep::Payment {
     cost: vec![CostComponent::Mana(ManaCost { pips: vec![ManaPip::Generic(2)] })],
-    then: vec![],
-    else_: vec![EffectStep::CounterSpell],
+    on_paid: vec![],
+    on_declined: vec![EffectStep::CounterSpell],
 }
 ```
 
@@ -131,11 +131,11 @@ Added to `GameState` struct, initialised `None` in `GameState::new`.
 
 ### 3a. `execute_effect_steps` (`engine/stack.rs`)
 
-In the `EffectStep::IfPaid` arm:
+In the `EffectStep::Payment` arm:
 
 1. Determine `paying_player`: look up `targets.iter().find_map(|t| if let EffectTarget::StackObject { id } = t { state.stack_objects.get(id).map(|o| o.controller) } else { None })`. If no stack-object target is found, fall back to the resolving object's controller (handles life-payment Ward variants).
 2. Capture `continuation = steps[current_index + 1 ..]` (the remaining steps after `IfPaid`).
-3. Set `state.pending_payment = Some(PendingPayment { paying_player, cost: step.cost.clone(), on_paid: step.then.clone(), on_declined: step.else_.clone(), continuation, targets: targets.to_vec(), controller })`.
+3. Set `state.pending_payment = Some(PendingPayment { paying_player, cost: step.cost.clone(), on_paid: step.on_paid.clone(), on_declined: step.on_declined.clone(), continuation, targets: targets.to_vec(), controller })`.
 4. Return `state` immediately (skipping remaining steps; they are stored in `continuation`).
 
 For the cards in scope (Mana Leak, Quench, Ward), `IfPaid` is always the last step, so `continuation` is always empty. The mechanism is in place for cards with post-payment steps.
@@ -184,10 +184,10 @@ StackObject {
     id: sid,
     payload: StackPayload::TriggeredAbility {
         source_id: ward_permanent_id,
-        effect: vec![EffectStep::IfPaid {
+        effect: vec![EffectStep::Payment {
             cost: ward_cost,
-            then: vec![],
-            else_: vec![EffectStep::CounterSpell],
+            on_paid: vec![],
+            on_declined: vec![EffectStep::CounterSpell],
         }],
         label: format!("Ward — {}", cost_display),
     },
@@ -237,10 +237,10 @@ When this suffix is present, wrap the `CounterSpell` step in `IfPaid`:
 counter target spell unless its controller pays {3}.
 → SpellAbility {
     target_requirements: [TargetFilter::Spell(SpellFilter::any())],
-    steps: [EffectStep::IfPaid {
+    steps: [EffectStep::Payment {
         cost: vec![CostComponent::Mana(ManaCost { pips: vec![ManaPip::Generic(3)] })],
-        then: vec![],
-        else_: vec![EffectStep::CounterSpell],
+        on_paid: vec![],
+        on_declined: vec![EffectStep::CounterSpell],
     }],
   }
 ```
@@ -305,7 +305,7 @@ Updated to pass `mana_value` and `colors` to `SpellFilter::matches`. The `mana_v
 - `mana_leak_sets_pending_payment` — Mana Leak resolves against a spell; `pending_payment` is set; targeted spell still on stack
 - `mana_leak_counter_on_decline` — after `decline_pending_cost`, targeted spell in graveyard
 - `mana_leak_survives_on_payment` — after `pay_pending_cost` (with 3 mana), targeted spell still on stack
-- `ward_now_uses_if_paid` — Ward trigger payload is `TriggeredAbility` with `IfPaid` effect (no `WardTrigger` variant exists)
+- `ward_now_uses_payment` — Ward trigger payload is `TriggeredAbility` with `Payment` effect (no `WardTrigger` variant exists)
 
 ### `parser/oracle.rs`
 
