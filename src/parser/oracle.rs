@@ -1172,7 +1172,8 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
     {
         use crate::types::ability::SpellFilter;
         use crate::types::effect::EffectStep;
-        let counter_patterns: &[(&str, fn() -> SpellFilter)] = &[
+        type CounterPattern = (&'static str, fn() -> SpellFilter);
+        let counter_patterns: &[CounterPattern] = &[
             (
                 "counter target instant or sorcery spell",
                 SpellFilter::instant_or_sorcery,

@@ -154,8 +154,8 @@ function describeAction(action) {
       return `<span class="log-engine">— P${passerLabel} passed priority —</span>`;
     }
     case 'reset_mana': return `<span class="who">P${apLabel}</span> reset mana`;
-    case 'pay_cost':    return `<span class="who">P${currentState.priority_player + 1}</span> paid ward cost`;
-    case 'decline_cost': return `<span class="who">P${currentState.priority_player + 1}</span> declined ward — spell countered`;
+    case 'pay_pending_cost':    return `<span class="who">P${currentState.priority_player + 1}</span> paid cost`;
+    case 'decline_pending_cost': return `<span class="who">P${currentState.priority_player + 1}</span> declined — spell countered`;
     default: return JSON.stringify(action);
   }
 }
@@ -536,16 +536,15 @@ function declinePayment() {
 
 function maybeEnterWardContext(s) {
   if (paymentContext !== null) return;
-  if (!s.stack || s.stack.length === 0) return;
-  const top = s.stack[s.stack.length - 1];
-  if (top.kind !== 'ward_trigger') return;
+  if (!s.pending_payment) return;
+  const pp = s.pending_payment;
   enterPaymentContext(
     'ward',
-    top.label || 'Ward trigger',
-    top.cost_label || '',
-    { type: 'pay_cost', stack_id: top.id },
+    `Pay ${pp.cost_label} (Ward / Mana Leak)`,
+    pp.cost_label || '',
+    { type: 'pay_pending_cost' },
     true,
-    { type: 'decline_cost', stack_id: top.id }
+    { type: 'decline_pending_cost' }
   );
 }
 

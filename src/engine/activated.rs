@@ -199,7 +199,7 @@ pub fn activate_ability(
         state.priority_player = activating_player;
 
         // CR 702.21a: if any declared target is an opponent's permanent with Ward, push a
-        // WardTrigger above the activated ability on the stack.
+        // ward TriggeredAbility (with Payment effect) above the activated ability on the stack.
         let ability_targets = state.stack_objects[&stack_id].targets.clone();
         let ward_triggers = super::triggered::collect_ward_triggers(
             &mut state,
@@ -613,11 +613,11 @@ mod tests {
     }
 
     /// CR 702.21a: Targeting an opponent's Ward permanent via activated ability pushes
-    /// a WardTrigger above the activated ability on the stack.
+    /// a TriggeredAbility with a Payment effect above the activated ability on the stack.
     #[test]
     fn ward_trigger_pushed_above_activated_ability_when_targeting_opponent_ward_creature() {
         use crate::types::ability::{CostComponent, StaticAbility};
-        use crate::types::effect::EffectTarget;
+        use crate::types::effect::{EffectStep, EffectTarget};
         use crate::types::mana::ManaCost;
         use crate::types::stack::StackPayload;
 
@@ -659,7 +659,7 @@ mod tests {
         )
         .unwrap();
 
-        // Stack: [bottom] activated ability, [top] WardTrigger.
+        // Stack: [bottom] activated ability, [top] TriggeredAbility (Ward).
         assert_eq!(gs.stack.len(), 2);
         let ability_stack_id = gs.stack[0];
         let ward_trigger_stack_id = gs.stack[1];
@@ -669,23 +669,33 @@ mod tests {
             StackPayload::ActivatedAbility { .. }
         ));
         match &gs.stack_objects[&ward_trigger_stack_id].payload {
-            StackPayload::WardTrigger {
-                counters_if_unpaid,
-                cost,
-                settled,
-            } => {
-                assert_eq!(*counters_if_unpaid, ability_stack_id);
-                assert_eq!(
-                    *cost,
-                    vec![CostComponent::Mana(ManaCost {
-                        pips: vec![ManaPip::Generic(2)]
-                    })]
-                );
-                assert!(!settled);
+            StackPayload::TriggeredAbility { effect, .. } => {
+                assert_eq!(effect.len(), 1);
+                match &effect[0] {
+                    EffectStep::Payment {
+                        cost, on_declined, ..
+                    } => {
+                        assert_eq!(
+                            *cost,
+                            vec![CostComponent::Mana(ManaCost {
+                                pips: vec![ManaPip::Generic(2)]
+                            })]
+                        );
+                        assert!(matches!(on_declined[0], EffectStep::CounterSpell));
+                    }
+                    other => panic!("Expected Payment step, got {other:?}"),
+                }
             }
-            other => panic!("Expected WardTrigger, got {other:?}"),
+            other => panic!("Expected TriggeredAbility, got {other:?}"),
         }
-        // WardTrigger is controlled by the Ward permanent's controller (CR 603.3a).
+        // Ward trigger targets the triggering ability (ability_stack_id).
+        assert_eq!(
+            gs.stack_objects[&ward_trigger_stack_id].targets,
+            vec![EffectTarget::StackObject {
+                id: ability_stack_id
+            }]
+        );
+        // TriggeredAbility is controlled by the Ward permanent's controller (CR 603.3a).
         assert_eq!(
             gs.stack_objects[&ward_trigger_stack_id].controller,
             PlayerId(1)

@@ -2,7 +2,6 @@ use super::EngineError;
 use crate::engine::mana::{greedy_payment_plan, pay_mana_cost};
 use crate::engine::stack::execute_effect_steps;
 use crate::types::ability::CostComponent;
-use crate::types::stack::{StackId, StackPayload};
 use crate::types::{GameState, ObjectId, PlayerId};
 
 // CR 116.1, 601.2h — unified cost payment for all cost-bearing game actions.
@@ -126,144 +125,18 @@ pub fn decline_pending_cost(mut state: GameState) -> Result<GameState, EngineErr
     Ok(state)
 }
 
-// CR 702.21a: Pay the ward cost for a WardTrigger on top of the stack.
-// Immediately resolves the trigger: the targeted spell survives unchanged.
-// Removes the WardTrigger from the stack and restores priority to the active player.
-pub fn pay_stack_cost(
-    mut state: GameState,
-    player_id: PlayerId,
-    stack_id: StackId,
-) -> Result<GameState, EngineError> {
-    if state.stack.last() != Some(&stack_id) {
-        return Err(EngineError::NotYourPriority);
-    }
-    // Check if trigger is already settled before attempting payment.
-    let (cost, already_settled) = {
-        let obj = state
-            .stack_objects
-            .get(&stack_id)
-            .ok_or(EngineError::CardNotFound)?;
-        match &obj.payload {
-            StackPayload::WardTrigger { cost, settled, .. } => (cost.clone(), *settled),
-            _ => return Err(EngineError::NotYourPriority),
-        }
-    };
-    if already_settled {
-        state.stack_objects.remove(&stack_id);
-        state.stack.retain(|&id| id != stack_id);
-        state.consecutive_passes = 0;
-        state.priority_player = state.active_player;
-        return Ok(state);
-    }
-    state = pay_cost_components(state, player_id, &cost)?;
-    state.stack_objects.remove(&stack_id);
-    state.stack.retain(|&id| id != stack_id);
-    state.consecutive_passes = 0;
-    state.priority_player = state.active_player;
-    Ok(state)
-}
-
-// CR 702.21a: Decline an optional stack cost; immediately counter the targeted spell.
-// Removes both the WardTrigger and the countered spell from the stack.
-pub fn resolve_stack_cost_decline(
-    mut state: GameState,
-    stack_id: StackId,
-) -> Result<GameState, EngineError> {
-    if state.stack.last() != Some(&stack_id) {
-        return Err(EngineError::NotYourPriority);
-    }
-    let counters_if_unpaid = {
-        let obj = state
-            .stack_objects
-            .get(&stack_id)
-            .ok_or(EngineError::CardNotFound)?;
-        match &obj.payload {
-            StackPayload::WardTrigger {
-                counters_if_unpaid, ..
-            } => *counters_if_unpaid,
-            _ => return Err(EngineError::NotYourPriority),
-        }
-    };
-    state.stack_objects.remove(&stack_id);
-    state.stack.retain(|&id| id != stack_id);
-    super::stack::counter_spell_on_stack(&mut state, counters_if_unpaid);
-    state.consecutive_passes = 0;
-    state.priority_player = state.active_player;
-    Ok(state)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::ability::CostComponent;
     use crate::types::mana::{ManaCost, ManaPip};
-    use crate::types::stack::{StackObject, StackPayload};
-    use crate::types::{GameState, Player, PlayerId, StackId};
+    use crate::types::{GameState, Player, PlayerId};
 
     fn two_player_state() -> GameState {
         GameState::new(vec![
             Player::new(PlayerId(0), "Alice"),
             Player::new(PlayerId(1), "Bob"),
         ])
-    }
-
-    fn push_ward_trigger(
-        state: &mut GameState,
-        cost: Vec<CostComponent>,
-        counters: StackId,
-    ) -> StackId {
-        let sid = state.alloc_stack_id();
-        state.stack_objects.insert(
-            sid,
-            StackObject {
-                id: sid,
-                payload: StackPayload::WardTrigger {
-                    counters_if_unpaid: counters,
-                    cost,
-                    settled: false,
-                },
-                controller: PlayerId(1),
-                targets: vec![],
-            },
-        );
-        state.stack.push(sid);
-        sid
-    }
-
-    fn push_spell(state: &mut GameState) -> StackId {
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::mana::ManaCost;
-        use crate::types::{CardObject, Zone};
-        let spell_id = state.alloc_id();
-        let def = CardDefinition {
-            name: "Lightning Bolt".into(),
-            mana_cost: Some(ManaCost { pips: vec![] }),
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Instant],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![],
-            text_annotations: vec![],
-            power: None,
-            toughness: None,
-            colors: vec![],
-        };
-        let obj = CardObject::new(spell_id, def, PlayerId(0), Zone::Stack);
-        state.add_object(obj);
-        let sid = state.alloc_stack_id();
-        state.stack_objects.insert(
-            sid,
-            StackObject {
-                id: sid,
-                payload: StackPayload::Spell { card_id: spell_id },
-                controller: PlayerId(0),
-                targets: vec![],
-            },
-        );
-        state.stack.push(sid);
-        sid
     }
 
     // ── pay_cost_components ──────────────────────────────────────────────
@@ -358,104 +231,6 @@ mod tests {
             pips: vec![ManaPip::Generic(5)],
         })];
         assert!(can_pay_cost_components(&gs, PlayerId(0), None, &components));
-    }
-
-    // ── pay_stack_cost ───────────────────────────────────────────────────
-
-    #[test]
-    fn pay_stack_cost_mana_removes_trigger_and_deducts_mana() {
-        let mut gs = two_player_state();
-        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.colorless = 2;
-        let spell_sid = push_spell(&mut gs);
-        let trigger_sid = push_ward_trigger(
-            &mut gs,
-            vec![CostComponent::Mana(ManaCost {
-                pips: vec![ManaPip::Generic(2)],
-            })],
-            spell_sid,
-        );
-
-        let gs = pay_stack_cost(gs, PlayerId(0), trigger_sid).unwrap();
-
-        assert!(!gs.stack.contains(&trigger_sid));
-        assert!(!gs.stack_objects.contains_key(&trigger_sid));
-        assert!(gs.stack.contains(&spell_sid));
-        assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.colorless, 0);
-    }
-
-    #[test]
-    fn pay_stack_cost_life_removes_trigger_and_deducts_life() {
-        let mut gs = two_player_state();
-        let spell_sid = push_spell(&mut gs);
-        let trigger_sid = push_ward_trigger(&mut gs, vec![CostComponent::PayLife(2)], spell_sid);
-
-        let gs = pay_stack_cost(gs, PlayerId(0), trigger_sid).unwrap();
-
-        assert!(!gs.stack.contains(&trigger_sid));
-        assert!(gs.stack.contains(&spell_sid));
-        assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, 18);
-    }
-
-    #[test]
-    fn pay_stack_cost_not_on_top_returns_error() {
-        let mut gs = two_player_state();
-        let spell_sid = push_spell(&mut gs);
-        let trigger_sid = push_ward_trigger(&mut gs, vec![CostComponent::PayLife(1)], spell_sid);
-        let extra = gs.alloc_stack_id();
-        gs.stack.push(extra);
-
-        let result = pay_stack_cost(gs, PlayerId(0), trigger_sid);
-        assert!(matches!(result, Err(EngineError::NotYourPriority)));
-    }
-
-    #[test]
-    fn pay_stack_cost_insufficient_mana_returns_error() {
-        let mut gs = two_player_state();
-        // Player has 0 mana; ward costs {2}
-        let spell_sid = push_spell(&mut gs);
-        let trigger_sid = push_ward_trigger(
-            &mut gs,
-            vec![CostComponent::Mana(ManaCost {
-                pips: vec![ManaPip::Generic(2)],
-            })],
-            spell_sid,
-        );
-
-        let result = pay_stack_cost(gs, PlayerId(0), trigger_sid);
-        assert!(
-            matches!(result, Err(EngineError::InsufficientMana)),
-            "expected InsufficientMana, got {result:?}"
-        );
-    }
-
-    #[test]
-    fn pay_stack_cost_insufficient_life_returns_error() {
-        let mut gs = two_player_state();
-        gs.get_player_mut(PlayerId(0)).unwrap().life = 1;
-        let spell_sid = push_spell(&mut gs);
-        let trigger_sid = push_ward_trigger(&mut gs, vec![CostComponent::PayLife(5)], spell_sid);
-
-        let result = pay_stack_cost(gs, PlayerId(0), trigger_sid);
-        assert!(
-            matches!(result, Err(EngineError::InsufficientLife)),
-            "expected InsufficientLife, got {result:?}"
-        );
-    }
-
-    // ── resolve_stack_cost_decline ───────────────────────────────────────
-
-    #[test]
-    fn decline_removes_trigger_and_counters_spell() {
-        let mut gs = two_player_state();
-        let spell_sid = push_spell(&mut gs);
-        let trigger_sid = push_ward_trigger(&mut gs, vec![CostComponent::PayLife(2)], spell_sid);
-
-        let gs = resolve_stack_cost_decline(gs, trigger_sid).unwrap();
-
-        assert!(!gs.stack.contains(&trigger_sid));
-        assert!(!gs.stack.contains(&spell_sid));
-        let gy = gs.graveyards.get(&PlayerId(0)).unwrap();
-        assert!(!gy.is_empty(), "countered spell should be in graveyard");
     }
 
     // ── pay_pending_cost / decline_pending_cost ─────────────────────────
@@ -569,17 +344,5 @@ mod tests {
         assert!(!gs.stack_objects.contains_key(&sid));
         let gy = gs.graveyards.get(&PlayerId(1)).unwrap();
         assert!(gy.contains(&card_id));
-    }
-
-    #[test]
-    fn decline_not_on_top_returns_error() {
-        let mut gs = two_player_state();
-        let spell_sid = push_spell(&mut gs);
-        let trigger_sid = push_ward_trigger(&mut gs, vec![CostComponent::PayLife(1)], spell_sid);
-        let extra = gs.alloc_stack_id();
-        gs.stack.push(extra);
-
-        let result = resolve_stack_cost_decline(gs, trigger_sid);
-        assert!(matches!(result, Err(EngineError::NotYourPriority)));
     }
 }

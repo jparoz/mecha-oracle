@@ -294,19 +294,6 @@ pub fn resolve_top(mut state: GameState) -> GameState {
             state.priority_player = state.active_player;
             check_and_apply_sbas(state)
         }
-        // CR 702.21a: WardTrigger resolution — if not settled, counter the spell.
-        StackPayload::WardTrigger {
-            counters_if_unpaid,
-            settled,
-            ..
-        } => {
-            if !settled {
-                counter_spell_on_stack(&mut state, counters_if_unpaid);
-            }
-            state.consecutive_passes = 0;
-            state.priority_player = state.active_player;
-            check_and_apply_sbas(state)
-        }
     }
 }
 
@@ -1029,88 +1016,6 @@ mod tests {
         // Fizzle: damage NOT applied (player is illegal target)
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life);
         assert!(gs.stack.is_empty());
-    }
-
-    // --- Ward trigger resolution tests (CR 702.21a) ---
-
-    fn push_spell_with_id(
-        state: &mut GameState,
-        card_id: ObjectId,
-    ) -> crate::types::stack::StackId {
-        let stack_id = state.alloc_stack_id();
-        let controller = state.active_player;
-        let obj = StackObject {
-            id: stack_id,
-            payload: StackPayload::Spell { card_id },
-            controller,
-            targets: vec![],
-        };
-        state.stack.push(stack_id);
-        state.stack_objects.insert(stack_id, obj);
-        stack_id
-    }
-
-    fn push_ward_trigger_above(
-        state: &mut GameState,
-        counters_if_unpaid: crate::types::stack::StackId,
-        settled: bool,
-    ) -> crate::types::stack::StackId {
-        use crate::types::ability::CostComponent;
-        let sid = state.alloc_stack_id();
-        let obj = StackObject {
-            id: sid,
-            payload: StackPayload::WardTrigger {
-                counters_if_unpaid,
-                cost: vec![CostComponent::Mana(ManaCost {
-                    pips: vec![ManaPip::Generic(2)],
-                })],
-                settled,
-            },
-            controller: PlayerId(1),
-            targets: vec![],
-        };
-        state.stack.push(sid);
-        state.stack_objects.insert(sid, obj);
-        sid
-    }
-
-    #[test]
-    fn ward_trigger_unpaid_counters_spell_and_moves_card_to_graveyard() {
-        // CR 702.21a: unpaid Ward trigger counters the spell; card moves to graveyard.
-        let mut gs = make_state();
-        let card_id = make_instant_obj(&mut gs, PlayerId(0), vec![]);
-        gs.objects.get_mut(&card_id).unwrap().zone = Zone::Stack;
-        let spell_stack_id = push_spell_with_id(&mut gs, card_id);
-        let _ward_id = push_ward_trigger_above(&mut gs, spell_stack_id, false); // settled=false
-
-        // Resolve the WardTrigger (top of stack)
-        let gs = resolve_top(gs);
-
-        // Spell countered: no longer on stack
-        assert!(!gs.stack.contains(&spell_stack_id));
-        assert!(!gs.stack_objects.contains_key(&spell_stack_id));
-        // Card moved to graveyard
-        assert_eq!(gs.objects[&card_id].zone, Zone::Graveyard);
-        assert!(gs.graveyards[&PlayerId(0)].contains(&card_id));
-    }
-
-    #[test]
-    fn ward_trigger_paid_leaves_spell_on_stack() {
-        // CR 702.21a: paid Ward trigger resolves without countering the spell.
-        let mut gs = make_state();
-        let card_id = make_instant_obj(&mut gs, PlayerId(0), vec![]);
-        gs.objects.get_mut(&card_id).unwrap().zone = Zone::Stack;
-        let spell_stack_id = push_spell_with_id(&mut gs, card_id);
-        let _ward_id = push_ward_trigger_above(&mut gs, spell_stack_id, true); // settled=true
-
-        // Resolve the WardTrigger (top of stack)
-        let gs = resolve_top(gs);
-
-        // Spell still on stack
-        assert!(gs.stack.contains(&spell_stack_id));
-        assert!(gs.stack_objects.contains_key(&spell_stack_id));
-        // Card still in Stack zone
-        assert_eq!(gs.objects[&card_id].zone, Zone::Stack);
     }
 
     #[test]

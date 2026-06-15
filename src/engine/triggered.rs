@@ -319,9 +319,9 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
     result
 }
 
-/// CR 702.21a: Collect WardTrigger stack objects for any declared targets that are
+/// CR 702.21a: Collect ward triggered abilities for any declared targets that are
 /// opponent-controlled permanents with Ward. Each Ward ability on such a target generates
-/// one WardTrigger pushed above the triggering spell/ability on the stack.
+/// one TriggeredAbility with a Payment effect pushed above the triggering spell/ability on the stack.
 /// The trigger is controlled by the Ward permanent's controller (CR 603.3a).
 pub fn collect_ward_triggers(
     state: &mut GameState,
@@ -363,15 +363,30 @@ pub fn collect_ward_triggers(
             .collect();
         for cost in ward_cost_sets {
             let sid = state.alloc_stack_id();
+            let label = if cost.len() == 1 {
+                match &cost[0] {
+                    CostComponent::Mana(m) => format!("Ward \u{2014} {m}"),
+                    CostComponent::PayLife(n) => format!("Ward \u{2014} Pay {n} life"),
+                    _ => "Ward".to_string(),
+                }
+            } else {
+                "Ward".to_string()
+            };
             triggers.push(StackObject {
                 id: sid,
-                payload: StackPayload::WardTrigger {
-                    counters_if_unpaid: triggering_stack_id,
-                    cost,
-                    settled: false,
+                payload: StackPayload::TriggeredAbility {
+                    source_id: target_obj_id,
+                    effect: vec![crate::types::effect::EffectStep::Payment {
+                        cost,
+                        on_paid: vec![],
+                        on_declined: vec![crate::types::effect::EffectStep::CounterSpell],
+                    }],
+                    label,
                 },
                 controller: ward_permanent_controller,
-                targets: vec![],
+                targets: vec![crate::types::effect::EffectTarget::StackObject {
+                    id: triggering_stack_id,
+                }],
             });
         }
     }
@@ -1120,6 +1135,76 @@ mod tests {
 
         assert_eq!(triggers.len(), 2);
         assert_ne!(triggers[0].id, triggers[1].id);
+    }
+
+    #[test]
+    fn collect_ward_triggers_emits_triggered_ability_with_payment() {
+        use crate::engine::triggered::collect_ward_triggers;
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, CostComponent, StaticAbility};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::{EffectStep, EffectTarget};
+        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::stack::{StackObject, StackPayload};
+
+        let mut gs = two_player_state();
+
+        // A creature with Ward {2} controlled by P1
+        let ward_cost = vec![CostComponent::Mana(ManaCost {
+            pips: vec![ManaPip::Generic(2)],
+        })];
+        let ward_def = CardDefinition {
+            name: "Ward Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
+                ward_cost.clone(),
+            )))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let ward_id = place_on_battlefield(&mut gs, ward_def, PlayerId(1));
+
+        // A spell on the stack controlled by P0 targeting the ward creature
+        let triggering_sid = gs.alloc_stack_id();
+        let spell_card_id = gs.alloc_id();
+        gs.stack_objects.insert(
+            triggering_sid,
+            StackObject {
+                id: triggering_sid,
+                payload: StackPayload::Spell {
+                    card_id: spell_card_id,
+                },
+                controller: PlayerId(0),
+                targets: vec![],
+            },
+        );
+        gs.stack.push(triggering_sid);
+
+        let targets = vec![EffectTarget::Object { id: ward_id }];
+        let triggers = collect_ward_triggers(&mut gs, triggering_sid, PlayerId(0), &targets);
+
+        assert_eq!(triggers.len(), 1);
+        let trigger = &triggers[0];
+        assert_eq!(trigger.controller, PlayerId(1));
+        // Must be TriggeredAbility (not WardTrigger)
+        let StackPayload::TriggeredAbility { effect, .. } = &trigger.payload else {
+            panic!("expected TriggeredAbility, got something else");
+        };
+        assert_eq!(effect.len(), 1);
+        assert!(matches!(&effect[0], EffectStep::Payment { .. }));
+        // The target of the ward trigger should be the triggering spell
+        assert_eq!(
+            trigger.targets,
+            vec![EffectTarget::StackObject { id: triggering_sid }]
+        );
     }
 
     #[test]

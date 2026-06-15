@@ -9,7 +9,7 @@ use mecha_oracle::engine::activated::activate_ability;
 use mecha_oracle::engine::casting::{cast_spell, play_land};
 use mecha_oracle::engine::combat::{can_block_attacker, declare_attackers, declare_blockers};
 use mecha_oracle::engine::costs::{
-    can_pay_cost_components, pay_stack_cost, resolve_stack_cost_decline,
+    can_pay_cost_components, decline_pending_cost, pay_pending_cost,
 };
 use mecha_oracle::engine::cycling::cycle_card;
 use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
@@ -21,7 +21,7 @@ use mecha_oracle::types::ability::{
     TextAnnotation,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
-use mecha_oracle::types::stack::{StackId, StackPayload};
+use mecha_oracle::types::stack::StackPayload;
 use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -198,6 +198,12 @@ struct PlayerView {
 }
 
 #[derive(Serialize)]
+struct PendingPaymentView {
+    paying_player: u64,
+    cost_label: String,
+}
+
+#[derive(Serialize)]
 struct GameView {
     turn: u32,
     step: String,
@@ -213,6 +219,7 @@ struct GameView {
     blockers_declared: bool,
     stack: Vec<StackItemView>,
     consecutive_passes: u32,
+    pending_payment: Option<PendingPaymentView>,
 }
 
 fn format_mana_cost(cost: &mecha_oracle::types::mana::ManaCost) -> String {
@@ -701,18 +708,6 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
     }
 }
 
-fn format_ward_cost_label(components: &[CostComponent]) -> String {
-    components
-        .iter()
-        .filter_map(|c| match c {
-            CostComponent::Mana(m) => Some(format!("{m}")),
-            CostComponent::PayLife(n) => Some(format!("Pay {n} life")),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 fn format_ability_cost_label(cost: &[CostComponent]) -> String {
     cost.iter()
         .map(|c| match c {
@@ -780,22 +775,6 @@ fn build_game_view(state: &GameState) -> GameView {
                     card: None,
                     cost_label: None,
                 },
-                StackPayload::WardTrigger { cost, .. } => {
-                    let cl = format_ward_cost_label(cost);
-                    let label = if cl.is_empty() {
-                        "Ward trigger".to_string()
-                    } else {
-                        format!("Ward trigger \u{2014} {cl}")
-                    };
-                    StackItemView {
-                        id: sid.0,
-                        kind: "ward_trigger".into(),
-                        label,
-                        controller: obj.controller,
-                        card: None,
-                        cost_label: if cl.is_empty() { None } else { Some(cl) },
-                    }
-                }
             }
         })
         .collect();
@@ -815,6 +794,10 @@ fn build_game_view(state: &GameState) -> GameView {
         blockers_declared: state.combat.blockers_declared,
         stack,
         consecutive_passes: state.consecutive_passes,
+        pending_payment: state.pending_payment.as_ref().map(|pp| PendingPaymentView {
+            paying_player: pp.paying_player.0 as u64,
+            cost_label: format_ability_cost_label(&pp.cost),
+        }),
     }
 }
 
@@ -856,14 +839,10 @@ enum ActionRequest {
     CycleCard {
         object_id: u64,
     },
-    /// CR 116.1: Pay the cost of a cost-bearing stack object (e.g. ward trigger).
-    PayCost {
-        stack_id: u64,
-    },
-    /// CR 702.21a: Decline an optional stack cost; the targeted spell is countered.
-    DeclineCost {
-        stack_id: u64,
-    },
+    /// CR 118.12: pay the current inline cost obligation.
+    PayPendingCost,
+    /// CR 118.12: decline the current inline cost obligation (spell will be countered).
+    DeclinePendingCost,
 }
 
 #[derive(Serialize)]
@@ -1018,12 +997,12 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             let player = state.priority_player;
             cycle_card(state, ObjectId(object_id), player).map_err(|e| format!("{e:?}"))
         }
-        ActionRequest::PayCost { stack_id } => {
+        ActionRequest::PayPendingCost => {
             let player = state.priority_player;
-            pay_stack_cost(state, player, StackId(stack_id)).map_err(|e| format!("{e:?}"))
+            pay_pending_cost(state, player).map_err(|e| format!("{e:?}"))
         }
-        ActionRequest::DeclineCost { stack_id } => {
-            resolve_stack_cost_decline(state, StackId(stack_id)).map_err(|e| format!("{e:?}"))
+        ActionRequest::DeclinePendingCost => {
+            decline_pending_cost(state).map_err(|e| format!("{e:?}"))
         }
     }
 }

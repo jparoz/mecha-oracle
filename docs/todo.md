@@ -123,6 +123,6 @@ Cards like Mana Leak ({1}{U}), Quench ({U}{U}), Syncopate ({X}{U}), and Condesce
 "counter target spell unless its controller pays {N}" semantics. This requires:
 
 - A payment obligation directed at the targeted spell's controller (not the counterspell caster) — similar to Ward, but triggered at resolution rather than at targeting time.
-- Extend `StackPayload` with a `ConditionalCounter` variant (analogous to `WardTrigger`) that sits on the stack when the countered spell's controller still has a window to pay.
-- Or model as a two-step resolution: the counterspell resolves into a triggered ability ("unless paid, counter that spell") using the existing cost/payment infrastructure in `engine/costs.rs`.
-- See CR 116.2b (players may take actions during cost-payment windows) and the Ward implementation in `engine/triggered.rs` and `engine/costs.rs` for the pattern to follow.
+- The generic `EffectStep::Payment` + `EffectStep::CounterSpell` pattern (already used for Ward) is the right vehicle. The spell resolves into an `EffectStep::Payment { cost, on_paid: [], on_declined: [CounterSpell] }` where the target is the StackObject being countered.
+- Parser needs to recognize "counter target spell unless its controller pays {N}" and emit the appropriate `SpellAbility` with a `Payment` step.
+- See CR 116.2b (players may take actions during cost-payment windows) and Ward in `engine/triggered.rs` for the pattern to follow.
