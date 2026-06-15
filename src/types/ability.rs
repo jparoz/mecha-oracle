@@ -176,6 +176,12 @@ pub struct SpellFilter {
     pub included_types: Vec<CardType>,
     /// Spell must have none of these types.
     pub excluded_types: Vec<CardType>,
+    /// CR 202.3: spell MV must be ≥ this; None = no constraint.
+    pub min_mana_value: Option<u32>,
+    /// Spell MV must be ≤ this; None = no constraint.
+    pub max_mana_value: Option<u32>,
+    /// Spell must share ≥1 color with this list; empty = no constraint.
+    pub any_of_colors: Vec<ManaColor>,
 }
 
 impl SpellFilter {
@@ -185,30 +191,34 @@ impl SpellFilter {
 
     pub fn noncreature() -> Self {
         Self {
-            included_types: vec![],
             excluded_types: vec![CardType::Creature],
+            ..Default::default()
         }
     }
 
     pub fn creature() -> Self {
         Self {
             included_types: vec![CardType::Creature],
-            excluded_types: vec![],
+            ..Default::default()
         }
     }
 
     pub fn instant_or_sorcery() -> Self {
         Self {
             included_types: vec![CardType::Instant, CardType::Sorcery],
-            excluded_types: vec![],
+            ..Default::default()
         }
     }
 
-    pub fn matches(&self, card_types: &[CardType]) -> bool {
+    pub fn matches(&self, card_types: &[CardType], mana_value: u32, colors: &[ManaColor]) -> bool {
         let included_ok = self.included_types.is_empty()
             || self.included_types.iter().any(|t| card_types.contains(t));
         let excluded_ok = self.excluded_types.iter().all(|t| !card_types.contains(t));
-        included_ok && excluded_ok
+        let min_ok = self.min_mana_value.is_none_or(|n| mana_value >= n);
+        let max_ok = self.max_mana_value.is_none_or(|n| mana_value <= n);
+        let color_ok =
+            self.any_of_colors.is_empty() || self.any_of_colors.iter().any(|c| colors.contains(c));
+        included_ok && excluded_ok && min_ok && max_ok && color_ok
     }
 }
 
@@ -403,36 +413,84 @@ mod tests {
     #[test]
     fn spell_filter_any_matches_all_types() {
         let f = SpellFilter::any();
-        assert!(f.matches(&[CardType::Creature]));
-        assert!(f.matches(&[CardType::Instant]));
-        assert!(f.matches(&[CardType::Sorcery]));
-        assert!(f.matches(&[]));
+        assert!(f.matches(&[CardType::Creature], 0, &[]));
+        assert!(f.matches(&[CardType::Instant], 0, &[]));
+        assert!(f.matches(&[CardType::Sorcery], 0, &[]));
+        assert!(f.matches(&[], 0, &[]));
     }
 
     #[test]
     fn spell_filter_noncreature_excludes_creature_spells() {
         let f = SpellFilter::noncreature();
-        assert!(!f.matches(&[CardType::Creature]));
-        assert!(f.matches(&[CardType::Instant]));
-        assert!(f.matches(&[CardType::Sorcery]));
-        assert!(!f.matches(&[CardType::Creature, CardType::Artifact]));
+        assert!(!f.matches(&[CardType::Creature], 0, &[]));
+        assert!(f.matches(&[CardType::Instant], 0, &[]));
+        assert!(f.matches(&[CardType::Sorcery], 0, &[]));
+        assert!(!f.matches(&[CardType::Creature, CardType::Artifact], 0, &[]));
     }
 
     #[test]
     fn spell_filter_creature_includes_creature_only() {
         let f = SpellFilter::creature();
-        assert!(f.matches(&[CardType::Creature]));
-        assert!(!f.matches(&[CardType::Instant]));
-        assert!(!f.matches(&[CardType::Sorcery]));
+        assert!(f.matches(&[CardType::Creature], 0, &[]));
+        assert!(!f.matches(&[CardType::Instant], 0, &[]));
+        assert!(!f.matches(&[CardType::Sorcery], 0, &[]));
     }
 
     #[test]
     fn spell_filter_instant_or_sorcery_matches_either() {
         let f = SpellFilter::instant_or_sorcery();
-        assert!(f.matches(&[CardType::Instant]));
-        assert!(f.matches(&[CardType::Sorcery]));
-        assert!(!f.matches(&[CardType::Creature]));
-        assert!(!f.matches(&[]));
+        assert!(f.matches(&[CardType::Instant], 0, &[]));
+        assert!(f.matches(&[CardType::Sorcery], 0, &[]));
+        assert!(!f.matches(&[CardType::Creature], 0, &[]));
+        assert!(!f.matches(&[], 0, &[]));
+    }
+
+    #[test]
+    fn spell_filter_min_mana_value_accepts_at_or_above() {
+        let f = SpellFilter {
+            min_mana_value: Some(4),
+            ..SpellFilter::default()
+        };
+        assert!(f.matches(&[], 4, &[]));
+        assert!(f.matches(&[], 5, &[]));
+        assert!(!f.matches(&[], 3, &[]));
+    }
+
+    #[test]
+    fn spell_filter_max_mana_value_accepts_at_or_below() {
+        let f = SpellFilter {
+            max_mana_value: Some(2),
+            ..SpellFilter::default()
+        };
+        assert!(f.matches(&[], 0, &[]));
+        assert!(f.matches(&[], 2, &[]));
+        assert!(!f.matches(&[], 3, &[]));
+    }
+
+    #[test]
+    fn spell_filter_any_of_colors_must_match_at_least_one() {
+        use crate::types::mana::ManaColor;
+        let f = SpellFilter {
+            any_of_colors: vec![ManaColor::Red, ManaColor::Green],
+            ..SpellFilter::default()
+        };
+        assert!(f.matches(&[], 0, &[ManaColor::Red]));
+        assert!(f.matches(&[], 0, &[ManaColor::Green]));
+        assert!(!f.matches(&[], 0, &[ManaColor::Blue]));
+        assert!(!f.matches(&[], 0, &[]));
+    }
+
+    #[test]
+    fn spell_filter_combined_mv_and_color() {
+        use crate::types::mana::ManaColor;
+        let f = SpellFilter {
+            any_of_colors: vec![ManaColor::Blue],
+            min_mana_value: Some(3),
+            ..SpellFilter::default()
+        };
+        assert!(f.matches(&[], 3, &[ManaColor::Blue]));
+        assert!(!f.matches(&[], 2, &[ManaColor::Blue])); // MV too low
+        assert!(!f.matches(&[], 3, &[ManaColor::Red])); // wrong color
     }
 
     #[test]

@@ -1,4 +1,9 @@
 use crate::types::ability::{Ability, StaticAbility, TargetFilter};
+
+// CR 202.3: mana value is the sum of pip values; delegates to ManaCost::mana_value().
+fn mana_value_of(cost: &crate::types::mana::ManaCost) -> u32 {
+    cost.mana_value()
+}
 use crate::types::effect::EffectTarget;
 use crate::types::mana::ManaColor;
 use crate::types::stack::StackPayload;
@@ -72,12 +77,18 @@ pub fn is_legal_target(
                 let StackPayload::Spell { card_id } = &sobj.payload else {
                     return false; // triggered/activated abilities are not spells
                 };
-                let card_types = state
-                    .objects
-                    .get(card_id)
-                    .map(|o| o.definition.type_line.card_types.as_slice())
-                    .unwrap_or(&[]);
-                spell_filter.matches(card_types)
+                let Some(card_obj) = state.objects.get(card_id) else {
+                    return false;
+                };
+                let card_types = &card_obj.definition.type_line.card_types;
+                let mv = card_obj
+                    .definition
+                    .mana_cost
+                    .as_ref()
+                    .map(mana_value_of)
+                    .unwrap_or(0);
+                let colors = &card_obj.definition.colors;
+                spell_filter.matches(card_types, mv, colors)
             } else {
                 false
             }
