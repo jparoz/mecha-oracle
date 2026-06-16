@@ -91,12 +91,14 @@ pub fn pay_pending_cost(
         pending.controller,
         &pending.on_paid,
         &pending.targets,
+        None,
     );
     state = execute_effect_steps(
         state,
         pending.controller,
         &pending.continuation,
         &pending.targets,
+        None,
     );
     state.consecutive_passes = 0;
     state.priority_player = state.active_player;
@@ -114,12 +116,14 @@ pub fn decline_pending_cost(mut state: GameState) -> Result<GameState, EngineErr
         pending.controller,
         &pending.on_declined,
         &pending.targets,
+        None,
     );
     state = execute_effect_steps(
         state,
         pending.controller,
         &pending.continuation,
         &pending.targets,
+        None,
     );
     state.consecutive_passes = 0;
     state.priority_player = state.active_player;

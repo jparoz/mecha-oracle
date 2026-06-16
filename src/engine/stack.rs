@@ -28,6 +28,37 @@ pub fn pass_priority(mut state: GameState, player_id: PlayerId) -> Result<GameSt
     }
 }
 
+// CR 107.4: substitute the resolving spell/ability's own fixed X for any
+// ManaPip::X in a payment cost. Used for effects like "unless its controller
+// pays {X}" (CR 118.12), where the X referenced is the caster's X choice,
+// not a fresh choice made by the player paying.
+fn resolve_x_in_cost(
+    cost: &crate::types::ability::Cost,
+    x_value: Option<u32>,
+) -> crate::types::ability::Cost {
+    use crate::types::ability::CostComponent;
+    use crate::types::mana::ManaPip;
+    let x = x_value.unwrap_or(0);
+    cost.iter()
+        .map(|component| match component {
+            CostComponent::Mana(mana_cost) => CostComponent::Mana(crate::types::mana::ManaCost {
+                pips: mana_cost
+                    .pips
+                    .iter()
+                    .map(|pip| {
+                        if *pip == ManaPip::X {
+                            ManaPip::Generic(x)
+                        } else {
+                            *pip
+                        }
+                    })
+                    .collect(),
+            }),
+            other => other.clone(),
+        })
+        .collect()
+}
+
 // CR 608.2b: execute each effect step for the given controller.
 // Shared by instant/sorcery spell resolution and triggered/activated ability resolution.
 pub(crate) fn execute_effect_steps(
@@ -35,6 +66,7 @@ pub(crate) fn execute_effect_steps(
     controller: PlayerId,
     steps: &[EffectStep],
     targets: &[crate::types::effect::EffectTarget],
+    x_value: Option<u32>,
 ) -> GameState {
     use crate::types::effect::EffectTarget;
     for (i, step) in steps.iter().enumerate() {
@@ -123,7 +155,7 @@ pub(crate) fn execute_effect_steps(
                 let continuation = steps[i + 1..].to_vec();
                 state.pending_payment = Some(crate::types::game_state::PendingPayment {
                     paying_player,
-                    cost: cost.clone(),
+                    cost: resolve_x_in_cost(cost, x_value),
                     on_paid: on_paid.clone(),
                     on_declined: on_declined.clone(),
                     continuation,
@@ -175,6 +207,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
 
     let is_activated = matches!(stack_obj.payload, StackPayload::ActivatedAbility { .. });
     let targets = stack_obj.targets.clone();
+    let x_value = stack_obj.x_value;
 
     match stack_obj.payload {
         StackPayload::Spell { card_id } => {
@@ -242,7 +275,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     return check_and_apply_sbas(state);
                 }
 
-                state = execute_effect_steps(state, controller, &steps, &targets);
+                state = execute_effect_steps(state, controller, &steps, &targets, x_value);
 
                 if let Some(obj) = state.objects.get_mut(&card_id) {
                     obj.zone = Zone::Graveyard;
@@ -280,7 +313,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                 state.priority_player = state.active_player;
                 return check_and_apply_sbas(state);
             }
-            state = execute_effect_steps(state, controller, &effect, &targets);
+            state = execute_effect_steps(state, controller, &effect, &targets, x_value);
 
             // If a Payment step paused resolution, give priority to the paying player.
             if let Some(pp) = &state.pending_payment {
@@ -1082,7 +1115,7 @@ mod tests {
         }];
         let targets = vec![EffectTarget::StackObject { id: target_sid }];
 
-        let gs = execute_effect_steps(gs, PlayerId(0), &steps, &targets);
+        let gs = execute_effect_steps(gs, PlayerId(0), &steps, &targets, None);
 
         assert!(gs.pending_payment.is_some());
         let pp = gs.pending_payment.as_ref().unwrap();
@@ -1091,6 +1124,76 @@ mod tests {
         assert_eq!(pp.on_declined, vec![EffectStep::CounterSpell]);
         // target spell still on stack (not countered yet)
         assert!(gs.stack.contains(&target_sid));
+    }
+
+    /// CR 107.4 / CR 118.12: "unless its controller pays {X}" (e.g. Condescend)
+    /// resolves X using the resolving spell's own fixed X, not a fresh choice
+    /// by the player paying — so the stored PendingPayment cost must already
+    /// contain a concrete Generic pip, not ManaPip::X.
+    #[test]
+    fn payment_step_substitutes_resolving_spells_x_value() {
+        use crate::types::ability::{Cost, CostComponent};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::{EffectStep, EffectTarget};
+        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::stack::{StackObject, StackPayload};
+        use crate::types::{CardObject, Zone};
+
+        let mut gs = make_state();
+
+        let target_card_id = gs.alloc_id();
+        let def = CardDefinition {
+            name: "Target Spell".into(),
+            mana_cost: Some(ManaCost { pips: vec![] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Instant],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        let target_obj = CardObject::new(target_card_id, def, PlayerId(1), Zone::Stack);
+        gs.add_object(target_obj);
+        let target_sid = gs.alloc_stack_id();
+        gs.stack_objects.insert(
+            target_sid,
+            StackObject {
+                id: target_sid,
+                payload: StackPayload::Spell {
+                    card_id: target_card_id,
+                },
+                controller: PlayerId(1),
+                targets: vec![],
+                x_value: None,
+            },
+        );
+        gs.stack.push(target_sid);
+
+        let cost: Cost = vec![CostComponent::Mana(ManaCost {
+            pips: vec![ManaPip::X],
+        })];
+        let steps = vec![EffectStep::Payment {
+            cost,
+            on_paid: vec![],
+            on_declined: vec![EffectStep::CounterSpell],
+        }];
+        let targets = vec![EffectTarget::StackObject { id: target_sid }];
+
+        // The resolving spell (e.g. Condescend) was cast with X=4.
+        let gs = execute_effect_steps(gs, PlayerId(0), &steps, &targets, Some(4));
+
+        let pp = gs.pending_payment.as_ref().unwrap();
+        assert_eq!(
+            pp.cost,
+            vec![CostComponent::Mana(ManaCost {
+                pips: vec![ManaPip::Generic(4)]
+            })]
+        );
     }
 
     #[test]

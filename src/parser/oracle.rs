@@ -44,6 +44,21 @@ fn split_at_depth_zero(text: &str, sep: char) -> Vec<&str> {
     result
 }
 
+/// Removes all `(...)` reminder text (CR 207.2 — has no effect on gameplay).
+fn strip_reminder_text(s: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0usize;
+    for c in s.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
 /// Returns the byte offset of the first `:` at depth 0,
 /// tracking both `{`/`}` and `(`/`)` as nesting delimiters.
 fn find_colon_at_depth_zero(text: &str) -> Option<usize> {
@@ -1186,15 +1201,15 @@ fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellAbility> {
 
     let rest = rest.trim();
 
-    // 4. Parse "unless its controller pays {N}" or "unless its controller pays N life"
+    // 4. Parse "unless its controller pays {N}/{X}" or "unless its controller pays N life"
     let (rest, payment_cost) = parse_unless_suffix(rest);
 
+    // 5. Anything left (e.g. ". Scry 2.") is additional effect text that
+    // happens regardless of the counter/payment outcome (CR 608.2b).
+    // Reminder text has no rules effect (CR 207.2) and is stripped first.
+    let rest = rest.trim().trim_start_matches('.').trim();
+    let rest = strip_reminder_text(rest);
     let rest = rest.trim();
-
-    // 5. Nothing else should remain (period already stripped by caller)
-    if !rest.is_empty() {
-        return None;
-    }
 
     let filter = SpellFilter {
         any_of_colors: colors,
@@ -1203,7 +1218,7 @@ fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellAbility> {
         ..base_filter
     };
 
-    let steps = if let Some(cost) = payment_cost {
+    let mut steps = if let Some(cost) = payment_cost {
         vec![EffectStep::Payment {
             cost,
             on_paid: vec![],
@@ -1212,6 +1227,9 @@ fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellAbility> {
     } else {
         vec![EffectStep::CounterSpell]
     };
+    if !rest.is_empty() {
+        steps.extend(parse_spell_effect(rest));
+    }
 
     Some(SpellAbility {
         target_requirements: vec![TargetFilter::Spell(filter)],
@@ -1237,7 +1255,10 @@ fn parse_mana_value_suffix(s: &str) -> (&str, Option<u32>, Option<u32>) {
     (s, None, None)
 }
 
-/// Strip "unless its controller pays {N}" or "unless its controller pays N life".
+/// Strip "unless its controller pays {N}", "unless its controller pays {X}",
+/// or "unless its controller pays N life". Only the cost token itself is
+/// consumed; any trailing text (e.g. ". Scry 2.") is returned as remainder
+/// rather than forcing it to be the end of the string.
 /// Returns (remaining_string, Some(cost_components)) or (original, None). (CR 118.12)
 fn parse_unless_suffix(s: &str) -> (&str, Option<crate::types::ability::Cost>) {
     use crate::types::ability::CostComponent;
@@ -1247,23 +1268,30 @@ fn parse_unless_suffix(s: &str) -> (&str, Option<crate::types::ability::Cost>) {
     let Some(tail) = s.strip_prefix(PREFIX) else {
         return (s, None);
     };
-    // Try "{N}" mana cost
+    // Try "{N}" or "{X}" mana cost
     if let Some(inner) = tail.strip_prefix('{')
-        && let Some(n_str) = inner.strip_suffix('}')
-        && let Ok(n) = n_str.parse::<u32>()
+        && let Some(brace_end) = inner.find('}')
     {
-        return (
-            "",
-            Some(vec![CostComponent::Mana(ManaCost {
-                pips: vec![ManaPip::Generic(n)],
-            })]),
-        );
+        let pip_str = &inner[..brace_end];
+        let pip = if pip_str.eq_ignore_ascii_case("x") {
+            Some(ManaPip::X)
+        } else {
+            pip_str.parse::<u32>().ok().map(ManaPip::Generic)
+        };
+        if let Some(pip) = pip {
+            return (
+                &inner[brace_end + 1..],
+                Some(vec![CostComponent::Mana(ManaCost { pips: vec![pip] })]),
+            );
+        }
     }
     // Try "N life"
-    if let Some(n_str) = tail.strip_suffix(" life")
-        && let Ok(n) = n_str.parse::<u32>()
+    let digit_end = tail.find(|c: char| !c.is_ascii_digit()).unwrap_or(0);
+    if digit_end > 0
+        && let Ok(n) = tail[..digit_end].parse::<u32>()
+        && let Some(remainder) = tail[digit_end..].strip_prefix(" life")
     {
-        return ("", Some(vec![CostComponent::PayLife(n)]));
+        return (remainder, Some(vec![CostComponent::PayLife(n)]));
     }
     (s, None) // unrecognised unless suffix — leave as-is
 }
@@ -1336,6 +1364,90 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
     }
 }
 
+/// Keyword actions (CR 701) that may appear in spell/ability text but have
+/// no rules enforcement yet. Each is followed by a number, e.g. "scry 2".
+const SPELL_KEYWORD_ACTIONS: &[&str] = &[
+    "scry",
+    "surveil",
+    "fateseal",
+    "amass",
+    "explore",
+    "investigate",
+    "bolster",
+    "support",
+];
+
+/// Emits `TextAnnotation`s for a single instant/sorcery paragraph: `(...)`
+/// reminder text, and known-but-unimplemented keyword actions like "Scry N".
+/// `paragraph` must be a subslice of `full_text` (for offset computation).
+fn annotate_spell_paragraph(
+    paragraph: &str,
+    full_text: &str,
+    annotations: &mut Vec<TextAnnotation>,
+) {
+    // Partition into alternating non-paren / paren segments at depth zero.
+    let mut segments: Vec<(bool, &str)> = Vec::new();
+    let mut depth = 0usize;
+    let mut seg_start = 0usize;
+    for (i, c) in paragraph.char_indices() {
+        match c {
+            '(' if depth == 0 => {
+                if i > seg_start {
+                    segments.push((false, &paragraph[seg_start..i]));
+                }
+                seg_start = i;
+                depth = 1;
+            }
+            '(' => depth += 1,
+            ')' if depth == 1 => {
+                depth = 0;
+                let end = i + ')'.len_utf8();
+                segments.push((true, &paragraph[seg_start..end]));
+                seg_start = end;
+            }
+            ')' if depth > 0 => depth -= 1,
+            _ => {}
+        }
+    }
+    if seg_start < paragraph.len() {
+        segments.push((false, &paragraph[seg_start..]));
+    }
+
+    for (is_paren, seg) in segments {
+        let off = subslice_offset(full_text, seg);
+        if is_paren {
+            annotations.push(TextAnnotation {
+                start: off,
+                end: off + seg.len(),
+                kind: AnnotationKind::ReminderText,
+            });
+            continue;
+        }
+        // Scan sentences in this non-paren segment for known keyword actions.
+        for sentence in seg.split_inclusive('.') {
+            let trimmed = sentence.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let trimmed = trimmed.trim_end_matches('.');
+            let lc = trimmed.to_lowercase();
+            let matches_keyword_action = SPELL_KEYWORD_ACTIONS.iter().any(|kw| {
+                lc.strip_prefix(kw)
+                    .and_then(|rest| rest.strip_prefix(' '))
+                    .is_some_and(|n| parse_number_word(n.trim()).is_some())
+            });
+            if matches_keyword_action {
+                let start = subslice_offset(full_text, trimmed);
+                annotations.push(TextAnnotation {
+                    start,
+                    end: start + trimmed.len(),
+                    kind: AnnotationKind::ParsedUnimplemented,
+                });
+            }
+        }
+    }
+}
+
 /// Parse the oracle text of an instant or sorcery.
 /// Each paragraph becomes one SpellEffect span containing parsed and
 /// unimplemented effect steps in written order (CR 609).
@@ -1345,6 +1457,7 @@ pub fn parse_instant_or_sorcery(
 ) -> (Vec<OracleSpan>, Vec<TextAnnotation>) {
     use crate::types::ability::Ability;
     let mut spans = Vec::new();
+    let mut annotations = Vec::new();
     for paragraph in text.split('\n') {
         let paragraph = paragraph.trim();
         if paragraph.is_empty() {
@@ -1352,9 +1465,9 @@ pub fn parse_instant_or_sorcery(
         }
         let spell_ability = parse_spell_paragraph(paragraph, card_name);
         spans.push(OracleSpan::Parsed(Ability::SpellEffect(spell_ability)));
+        annotate_spell_paragraph(paragraph, text, &mut annotations);
     }
-    // TODO: emit annotations for instants/sorceries (ParsedUnimplemented, Unparsed effects)
-    (spans, vec![])
+    (spans, annotations)
 }
 
 #[cfg(test)]
@@ -2688,5 +2801,47 @@ mod tests {
             panic!()
         };
         assert_eq!(cost, &vec![CostComponent::PayLife(3)]);
+    }
+
+    #[test]
+    fn condescend_parses_unless_x_with_trailing_scry() {
+        use crate::types::ability::{Ability, AnnotationKind, CostComponent, OracleSpan};
+        use crate::types::effect::EffectStep;
+        use crate::types::mana::{ManaCost, ManaPip};
+        let text = "Counter target spell unless its controller pays {X}. Scry 2. \
+            (Look at the top two cards of your library, then put any number of them \
+            on the bottom and the rest on top in any order.)";
+        let (spans, annotations) = parse_instant_or_sorcery(text, "Condescend");
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+            panic!()
+        };
+        assert_eq!(sa.steps.len(), 2);
+        let EffectStep::Payment {
+            cost, on_declined, ..
+        } = &sa.steps[0]
+        else {
+            panic!()
+        };
+        assert_eq!(
+            cost,
+            &vec![CostComponent::Mana(ManaCost {
+                pips: vec![ManaPip::X]
+            })]
+        );
+        assert_eq!(on_declined, &vec![EffectStep::CounterSpell]);
+        assert!(matches!(sa.steps[1], EffectStep::Unimplemented(_)));
+
+        assert!(
+            annotations
+                .iter()
+                .any(|a| a.kind == AnnotationKind::ParsedUnimplemented
+                    && &text[a.start..a.end] == "Scry 2")
+        );
+        assert!(
+            annotations
+                .iter()
+                .any(|a| a.kind == AnnotationKind::ReminderText
+                    && text[a.start..a.end].starts_with("(Look at the top two cards"))
+        );
     }
 }
