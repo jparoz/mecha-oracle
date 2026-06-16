@@ -371,6 +371,69 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Mana symbol rendering ───────────────────────────────────────────────────
+// Renders every {token} in a string as an icon (mana pip or tap/untap symbol),
+// matching the brace notation emitted by format_mana_cost_braced / format_ability_cost_label
+// / format_mana_pool in src/serve.rs. Plain text outside {tokens} is HTML-escaped as usual.
+
+function manaComponentStyle(part) {
+  const p = part.toUpperCase();
+  if (p === 'P') return { bg: 'var(--mana-p-bg)', label: 'P' };
+  if (p === 'X') return { bg: 'var(--mana-x-bg)', label: 'X' };
+  if (p === 'S') return { bg: 'var(--mana-s-bg)', label: 'S' };
+  if (/^\d+$/.test(p)) return { bg: 'var(--mana-c-bg)', label: p };
+  if ('WUBRGC'.includes(p)) return { bg: `var(--mana-${p.toLowerCase()}-bg)`, label: p };
+  return { bg: 'var(--mana-c-bg)', label: p };
+}
+
+function manaPipHTML(parts) {
+  if (parts.length === 1) {
+    const part = parts[0];
+    const { label } = manaComponentStyle(part);
+    let cls;
+    if (/^\d+$/.test(part)) cls = 'pip-generic';
+    else if ('WUBRGC'.includes(part.toUpperCase())) cls = `pip-${part.toUpperCase()}`;
+    else if (part.toUpperCase() === 'X') cls = 'pip-X';
+    else if (part.toUpperCase() === 'S') cls = 'pip-S';
+    else cls = 'pip-generic';
+    return `<span class="pip ${cls}">${esc(label)}</span>`;
+  }
+  const comps = parts.map(manaComponentStyle);
+  const n = comps.length;
+  const stops = comps.map((c, i) =>
+    `${c.bg} ${(i / n * 100).toFixed(2)}%, ${c.bg} ${((i + 1) / n * 100).toFixed(2)}%`
+  ).join(', ');
+  const label = comps.map(c => c.label).join('');
+  return `<span class="pip pip-split" style="background:linear-gradient(to right, ${stops})">${esc(label)}</span>`;
+}
+
+function tapPipHTML(untap) {
+  const circle = untap ? '#1a1a1a' : '#cfcfcf';
+  const arrow  = untap ? '#fff'    : '#1a1a1a';
+  const rotate = untap ? ' transform="rotate(180 12 12)"' : '';
+  return `<span class="pip pip-tap">` +
+    `<svg viewBox="0 0 24 24" width="12" height="12"><g${rotate}>` +
+    `<circle cx="12" cy="12" r="11" fill="${circle}" stroke="#555" stroke-width="1"/>` +
+    `<path d="M12 4.5 A7.5 7.5 0 1 1 5.0 8.8" fill="none" stroke="${arrow}" stroke-width="2.2" stroke-linecap="round"/>` +
+    `<path d="M5.0 8.8 L3.4 5.2 L7.6 6.4 Z" fill="${arrow}"/>` +
+    `</g></svg></span>`;
+}
+
+function renderManaSymbols(str) {
+  if (str == null) return '';
+  const s = String(str);
+  const re = /\{([^}]+)\}/g;
+  let out = '', last = 0, m;
+  while ((m = re.exec(s))) {
+    out += esc(s.slice(last, m.index));
+    if (m[1] === 'T') out += tapPipHTML(false);
+    else if (m[1] === 'Q') out += tapPipHTML(true);
+    else out += manaPipHTML(m[1].split('/'));
+    last = re.lastIndex;
+  }
+  return out + esc(s.slice(last));
+}
+
 function annStyle(kind) {
   if (kind === 'reminder_text' || kind === 'ability_word') return 'font-style:italic';
   if (kind === 'parsed_unimplemented') return 'color:#4dd9d9;text-decoration:underline';
