@@ -736,11 +736,26 @@ function renderStack(stack) {
                       : item.kind === 'activated_ability' ? 'ACT'
                       : 'TRIG'; // triggered_ability
       el = document.createElement('div');
-      el.className       = 'stack-card ' + (item.controller === 0 ? 'p1' : 'p2');
+      el.className       = 'card-wrap stack-card ' + (item.controller === 0 ? 'p1' : 'p2');
       el.dataset.stackId = idStr;
+      const tooltip = item.card
+        ? tooltipHTML({
+            name: item.card.name,
+            manaCost: item.card.mana_cost,
+            typeLine: item.card.type_line,
+            oracleHtml: item.card.oracle_text ? renderOracleText(item.card) : '',
+            pt: item.card.power != null ? `${item.card.power} / ${item.card.toughness}` : null,
+            extraSections: [targetsSectionHTML(item.targets)],
+          })
+        : tooltipHTML({
+            name: item.label,
+            typeLine: item.kind === 'activated_ability' ? 'Activated Ability' : 'Triggered Ability',
+            extraSections: [sourceSectionHTML(item.source_name), targetsSectionHTML(item.targets)],
+          });
       el.innerHTML =
         `<span class="stack-card-name">${esc(item.label)}</span>` +
-        `<span class="stack-kind">${kindLabel}</span>`;
+        `<span class="stack-kind">${kindLabel}</span>` +
+        tooltip;
       el.style.opacity   = '0';
       el.style.zIndex    = zIndex;
       // Start 12px below final position

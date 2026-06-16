@@ -90,6 +90,9 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 .tooltip-text { color: #bbb; margin-bottom: 6px; }
 .tooltip-pt { font-weight: bold; color: #ddd; margin-bottom: 6px; }
 .tooltip-tags { display: flex; flex-wrap: wrap; gap: 3px; }
+.tooltip-source { font-size: 10px; color: #888; margin-bottom: 6px; }
+.tooltip-targets-label { font-size: 10px; color: #888; margin-bottom: 2px; }
+.tooltip-target { font-size: 11px; color: #ddd; padding-left: 8px; }
 .tag { display: inline-block; border-radius: 3px; padding: 1px 6px; font-size: 10px; font-style: normal; }
 .tag-sick     { background: #3a2010; border: 1px solid #7a4010; color: #e08040; }
 .tag-tapped   { background: #1a2a3a; border: 1px solid #3a5a7a; color: #6aaada; }
@@ -235,7 +238,6 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
   padding: 4px;
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.25s ease;
-  pointer-events: none;
   user-select: none;
 }
 .stack-card.p1 { border-color: var(--p1-color); background: #0d1a10; }
