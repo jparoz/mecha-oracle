@@ -9,7 +9,6 @@
 # Gameplay issues
 - Players should discard to hand size at the cleanup step (see CR 402.2)
 - `can_pay_cost_components` (costs.rs) always returns true for mana (by design), so the serve.rs UI action filter will show X-cost activated abilities as available regardless of pool size. When X-cost activated abilities are added, thread `x_value` into `can_pay_cost_components` and the serve.rs call site (line 606).
-- `StackObject` has no `x_value` field, so the chosen X value is not available at resolution time. When implementing X-damage spells (e.g. Fireball), add `x_value: Option<u32>` to `StackObject` and set it in `cast_spell`.
 
 
 

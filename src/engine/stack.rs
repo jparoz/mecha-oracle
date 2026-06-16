@@ -324,6 +324,7 @@ mod tests {
             payload: StackPayload::Spell { card_id },
             controller,
             targets: vec![],
+            x_value: None,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, obj);
@@ -341,6 +342,7 @@ mod tests {
             },
             controller,
             targets: vec![],
+            x_value: None,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, obj);
@@ -470,6 +472,7 @@ mod tests {
             },
             controller: PlayerId(0),
             targets: vec![],
+            x_value: None,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, obj);
@@ -495,6 +498,7 @@ mod tests {
             },
             controller: PlayerId(0),
             targets: vec![],
+            x_value: None,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, obj);
@@ -797,6 +801,7 @@ mod tests {
             },
             controller: PlayerId(0),
             targets: vec![EffectTarget::Object { id }],
+            x_value: None,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -828,6 +833,7 @@ mod tests {
             },
             controller: PlayerId(0),
             targets: vec![EffectTarget::Object { id: nonexistent_id }],
+            x_value: None,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -873,6 +879,7 @@ mod tests {
             },
             controller: PlayerId(0),
             targets: vec![EffectTarget::Object { id }],
+            x_value: None,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -899,6 +906,7 @@ mod tests {
             },
             controller: PlayerId(0),
             targets: vec![EffectTarget::Player { id: PlayerId(1) }],
+            x_value: None,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1004,6 +1012,7 @@ mod tests {
             },
             controller: PlayerId(0),
             targets: vec![EffectTarget::Player { id: PlayerId(1) }],
+            x_value: None,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1058,6 +1067,7 @@ mod tests {
                 },
                 controller: PlayerId(1),
                 targets: vec![],
+                x_value: None,
             },
         );
         gs.stack.push(target_sid);
@@ -1121,6 +1131,7 @@ mod tests {
                 },
                 controller: PlayerId(1),
                 targets: vec![],
+                x_value: None,
             },
         );
 
@@ -1159,6 +1170,7 @@ mod tests {
                 },
                 controller: PlayerId(0),
                 targets: vec![EffectTarget::StackObject { id: bears_sid }],
+                x_value: None,
             },
         );
 

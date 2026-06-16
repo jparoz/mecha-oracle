@@ -33,4 +33,6 @@ pub struct StackObject {
     pub payload: StackPayload,
     pub controller: PlayerId,
     pub targets: Vec<super::effect::EffectTarget>, // declared targets (CR 115.1)
+    // CR 107.4: X is fixed when the spell/ability is put on the stack and used at resolution.
+    pub x_value: Option<u32>,
 }

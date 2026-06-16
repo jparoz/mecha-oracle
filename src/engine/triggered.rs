@@ -44,6 +44,7 @@ pub fn collect_etb_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec
                 },
                 controller,
                 targets: vec![], // ETB effects use DrawCard/GainLife; never targeted
+                x_value: None,
             }
         })
         .collect()
@@ -103,6 +104,7 @@ pub fn collect_cast_triggers(
                 },
                 controller,
                 targets: vec![EffectTarget::Object { id: creature_id }],
+                x_value: None,
             }
         })
         .collect()
@@ -150,6 +152,7 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
                         },
                         controller: attacking_player,
                         targets: vec![EffectTarget::Object { id: blocker_id }],
+                        x_value: None,
                     });
                 }
             }
@@ -176,6 +179,7 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
                 },
                 controller: attacking_player,
                 targets: vec![EffectTarget::Object { id: *attacker_id }],
+                x_value: None,
             });
         }
 
@@ -200,6 +204,7 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
                     },
                     controller: defending_player,
                     targets: vec![EffectTarget::Object { id: blocker_id }],
+                    x_value: None,
                 });
             }
         }
@@ -250,6 +255,7 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
                 },
                 controller: attacking_player,
                 targets: vec![EffectTarget::Object { id: attacker_id }],
+                x_value: None,
             });
         }
     }
@@ -281,6 +287,7 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
             },
             controller: attacking_player,
             targets: vec![EffectTarget::Object { id: attacker_id }],
+            x_value: None,
         });
     }
 
@@ -312,6 +319,7 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
                 },
                 controller: attacking_player,
                 targets: vec![EffectTarget::Object { id: other_id }],
+                x_value: None,
             });
         }
     }
@@ -387,6 +395,7 @@ pub fn collect_ward_triggers(
                 targets: vec![crate::types::effect::EffectTarget::StackObject {
                     id: triggering_stack_id,
                 }],
+                x_value: None,
             });
         }
     }
@@ -1184,6 +1193,7 @@ mod tests {
                 },
                 controller: PlayerId(0),
                 targets: vec![],
+                x_value: None,
             },
         );
         gs.stack.push(triggering_sid);

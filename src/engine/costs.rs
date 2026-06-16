@@ -336,6 +336,7 @@ mod tests {
                 payload: StackPayload::Spell { card_id },
                 controller: PlayerId(1),
                 targets: vec![],
+                x_value: None,
             },
         );
         gs.stack.push(sid);

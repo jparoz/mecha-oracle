@@ -186,6 +186,7 @@ pub fn cast_spell(
         payload: crate::types::StackPayload::Spell { card_id: object_id },
         controller: player_id,
         targets: declared_targets,
+        x_value,
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);
@@ -288,6 +289,7 @@ mod tests {
                 },
                 controller: PlayerId(0),
                 targets: vec![],
+                x_value: None,
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 1;
@@ -336,6 +338,7 @@ mod tests {
                 },
                 controller: PlayerId(0),
                 targets: vec![],
+                x_value: None,
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 2;
@@ -364,6 +367,7 @@ mod tests {
                 },
                 controller: PlayerId(0),
                 targets: vec![],
+                x_value: None,
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
@@ -811,6 +815,7 @@ mod tests {
             },
             controller: PlayerId(0),
             targets: vec![],
+            x_value: None,
         };
         gs.stack.push(sid);
         gs.stack_objects.insert(sid, obj);
@@ -1053,6 +1058,28 @@ mod tests {
         let gs = cast_spell(gs, PlayerId(0), id, vec![], Some(3)).unwrap();
         // X=3 + R=1 = 4 red spent
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.red, 0);
+    }
+
+    // CR 107.4: X is fixed when the spell is cast and must be available at resolution.
+    #[test]
+    fn cast_spell_with_x_stores_x_value_on_stack_object() {
+        use crate::types::mana::ManaPip;
+        let mut gs = GameState::new(vec![
+            Player::new(PlayerId(0), "Alice"),
+            Player::new(PlayerId(1), "Bob"),
+        ]);
+        gs.step = Step::PreCombatMain;
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red = 4;
+        let id = gs.alloc_id();
+        let def = make_instant_def("Fireball", vec![ManaPip::X, ManaPip::Red]);
+        let obj = CardObject::new(id, def, PlayerId(0), crate::types::Zone::Hand);
+        gs.add_object(obj);
+        gs.hands.entry(PlayerId(0)).or_default().push(id);
+        gs.priority_player = PlayerId(0);
+
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], Some(3)).unwrap();
+        let stack_id = *gs.stack.last().unwrap();
+        assert_eq!(gs.stack_objects[&stack_id].x_value, Some(3));
     }
 
     // --- Counterspell integration tests (CR 701.5, CR 608.2b) ---

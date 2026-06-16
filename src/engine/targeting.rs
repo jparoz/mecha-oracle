@@ -472,6 +472,7 @@ mod tests {
             payload: StackPayload::Spell { card_id },
             controller: owner,
             targets: vec![],
+            x_value: None,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, sobj);
@@ -545,6 +546,7 @@ mod tests {
                 },
                 controller: PlayerId(0),
                 targets: vec![],
+                x_value: None,
             },
         );
         let target = EffectTarget::StackObject { id: sid };
@@ -620,6 +622,7 @@ mod tests {
                 },
                 controller: PlayerId(0),
                 targets: vec![],
+                x_value: None,
             },
         );
         let targets = legal_targets(

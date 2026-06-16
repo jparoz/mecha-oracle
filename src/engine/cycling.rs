@@ -72,6 +72,7 @@ pub fn cycle_card(
         },
         controller: player_id,
         targets: vec![],
+        x_value: None,
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);

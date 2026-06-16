@@ -191,6 +191,7 @@ pub fn activate_ability(
             },
             controller: activating_player,
             targets: declared_targets,
+            x_value,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, stack_obj);
