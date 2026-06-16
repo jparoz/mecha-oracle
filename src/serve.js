@@ -671,8 +671,14 @@ function appendLog(html, cls) {
 document.addEventListener('mouseover', e => {
   const wrap = e.target.closest('.card-wrap');
   if (!wrap) return;
-  const tooltip = wrap.querySelector('.tooltip');
+  // Stack cards carry an inline `transform` for their slide animation, which makes the
+  // card the containing block for `position: fixed` descendants (CSS Transforms spec) —
+  // a nested `.tooltip` would then be positioned relative to the card, not the viewport.
+  // So stack-card tooltips live detached in #stack-items (see renderStack) and are
+  // tracked via `wrap._tooltipEl` instead of being found by querySelector.
+  const tooltip = wrap.querySelector('.tooltip') || wrap._tooltipEl;
   if (!tooltip) return;
+  if (wrap._tooltipEl) tooltip.style.display = 'block';
   const rect = wrap.getBoundingClientRect();
   const TW = 208; // tooltip width (200) + small buffer
   const TH = 260; // conservative max tooltip height
@@ -686,6 +692,13 @@ document.addEventListener('mouseover', e => {
   top = Math.max(8, top);
   tooltip.style.left = left + 'px';
   tooltip.style.top  = top  + 'px';
+});
+
+document.addEventListener('mouseout', e => {
+  const wrap = e.target.closest('.card-wrap');
+  if (!wrap || !wrap._tooltipEl) return;
+  if (wrap.contains(e.relatedTarget)) return; // still inside the card
+  wrap._tooltipEl.style.display = 'none';
 });
 
 // ── Stack column ──────────────────────────────────────────────────────────────
@@ -716,7 +729,10 @@ function renderStack(stack) {
       el.dataset.leaving = '1';
       el.style.opacity = '0';
       el.style.transform = `translate(calc(-50% + ${savedX}px), calc(-50% + ${savedY - 12}px))`;
-      setTimeout(() => el.remove(), 400); // past both 250ms opacity and 350ms transform transitions
+      setTimeout(() => {
+        el.remove();
+        el._tooltipEl?.remove();
+      }, 400); // past both 250ms opacity and 350ms transform transitions
     }
   }
 
@@ -738,7 +754,7 @@ function renderStack(stack) {
       el = document.createElement('div');
       el.className       = 'card-wrap stack-card ' + (item.controller === 0 ? 'p1' : 'p2');
       el.dataset.stackId = idStr;
-      const tooltip = item.card
+      const tooltipHtml = item.card
         ? tooltipHTML({
             name: item.card.name,
             manaCost: item.card.mana_cost,
@@ -754,8 +770,17 @@ function renderStack(stack) {
           });
       el.innerHTML =
         `<span class="stack-card-name">${esc(item.label)}</span>` +
-        `<span class="stack-kind">${kindLabel}</span>` +
-        tooltip;
+        `<span class="stack-kind">${kindLabel}</span>`;
+      // The tooltip is NOT nested inside `el`: `el` carries an inline `transform` for its
+      // slide animation, which would become the containing block for the tooltip's
+      // `position: fixed`, breaking viewport-relative positioning. Instead it's appended
+      // as a sibling in #stack-items and tracked via `el._tooltipEl` (see mouseover/mouseout
+      // listeners above) so CSS `.card-wrap:hover .tooltip` can't reach it — shown/hidden via JS.
+      const tooltipHost = document.createElement('div');
+      tooltipHost.innerHTML = tooltipHtml;
+      const tooltip = tooltipHost.firstElementChild;
+      container.appendChild(tooltip);
+      el._tooltipEl = tooltip;
       el.style.opacity   = '0';
       el.style.zIndex    = zIndex;
       // Start 12px below final position
