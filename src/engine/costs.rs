@@ -10,6 +10,7 @@ pub fn pay_cost_components(
     mut state: GameState,
     player_id: PlayerId,
     components: &[CostComponent],
+    x_value: Option<u32>,
 ) -> Result<GameState, EngineError> {
     for component in components {
         match component {
@@ -18,7 +19,7 @@ pub fn pay_cost_components(
                     let player = state
                         .get_player(player_id)
                         .ok_or(EngineError::CardNotFound)?;
-                    greedy_payment_plan(cost, &player.mana_pool, player.life, None)
+                    greedy_payment_plan(cost, &player.mana_pool, player.life, x_value)
                         .ok_or(EngineError::InsufficientMana)?
                 };
                 state = pay_mana_cost(state, player_id, cost, &plan)?;
@@ -84,7 +85,7 @@ pub fn pay_pending_cost(
         state.pending_payment = Some(pending);
         return Err(EngineError::NotYourPriority);
     }
-    state = pay_cost_components(state, player_id, &pending.cost)?;
+    state = pay_cost_components(state, player_id, &pending.cost, None)?;
     state = execute_effect_steps(
         state,
         pending.controller,
@@ -148,7 +149,7 @@ mod tests {
         let components = vec![CostComponent::Mana(ManaCost {
             pips: vec![ManaPip::Generic(2)],
         })];
-        let gs = pay_cost_components(gs, PlayerId(0), &components).unwrap();
+        let gs = pay_cost_components(gs, PlayerId(0), &components, None).unwrap();
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.colorless, 0);
     }
 
@@ -156,7 +157,7 @@ mod tests {
     fn pay_life_component_deducts_life() {
         let gs = two_player_state();
         let components = vec![CostComponent::PayLife(3)];
-        let gs = pay_cost_components(gs, PlayerId(0), &components).unwrap();
+        let gs = pay_cost_components(gs, PlayerId(0), &components, None).unwrap();
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, 17);
     }
 
@@ -166,7 +167,7 @@ mod tests {
         let components = vec![CostComponent::Mana(ManaCost {
             pips: vec![ManaPip::Generic(2)],
         })];
-        let result = pay_cost_components(gs, PlayerId(0), &components);
+        let result = pay_cost_components(gs, PlayerId(0), &components, None);
         assert!(matches!(result, Err(EngineError::InsufficientMana)));
     }
 
@@ -175,7 +176,7 @@ mod tests {
         let mut gs = two_player_state();
         gs.get_player_mut(PlayerId(0)).unwrap().life = 1;
         let components = vec![CostComponent::PayLife(3)];
-        let result = pay_cost_components(gs, PlayerId(0), &components);
+        let result = pay_cost_components(gs, PlayerId(0), &components, None);
         assert!(matches!(result, Err(EngineError::InsufficientLife)));
     }
 
@@ -183,8 +184,20 @@ mod tests {
     fn tap_component_is_skipped_by_pay_cost_components() {
         let gs = two_player_state();
         let components = vec![CostComponent::Tap];
-        let result = pay_cost_components(gs, PlayerId(0), &components);
+        let result = pay_cost_components(gs, PlayerId(0), &components, None);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn pay_mana_component_with_x_deducts_x_mana() {
+        let mut gs = two_player_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green = 5;
+        let components = vec![CostComponent::Mana(ManaCost {
+            pips: vec![ManaPip::X, ManaPip::Green],
+        })];
+        // x_value = Some(3): pay 3 generic + 1 green = 4 green total
+        let gs = pay_cost_components(gs, PlayerId(0), &components, Some(3)).unwrap();
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
     }
 
     // ── can_pay_cost_components ──────────────────────────────────────────

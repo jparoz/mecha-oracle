@@ -162,8 +162,12 @@ pub fn cast_spell(
     };
 
     use crate::types::ability::CostComponent;
-    state =
-        super::costs::pay_cost_components(state, player_id, &[CostComponent::Mana(cost.clone())])?;
+    state = super::costs::pay_cost_components(
+        state,
+        player_id,
+        &[CostComponent::Mana(cost.clone())],
+        None,
+    )?;
     state.mana_checkpoint = None;
     state
         .hands

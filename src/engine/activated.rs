@@ -9,7 +9,7 @@ pub fn activate_ability(
     object_id: ObjectId,
     ability_index: usize,
     activating_player: PlayerId,
-    _x_value: Option<u32>,
+    x_value: Option<u32>,
     declared_targets: Vec<crate::types::effect::EffectTarget>,
 ) -> Result<GameState, EngineError> {
     // Validate object
@@ -116,7 +116,7 @@ pub fn activate_ability(
         .cloned()
         .collect();
     if !non_tap.is_empty() {
-        state = pay_cost_components(state, activating_player, &non_tap)?;
+        state = pay_cost_components(state, activating_player, &non_tap, x_value)?;
     }
 
     if produces_mana {

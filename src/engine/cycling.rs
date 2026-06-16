@@ -47,6 +47,7 @@ pub fn cycle_card(
         state,
         player_id,
         &[CostComponent::Mana(cycling_cost.clone())],
+        None,
     )?;
 
     // Pay the discard cost: move the card from hand to graveyard.
