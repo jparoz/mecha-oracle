@@ -272,30 +272,6 @@ fn display_colors(
     colors
 }
 
-fn format_mana_cost(cost: &mecha_oracle::types::mana::ManaCost) -> String {
-    use mecha_oracle::types::mana::ManaPip;
-    cost.pips
-        .iter()
-        .map(|pip| match pip {
-            ManaPip::White => "W".to_string(),
-            ManaPip::Blue => "U".to_string(),
-            ManaPip::Black => "B".to_string(),
-            ManaPip::Red => "R".to_string(),
-            ManaPip::Green => "G".to_string(),
-            ManaPip::Colorless => "C".to_string(),
-            ManaPip::Generic(n) => n.to_string(),
-            ManaPip::X => "X".to_string(),
-            ManaPip::Hybrid(c1, c2) => format!("{c1}/{c2}"),
-            ManaPip::GenericHybrid(n, c) => format!("{n}/{c}"),
-            ManaPip::ColorlessHybrid(c) => format!("C/{c}"),
-            ManaPip::Phyrexian(c) => format!("{c}/P"),
-            ManaPip::HybridPhyrexian(c1, c2) => format!("{c1}/{c2}/P"),
-            ManaPip::Snow => "S".to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join("")
-}
-
 fn format_type_line(tl: &mecha_oracle::types::card::TypeLine) -> String {
     use mecha_oracle::types::card::{CardType, Supertype};
     let mut parts: Vec<&str> = Vec::new();
@@ -1352,24 +1328,6 @@ mod tests {
         assert_eq!(view.p2.hand.len(), 7);
         assert_eq!(view.p1.library_count, 3);
         assert_eq!(view.p2.library_count, 3);
-    }
-
-    #[test]
-    fn format_mana_cost_green_green() {
-        use mecha_oracle::types::mana::{ManaCost, ManaPip};
-        let cost = ManaCost {
-            pips: vec![ManaPip::Green, ManaPip::Green],
-        };
-        assert_eq!(format_mana_cost(&cost), "GG");
-    }
-
-    #[test]
-    fn format_mana_cost_generic_and_color() {
-        use mecha_oracle::types::mana::{ManaCost, ManaPip};
-        let cost = ManaCost {
-            pips: vec![ManaPip::Generic(3), ManaPip::Green],
-        };
-        assert_eq!(format_mana_cost(&cost), "3G");
     }
 
     #[test]
