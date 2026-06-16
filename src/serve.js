@@ -455,10 +455,11 @@ function buildPopupItems(actions) {
 // costLabel: pure cost string (e.g. "{U}{U}", "{T}, {G}", "Pay 2 life")
 function enterPaymentContext(kind, actionLabel, costLabel, confirmAction, declineable, declineAction) {
   paymentContext = { kind, actionLabel, costLabel, confirmAction, declineable, declineAction };
+  document.getElementById('payment-x-input').value = 0;
   renderPaymentPanel();
 }
 
-function canPayCost(costLabel, pool) {
+function canPayCost(costLabel, pool, xValue = 0) {
   if (!costLabel) return true;
   const pips = costLabel.match(/\{([^}]+)\}/g) || [];
   let generic = 0;
@@ -468,7 +469,7 @@ function canPayCost(costLabel, pool) {
     if (inner === 'T' || inner === 'Q') continue; // tap/untap: structural only
     const n = parseInt(inner, 10);
     if (!isNaN(n)) { generic += n; continue; }
-    if (inner === 'X') continue; // X costs: skip (no client-side validation)
+    if (inner === 'X') { generic += xValue; continue; } // each X pip costs xValue
     if (inner.includes('/')) continue; // hybrid/phyrexian: skip
     const col = inner.toUpperCase();
     if (col in colored) colored[col]++;
@@ -505,14 +506,50 @@ function renderPaymentPanel() {
   const myPid = currentState.priority_player;
   const myPlayer = myPid === 0 ? currentState.p1 : currentState.p2;
   const pool = myPlayer ? myPlayer.mana_pool : {};
-  document.getElementById('payment-confirm').disabled = !canPayCost(paymentContext.costLabel, pool);
+
+  const hasX = !!(paymentContext.costLabel && paymentContext.costLabel.includes('{X}'));
+  const xRow = document.getElementById('payment-x-row');
+  const xInput = document.getElementById('payment-x-input');
+
+  if (hasX) {
+    // Compute max X: pool total minus fixed (non-X) pip requirements
+    const pips = (paymentContext.costLabel.match(/\{([^}]+)\}/g) || []);
+    let fixedGeneric = 0;
+    const fixedColored = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+    let xCount = 0;
+    for (const pip of pips) {
+      const inner = pip.slice(1, -1);
+      if (inner === 'T' || inner === 'Q') continue;
+      if (inner === 'X') { xCount++; continue; }
+      if (inner.includes('/')) continue;
+      const n = parseInt(inner, 10);
+      if (!isNaN(n)) { fixedGeneric += n; continue; }
+      const col = inner.toUpperCase();
+      if (col in fixedColored) fixedColored[col]++;
+      else fixedGeneric++;
+    }
+    const fixedColoredTotal = Object.values(fixedColored).reduce((a, b) => a + b, 0);
+    const poolTotal = (pool.w||0)+(pool.u||0)+(pool.b||0)+(pool.r||0)+(pool.g||0)+(pool.c||0);
+    const budgetForX = Math.max(0, poolTotal - fixedColoredTotal - fixedGeneric);
+    xInput.max = Math.floor(budgetForX / (xCount || 1));
+    xRow.style.display = '';
+  } else {
+    xInput.value = 0;
+    xRow.style.display = 'none';
+  }
+
+  const xValue = hasX ? parseInt(xInput.value || '0', 10) : 0;
+  document.getElementById('payment-confirm').disabled = !canPayCost(paymentContext.costLabel, pool, xValue);
   document.getElementById('payment-cancel').style.display  = paymentContext.declineable ? 'none' : '';
   document.getElementById('payment-decline').style.display = paymentContext.declineable ? '' : 'none';
 }
 
 function confirmPayment() {
   if (!paymentContext) return;
-  const action = paymentContext.confirmAction;
+  const action = { ...paymentContext.confirmAction };
+  if (paymentContext.costLabel && paymentContext.costLabel.includes('{X}')) {
+    action.x_value = parseInt(document.getElementById('payment-x-input').value || '0', 10);
+  }
   paymentContext = null;
   renderPaymentPanel();
   sendAction(action);
