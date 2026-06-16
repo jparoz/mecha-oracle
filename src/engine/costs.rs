@@ -18,7 +18,7 @@ pub fn pay_cost_components(
                     let player = state
                         .get_player(player_id)
                         .ok_or(EngineError::CardNotFound)?;
-                    greedy_payment_plan(cost, &player.mana_pool, player.life)
+                    greedy_payment_plan(cost, &player.mana_pool, player.life, None)
                         .ok_or(EngineError::InsufficientMana)?
                 };
                 state = pay_mana_cost(state, player_id, cost, &plan)?;

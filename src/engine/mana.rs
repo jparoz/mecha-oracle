@@ -199,18 +199,24 @@ fn spend_from_rem(mut n: u32, rem: &mut PaymentPlan) {
 
 /// Build a greedy payment plan for `cost` given current `pool` and player `life`.
 /// Returns `None` if no valid plan exists.
-/// X is treated as 0 (caller must override x_value if needed).
+/// Non-X pips are satisfied first; X pips are paid from the remaining pool afterward
+/// so fixed colored costs are never stolen by the X allocation.
 /// CR 107.4: handles all pip types including hybrid, Phyrexian, snow.
-pub fn greedy_payment_plan(cost: &ManaCost, pool: &ManaPool, life: i32) -> Option<PaymentPlan> {
+pub fn greedy_payment_plan(
+    cost: &ManaCost,
+    pool: &ManaPool,
+    life: i32,
+    x_value: Option<u32>,
+) -> Option<PaymentPlan> {
     use crate::types::mana::ManaPip::*;
-    let mut plan = PaymentPlan::default();
+    let mut plan = PaymentPlan {
+        x_value,
+        ..Default::default()
+    };
     let mut rem = pool.clone();
     let mut rem_life = life;
 
-    if cost.pips.iter().any(|p| matches!(p, X)) {
-        plan.x_value = Some(0);
-    }
-
+    // First pass: all non-X pips
     for pip in &cost.pips {
         match pip {
             White => deduct_one_color(&ManaColor::White, &mut rem, &mut plan)?,
@@ -219,7 +225,7 @@ pub fn greedy_payment_plan(cost: &ManaCost, pool: &ManaPool, life: i32) -> Optio
             Red => deduct_one_color(&ManaColor::Red, &mut rem, &mut plan)?,
             Green => deduct_one_color(&ManaColor::Green, &mut rem, &mut plan)?,
             Colorless => deduct_one_color(&ManaColor::Colorless, &mut rem, &mut plan)?,
-            X => {} // x_value already set to 0
+            X => {} // handled in second pass below
             Snow => {
                 // Pick first available snow-tagged color (CR 107.4k)
                 if rem.snow_white > 0 && rem.white > 0 {
@@ -319,13 +325,26 @@ pub fn greedy_payment_plan(cost: &ManaCost, pool: &ManaPool, life: i32) -> Optio
             }
         }
     }
+
+    // Second pass: X pips (after fixed costs are satisfied)
+    let x_count = cost.pips.iter().filter(|p| matches!(p, X)).count() as u32;
+    if x_count > 0 {
+        let n = x_value.unwrap_or(0);
+        let total_needed = n * x_count;
+        let total = rem.white + rem.blue + rem.black + rem.red + rem.green + rem.colorless;
+        if total < total_needed {
+            return None;
+        }
+        spend_generic_rem(total_needed, &mut rem, &mut plan);
+    }
+
     Some(plan)
 }
 
 /// Returns true if the pool can pay the cost given current life total.
 /// Handles all CR 107.4 pip types via greedy_payment_plan.
-pub fn can_pay_mana(cost: &ManaCost, pool: &ManaPool, life: i32) -> bool {
-    greedy_payment_plan(cost, pool, life).is_some()
+pub fn can_pay_mana(cost: &ManaCost, pool: &ManaPool, life: i32, x_value: Option<u32>) -> bool {
+    greedy_payment_plan(cost, pool, life, x_value).is_some()
 }
 
 /// Deduct a mana cost from a player's pool using an explicit PaymentPlan.
@@ -504,16 +523,20 @@ pub fn pay_mana_cost(
                     }
                     spend_from_rem(*n, &mut rem);
                 }
-                ManaPip::X => {
-                    let x_val = plan.x_value.ok_or(EngineError::InvalidPaymentPlan)?;
-                    let total =
-                        rem.white + rem.blue + rem.black + rem.red + rem.green + rem.colorless;
-                    if total < x_val {
-                        return Err(EngineError::InvalidPaymentPlan);
-                    }
-                    spend_from_rem(x_val, &mut rem);
-                }
+                ManaPip::X => continue, // handled in second pass after the loop
             }
+        }
+
+        // Second pass: X pips (after fixed costs consumed from rem)
+        let x_count = cost.pips.iter().filter(|p| matches!(p, ManaPip::X)).count() as u32;
+        if x_count > 0 {
+            let x_val = plan.x_value.unwrap_or(0);
+            let total_needed = x_val * x_count;
+            let total = rem.white + rem.blue + rem.black + rem.red + rem.green + rem.colorless;
+            if total < total_needed {
+                return Err(EngineError::InvalidPaymentPlan);
+            }
+            spend_from_rem(total_needed, &mut rem);
         }
     }
 
@@ -596,8 +619,13 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Generic(1), ManaPip::Green],
         };
-        let plan =
-            greedy_payment_plan(&cost, &gs.get_player(PlayerId(0)).unwrap().mana_pool, 20).unwrap();
+        let plan = greedy_payment_plan(
+            &cost,
+            &gs.get_player(PlayerId(0)).unwrap().mana_pool,
+            20,
+            None,
+        )
+        .unwrap();
         let gs = pay_mana_cost(gs, PlayerId(0), &cost, &plan).unwrap();
 
         assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
@@ -610,7 +638,12 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Generic(1), ManaPip::Green],
         };
-        let plan = greedy_payment_plan(&cost, &gs.get_player(PlayerId(0)).unwrap().mana_pool, 20);
+        let plan = greedy_payment_plan(
+            &cost,
+            &gs.get_player(PlayerId(0)).unwrap().mana_pool,
+            20,
+            None,
+        );
         assert!(plan.is_none());
     }
 
@@ -621,7 +654,12 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Green],
         };
-        let plan = greedy_payment_plan(&cost, &gs.get_player(PlayerId(0)).unwrap().mana_pool, 20);
+        let plan = greedy_payment_plan(
+            &cost,
+            &gs.get_player(PlayerId(0)).unwrap().mana_pool,
+            20,
+            None,
+        );
         assert!(plan.is_none());
     }
 
@@ -633,8 +671,13 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Generic(2)],
         };
-        let plan =
-            greedy_payment_plan(&cost, &gs.get_player(PlayerId(0)).unwrap().mana_pool, 20).unwrap();
+        let plan = greedy_payment_plan(
+            &cost,
+            &gs.get_player(PlayerId(0)).unwrap().mana_pool,
+            20,
+            None,
+        )
+        .unwrap();
         let gs = pay_mana_cost(gs, PlayerId(0), &cost, &plan).unwrap();
 
         assert!(gs.get_player(PlayerId(0)).unwrap().mana_pool.is_empty());
@@ -781,7 +824,7 @@ mod tests {
             green: 1,
             ..Default::default()
         };
-        let plan = super::greedy_payment_plan(&cost, &pool, 20).unwrap();
+        let plan = super::greedy_payment_plan(&cost, &pool, 20, None).unwrap();
         assert_eq!(plan.green, 1);
         assert_eq!(plan.black, 0);
     }
@@ -796,7 +839,7 @@ mod tests {
             green: 3,
             ..Default::default()
         };
-        let plan = super::greedy_payment_plan(&cost, &pool, 20).unwrap();
+        let plan = super::greedy_payment_plan(&cost, &pool, 20, None).unwrap();
         assert_eq!(plan.green, 1);
         assert_eq!(plan.black, 0);
     }
@@ -810,7 +853,7 @@ mod tests {
             blue: 2,
             ..Default::default()
         };
-        let plan = super::greedy_payment_plan(&cost, &pool, 20).unwrap();
+        let plan = super::greedy_payment_plan(&cost, &pool, 20, None).unwrap();
         assert_eq!(plan.blood, 1);
         assert_eq!(plan.blue, 0);
     }
@@ -824,7 +867,7 @@ mod tests {
             blue: 1,
             ..Default::default()
         };
-        let plan = super::greedy_payment_plan(&cost, &pool, 1).unwrap();
+        let plan = super::greedy_payment_plan(&cost, &pool, 1, None).unwrap();
         assert_eq!(plan.blood, 0);
         assert_eq!(plan.blue, 1);
     }
@@ -836,7 +879,7 @@ mod tests {
         };
         let mut pool = ManaPool::default();
         pool.add_snow(ManaColor::Green, 1);
-        let plan = super::greedy_payment_plan(&cost, &pool, 20).unwrap();
+        let plan = super::greedy_payment_plan(&cost, &pool, 20, None).unwrap();
         assert_eq!(plan.snow_green, 1);
         assert_eq!(plan.green, 1);
     }
@@ -847,7 +890,7 @@ mod tests {
             pips: vec![ManaPip::Green],
         };
         let pool = ManaPool::default();
-        assert!(super::greedy_payment_plan(&cost, &pool, 20).is_none());
+        assert!(super::greedy_payment_plan(&cost, &pool, 20, None).is_none());
     }
 
     #[test]
@@ -859,7 +902,7 @@ mod tests {
             red: 1,
             ..Default::default()
         };
-        assert!(super::can_pay_mana(&cost, &pool, 20));
+        assert!(super::can_pay_mana(&cost, &pool, 20, None));
     }
 
     #[test]
@@ -868,8 +911,8 @@ mod tests {
             pips: vec![ManaPip::Phyrexian(ManaColor::White)],
         };
         let pool = ManaPool::default();
-        assert!(super::can_pay_mana(&cost, &pool, 20));
-        assert!(!super::can_pay_mana(&cost, &pool, 1));
+        assert!(super::can_pay_mana(&cost, &pool, 20, None));
+        assert!(!super::can_pay_mana(&cost, &pool, 1, None));
     }
 
     #[test]
@@ -907,5 +950,63 @@ mod tests {
         let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
         assert_eq!(pool.green, 1);
         assert_eq!(pool.snow_green, 0);
+    }
+
+    #[test]
+    fn greedy_plan_x_pip_deducts_chosen_amount() {
+        let cost = ManaCost {
+            pips: vec![ManaPip::X, ManaPip::Red],
+        };
+        let pool = ManaPool {
+            red: 1,
+            green: 3,
+            ..Default::default()
+        };
+        let plan = super::greedy_payment_plan(&cost, &pool, 20, Some(3)).unwrap();
+        assert_eq!(plan.x_value, Some(3));
+        assert_eq!(plan.red, 1);
+        assert_eq!(plan.green, 3);
+    }
+
+    #[test]
+    fn greedy_plan_x_pip_none_deducts_zero() {
+        let cost = ManaCost {
+            pips: vec![ManaPip::X, ManaPip::Red],
+        };
+        let pool = ManaPool {
+            red: 1,
+            ..Default::default()
+        };
+        let plan = super::greedy_payment_plan(&cost, &pool, 20, None).unwrap();
+        assert_eq!(plan.x_value, None);
+        assert_eq!(plan.red, 1);
+    }
+
+    #[test]
+    fn greedy_plan_x_pip_returns_none_if_insufficient() {
+        let cost = ManaCost {
+            pips: vec![ManaPip::X],
+        };
+        let pool = ManaPool {
+            green: 2,
+            ..Default::default()
+        };
+        assert!(super::greedy_payment_plan(&cost, &pool, 20, Some(5)).is_none());
+    }
+
+    #[test]
+    fn pay_mana_cost_x_none_pays_zero() {
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red = 1;
+        let cost = ManaCost {
+            pips: vec![ManaPip::X, ManaPip::Red],
+        };
+        let plan = PaymentPlan {
+            red: 1,
+            x_value: None,
+            ..Default::default()
+        };
+        let gs = pay_mana_cost(gs, PlayerId(0), &cost, &plan).unwrap();
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.red, 0);
     }
 }
