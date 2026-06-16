@@ -89,6 +89,10 @@
 <div id="payment-panel" class="payment-panel" style="display:none">
   <div class="payment-title" id="payment-title">Pay cost</div>
   <div class="payment-cost" id="payment-cost"></div>
+  <div id="payment-x-row" style="display:none">
+    <label>X = <input type="number" id="payment-x-input" min="0" value="0"
+           oninput="renderPaymentPanel()"></label>
+  </div>
   <div class="payment-pool" id="payment-pool"></div>
   <div class="payment-remaining" id="payment-remaining"></div>
   <div class="payment-buttons">
