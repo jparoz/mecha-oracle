@@ -546,7 +546,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
             && state.priority_player == pid
         {
             actions.push(ActionItemView {
-                label: format!("Cycle ({})", format_mana_cost(cost)),
+                label: format!("Cycle ({})", format_mana_cost_braced(cost)),
                 kind: ActionItemKind::Server {
                     action: serde_json::json!({
                         "type": "cycle_card",
@@ -673,7 +673,11 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                 &obj.definition.oracle_text,
                 &obj.definition.text_annotations,
             ),
-            mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
+            mana_cost: obj
+                .definition
+                .mana_cost
+                .as_ref()
+                .map(format_mana_cost_braced),
             power: perm.and_then(|p| p.effective_power()),
             toughness: perm.and_then(|p| p.effective_toughness()),
             colors: display_colors(&obj.definition)
@@ -799,7 +803,7 @@ fn build_game_view(state: &GameState) -> GameView {
                                 &c.definition.oracle_text,
                                 &c.definition.text_annotations,
                             ),
-                            mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost),
+                            mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost_braced),
                             power: c.definition.power,
                             toughness: c.definition.toughness,
                             colors: display_colors(&c.definition)
@@ -2607,5 +2611,85 @@ mod tests {
         let view = build_game_view(&gs);
         let forest = view.p1.hand.iter().find(|c| c.name == "Forest").unwrap();
         assert_eq!(forest.colors, vec!["G".to_string()]);
+    }
+
+    #[test]
+    fn build_game_view_mana_cost_is_braced() {
+        use mecha_oracle::types::{CardObject, Zone};
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Hand,
+        );
+        gs.hands.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+
+        let view = build_game_view(&gs);
+        let bears = view
+            .p1
+            .hand
+            .iter()
+            .find(|c| c.name == "Grizzly Bears")
+            .unwrap();
+        assert_eq!(bears.mana_cost, Some("{1}{G}".to_string()));
+    }
+
+    #[test]
+    fn cycle_action_label_is_braced() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        use mecha_oracle::types::mana::{ManaColor, ManaCost, ManaPip};
+        use mecha_oracle::types::{Ability, CardObject, OracleSpan, Zone};
+
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        let def = CardDefinition {
+            name: "Test Cycler".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(1), ManaPip::Blue],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Cycling {2}".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
+                pips: vec![ManaPip::Generic(2)],
+            }))],
+            text_annotations: vec![],
+            power: Some(1),
+            toughness: Some(1),
+            colors: vec![ManaColor::Blue],
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, PlayerId(0), Zone::Hand);
+        gs.hands.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+
+        let view = build_game_view(&gs);
+        let card = view
+            .p1
+            .hand
+            .iter()
+            .find(|c| c.name == "Test Cycler")
+            .unwrap();
+        let cycle_action = card
+            .actions
+            .iter()
+            .find(|a| a.label.starts_with("Cycle"))
+            .expect("expected a Cycle action");
+        assert_eq!(cycle_action.label, "Cycle ({2})");
     }
 }
