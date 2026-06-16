@@ -232,9 +232,6 @@ struct GameView {
 /// Green]. Non-land cards with no printed colors stay colorless (CR 105.2 remains
 /// authoritative for everything else, e.g. protection-from-color targeting at
 /// `legal_targets`).
-///
-/// Not yet wired into `CardView` — that happens in a later task in the UI polish pass.
-#[allow(dead_code)]
 fn display_colors(
     def: &mecha_oracle::types::card::CardDefinition,
 ) -> Vec<mecha_oracle::types::mana::ManaColor> {
@@ -679,9 +676,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             mana_cost: obj.definition.mana_cost.as_ref().map(format_mana_cost),
             power: perm.and_then(|p| p.effective_power()),
             toughness: perm.and_then(|p| p.effective_toughness()),
-            colors: obj
-                .definition
-                .colors
+            colors: display_colors(&obj.definition)
                 .iter()
                 .map(|c| c.to_string())
                 .collect(),
@@ -807,7 +802,10 @@ fn build_game_view(state: &GameState) -> GameView {
                             mana_cost: c.definition.mana_cost.as_ref().map(format_mana_cost),
                             power: c.definition.power,
                             toughness: c.definition.toughness,
-                            colors: c.definition.colors.iter().map(|c| c.to_string()).collect(),
+                            colors: display_colors(&c.definition)
+                                .iter()
+                                .map(|c| c.to_string())
+                                .collect(),
                             tapped: false,
                             summoning_sick: false,
                             damage_marked: 0,
@@ -2596,5 +2594,18 @@ mod tests {
             colors: vec![],
         };
         assert_eq!(display_colors(&def), vec![]);
+    }
+
+    #[test]
+    fn build_game_view_land_colors_derived_from_subtype() {
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let gs = build_game_state(config, &db, false).unwrap();
+        let view = build_game_view(&gs);
+        let forest = view.p1.hand.iter().find(|c| c.name == "Forest").unwrap();
+        assert_eq!(forest.colors, vec!["G".to_string()]);
     }
 }
