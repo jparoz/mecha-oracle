@@ -9,6 +9,35 @@ let popupDismissHandler = null;
 let paymentContext = null; // null when no payment is in progress
 
 
+// ── Card color helpers ──────────────────────────────────────────────────────
+
+const MANA_HEX = {};
+['w', 'u', 'b', 'r', 'g', 'c', 'gold'].forEach(k => {
+  MANA_HEX[k] = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--mana-${k}-bg`).trim();
+});
+
+// colors: array of single-letter color codes (e.g. ["W"], ["U","B"], []) as sent by
+// the server's display_colors() (src/serve.rs) — already resolved to "what should this
+// render as", so no land/non-land distinction is needed here.
+function cardColorBackground(colors) {
+  if (!colors || colors.length === 0) return MANA_HEX.c;
+  if (colors.length === 1) return MANA_HEX[colors[0].toLowerCase()];
+  if (colors.length === 2) {
+    const [a, b] = colors.map(c => MANA_HEX[c.toLowerCase()]);
+    return `linear-gradient(to right, ${a}, ${b})`; // colors[0] left, colors[1] right
+  }
+  return MANA_HEX.gold;
+}
+
+function bestTextColor(hex) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? '#1a1a1a' : '#ddd';
+}
+
+
 // ── Toast ────────────────────────────────────────────────────────────────────
 
 function showToast(msg) {
@@ -316,7 +345,11 @@ function cardHTML(card, s, pid, zone) {
     ? `<span class="card-pt${card.damage_marked > 0 ? ' damaged' : ''}">${card.power}/${card.toughness}</span>`
     : '';
 
-  return `<div class="${wrap}"><div class="${classes}" data-id="${card.id}" ${clickAttr}>
+  const bg = cardColorBackground(card.colors);
+  const fg = bestTextColor(card.colors && card.colors.length === 1 ? MANA_HEX[card.colors[0].toLowerCase()] : '#000000');
+  const cardStyle = `style="background:${bg};color:${fg}"`;
+
+  return `<div class="${wrap}"><div class="${classes}" data-id="${card.id}" ${clickAttr} ${cardStyle}>
     <span class="card-name">${esc(card.name)}</span>
     ${card.mana_cost ? `<span class="card-cost">${esc(card.mana_cost)}</span>` : ''}
     <span class="card-type">${esc(card.type_line)}</span>
