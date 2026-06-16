@@ -226,6 +226,55 @@ struct GameView {
     pending_payment: Option<PendingPaymentView>,
 }
 
+/// CR 202.2b — lands have no mana cost and so are colorless by definition, but their
+/// *display* color (for the UI only) is derived from basic land subtypes and any
+/// colored mana symbols printed in their rules text, e.g. "Swamp Forest" → [Black,
+/// Green]. Non-land cards with no printed colors stay colorless (CR 105.2 remains
+/// authoritative for everything else, e.g. protection-from-color targeting at
+/// `legal_targets`).
+///
+/// Not yet wired into `CardView` — that happens in a later task in the UI polish pass.
+#[allow(dead_code)]
+fn display_colors(
+    def: &mecha_oracle::types::card::CardDefinition,
+) -> Vec<mecha_oracle::types::mana::ManaColor> {
+    use mecha_oracle::types::mana::ManaColor;
+    if !def.colors.is_empty() {
+        return def.colors.clone();
+    }
+    if !def.type_line.is_land() {
+        return vec![];
+    }
+    let mut colors: Vec<ManaColor> = Vec::new();
+    let mut push = |c: ManaColor| {
+        if !colors.contains(&c) {
+            colors.push(c);
+        }
+    };
+    for subtype in &def.type_line.subtypes {
+        match subtype.as_str() {
+            "Plains" => push(ManaColor::White),
+            "Island" => push(ManaColor::Blue),
+            "Swamp" => push(ManaColor::Black),
+            "Mountain" => push(ManaColor::Red),
+            "Forest" => push(ManaColor::Green),
+            _ => {}
+        }
+    }
+    for (needle, color) in [
+        ("{W}", ManaColor::White),
+        ("{U}", ManaColor::Blue),
+        ("{B}", ManaColor::Black),
+        ("{R}", ManaColor::Red),
+        ("{G}", ManaColor::Green),
+    ] {
+        if def.oracle_text.contains(needle) {
+            push(color);
+        }
+    }
+    colors
+}
+
 fn format_mana_cost(cost: &mecha_oracle::types::mana::ManaCost) -> String {
     use mecha_oracle::types::mana::ManaPip;
     cost.pips
@@ -2392,5 +2441,160 @@ mod tests {
         let item = &view.stack[0];
         assert!(item.targets.is_empty());
         assert_eq!(item.source_name, None);
+    }
+
+    #[test]
+    fn display_colors_uses_printed_colors_when_present() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        use mecha_oracle::types::mana::ManaColor;
+        let def = CardDefinition {
+            name: "Test Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![ManaColor::Blue],
+        };
+        assert_eq!(display_colors(&def), vec![ManaColor::Blue]);
+    }
+
+    #[test]
+    fn display_colors_colorless_nonland_is_empty() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Test Artifact".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Artifact],
+                subtypes: vec![],
+            },
+            oracle_text: "Tap: Add {C}.".into(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        assert_eq!(display_colors(&def), vec![]);
+    }
+
+    #[test]
+    fn display_colors_land_from_single_basic_subtype() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, Supertype, TypeLine};
+        use mecha_oracle::types::mana::ManaColor;
+        let def = CardDefinition {
+            name: "Test Plains".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![Supertype::Basic],
+                card_types: vec![CardType::Land],
+                subtypes: vec!["Plains".into()],
+            },
+            oracle_text: "({T}: Add {W}.)".into(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        assert_eq!(display_colors(&def), vec![ManaColor::White]);
+    }
+
+    #[test]
+    fn display_colors_land_unions_dual_subtypes_in_wubrg_order() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, Supertype, TypeLine};
+        use mecha_oracle::types::mana::ManaColor;
+        let def = CardDefinition {
+            name: "Test Swamp Forest".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![Supertype::Basic],
+                card_types: vec![CardType::Land],
+                subtypes: vec!["Swamp".into(), "Forest".into()],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        assert_eq!(
+            display_colors(&def),
+            vec![ManaColor::Black, ManaColor::Green]
+        );
+    }
+
+    #[test]
+    fn display_colors_land_from_oracle_text_mana_symbol() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        use mecha_oracle::types::mana::ManaColor;
+        let def = CardDefinition {
+            name: "Test Utility Land".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Land],
+                subtypes: vec!["Gate".into()],
+            },
+            oracle_text: "{T}: Add {U}.".into(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        assert_eq!(display_colors(&def), vec![ManaColor::Blue]);
+    }
+
+    #[test]
+    fn display_colors_land_dedupes_subtype_and_text_match() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, Supertype, TypeLine};
+        use mecha_oracle::types::mana::ManaColor;
+        let def = CardDefinition {
+            name: "Test Island".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![Supertype::Basic],
+                card_types: vec![CardType::Land],
+                subtypes: vec!["Island".into()],
+            },
+            oracle_text: "({T}: Add {U}.)".into(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        assert_eq!(display_colors(&def), vec![ManaColor::Blue]);
+    }
+
+    #[test]
+    fn display_colors_land_with_no_recognized_color_is_empty() {
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Test Wastes".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Land],
+                subtypes: vec![],
+            },
+            oracle_text: "({T}: Add {C}.)".into(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        assert_eq!(display_colors(&def), vec![]);
     }
 }
