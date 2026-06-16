@@ -798,8 +798,9 @@ function renderStack(stack) {
       el.className       = 'card-wrap stack-card ' + (item.controller === 0 ? 'p1' : 'p2');
       el.dataset.stackId = idStr;
       const stackColors = item.card ? item.card.colors : item.source_colors;
-      el.style.backgroundImage  = cardColorBackground(stackColors).startsWith('linear-gradient') ? cardColorBackground(stackColors) : 'none';
-      el.style.backgroundColor  = cardColorBackground(stackColors).startsWith('linear-gradient') ? '' : cardColorBackground(stackColors);
+      const stackBg = cardColorBackground(stackColors);
+      el.style.backgroundImage  = stackBg.startsWith('linear-gradient') ? stackBg : 'none';
+      el.style.backgroundColor  = stackBg.startsWith('linear-gradient') ? '' : stackBg;
       const tooltipHtml = item.card
         ? tooltipHTML({
             name: item.card.name,
