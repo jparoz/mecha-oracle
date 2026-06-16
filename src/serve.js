@@ -61,7 +61,7 @@ function openPopup(items, anchorEl, header) {
   popup.innerHTML =
     (header ? `<div class="popup-header">${esc(header)}</div>` : '') +
     items.map((item, i) =>
-      `<button class="popup-item${item.active ? ' active' : ''}${item.disabled ? ' disabled' : ''}" data-idx="${i}">${esc(item.label)}</button>`
+      `<button class="popup-item${item.active ? ' active' : ''}${item.disabled ? ' disabled' : ''}" data-idx="${i}">${renderManaSymbols(item.label)}</button>`
     ).join('');
 
   // Position near anchor
@@ -289,7 +289,7 @@ function tooltipHTML({ name, manaCost, typeLine, oracleHtml, pt, tags, extraSect
   return `
     <div class="tooltip">
       <div class="tooltip-name">${esc(name)}</div>
-      ${manaCost ? `<div class="tooltip-cost">${esc(manaCost)}</div>` : ''}
+      ${manaCost ? `<div class="tooltip-cost">${renderManaSymbols(manaCost)}</div>` : ''}
       <div class="tooltip-type">${esc(typeLine)}</div>
       ${oracleHtml ? `<div class="tooltip-text">${oracleHtml}</div>` : ''}
       ${pt ? `<div class="tooltip-pt">${pt}</div>` : ''}
@@ -361,7 +361,7 @@ function cardHTML(card, s, pid, zone) {
 
   return `<div class="${wrap}"><div class="${classes}" data-id="${card.id}" ${clickAttr} ${cardStyle}>
     <span class="card-name">${esc(card.name)}</span>
-    ${card.mana_cost ? `<span class="card-cost">${esc(card.mana_cost)}</span>` : ''}
+    ${card.mana_cost ? `<span class="card-cost">${renderManaSymbols(card.mana_cost)}</span>` : ''}
     <span class="card-type">${esc(card.type_line)}</span>
     ${pt}
   </div>${tooltip}</div>`;
@@ -630,8 +630,8 @@ function renderPaymentPanel() {
     return;
   }
   panel.style.display = '';
-  document.getElementById('payment-title').textContent = paymentContext.actionLabel || 'Pay cost';
-  document.getElementById('payment-cost').textContent = paymentContext.costLabel || '(no cost)';
+  document.getElementById('payment-title').innerHTML = renderManaSymbols(paymentContext.actionLabel || 'Pay cost');
+  document.getElementById('payment-cost').innerHTML = renderManaSymbols(paymentContext.costLabel || '(no cost)');
   document.getElementById('payment-pool').textContent = '';
 
   const myPid = currentState.priority_player;
