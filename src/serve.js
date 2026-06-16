@@ -212,7 +212,7 @@ function render(s) {
 
   renderActionBar(s);
   renderStack(s.stack ?? []);
-  maybeEnterWardContext(s);
+  maybeEnterPendingPaymentContext(s);
   renderPaymentPanel();
 }
 
@@ -450,8 +450,8 @@ function buildPopupItems(actions) {
     }));
 }
 
-// kind: "cast" | "activate" | "cycle" | "ward"
-// actionLabel: human-readable description (e.g. "Cast Counterspell", "Ward trigger — {2}")
+// kind: "cast" | "activate" | "cycle" | "pending"
+// actionLabel: human-readable description (e.g. "Cast", "Pay {2}")
 // costLabel: pure cost string (e.g. "{U}{U}", "{T}, {G}", "Pay 2 life")
 function enterPaymentContext(kind, actionLabel, costLabel, confirmAction, declineable, declineAction) {
   paymentContext = { kind, actionLabel, costLabel, confirmAction, declineable, declineAction };
@@ -571,13 +571,13 @@ function declinePayment() {
   sendAction(action);
 }
 
-function maybeEnterWardContext(s) {
+function maybeEnterPendingPaymentContext(s) {
   if (paymentContext !== null) return;
   if (!s.pending_payment) return;
   const pp = s.pending_payment;
   enterPaymentContext(
-    'ward',
-    `Pay ${pp.cost_label} (Ward / Mana Leak)`,
+    'pending',
+    `Pay ${pp.cost_label}`,
     pp.cost_label || '',
     { type: 'pay_pending_cost' },
     true,
