@@ -151,6 +151,8 @@ struct StackItemView {
     targets: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     source_name: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    source_colors: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -796,6 +798,7 @@ fn build_game_view(state: &GameState) -> GameView {
                         cost_label: None,
                         targets,
                         source_name: None,
+                        source_colors: vec![],
                     }
                 }
                 StackPayload::TriggeredAbility {
@@ -812,6 +815,14 @@ fn build_game_view(state: &GameState) -> GameView {
                         .objects
                         .get(source_id)
                         .map(|o| o.definition.name.clone()),
+                    source_colors: state
+                        .objects
+                        .get(source_id)
+                        .map(|o| display_colors(&o.definition))
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|c| c.to_string())
+                        .collect(),
                 },
                 StackPayload::ActivatedAbility {
                     label, source_id, ..
@@ -827,6 +838,14 @@ fn build_game_view(state: &GameState) -> GameView {
                         .objects
                         .get(source_id)
                         .map(|o| o.definition.name.clone()),
+                    source_colors: state
+                        .objects
+                        .get(source_id)
+                        .map(|o| display_colors(&o.definition))
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|c| c.to_string())
+                        .collect(),
                 },
             }
         })
@@ -2321,6 +2340,49 @@ mod tests {
         let item = &view.stack[0];
         assert_eq!(item.targets, vec!["Player 2".to_string()]);
         assert_eq!(item.source_name, Some("Grizzly Bears".to_string()));
+    }
+
+    #[test]
+    fn stack_item_view_includes_source_colors_for_ability() {
+        use mecha_oracle::types::effect::EffectStep;
+        use mecha_oracle::types::stack::{StackObject, StackPayload};
+
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let source_id = gs.alloc_id();
+        let source = CardObject::new(
+            source_id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let perm = PermanentState::new(&source.definition);
+        gs.battlefield.insert(source_id, perm);
+        gs.add_object(source);
+
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::ActivatedAbility {
+                source_id,
+                effect: vec![EffectStep::DealDamage(2)],
+                label: "Grizzly Bears: activated ability".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![],
+            x_value: None,
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let view = build_game_view(&gs);
+        let item = &view.stack[0];
+        assert_eq!(item.source_colors, vec!["G".to_string()]);
     }
 
     #[test]
