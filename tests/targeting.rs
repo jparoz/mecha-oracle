@@ -89,6 +89,7 @@ fn giant_growth_cast_and_resolve_boosts_creature() {
         PlayerId(0),
         gg_id,
         vec![EffectTarget::Object { id: bears_id }],
+        None,
     )
     .unwrap();
 
@@ -143,6 +144,7 @@ fn lightning_bolt_kills_creature() {
         PlayerId(0),
         bolt_id,
         vec![EffectTarget::Object { id: bears_id }],
+        None,
     )
     .unwrap();
 
@@ -183,6 +185,7 @@ fn lightning_bolt_damages_player() {
         PlayerId(0),
         bolt_id,
         vec![EffectTarget::Player { id: PlayerId(1) }],
+        None,
     )
     .unwrap();
 
@@ -229,6 +232,7 @@ fn giant_growth_fizzles_when_target_leaves() {
         PlayerId(0),
         gg_id,
         vec![EffectTarget::Object { id: bears_id }],
+        None,
     )
     .unwrap();
 
@@ -299,6 +303,7 @@ fn cant_cast_giant_growth_targeting_shroud_creature() {
         PlayerId(0),
         gg_id,
         vec![EffectTarget::Object { id: shroud_id }],
+        None,
     );
 
     assert!(

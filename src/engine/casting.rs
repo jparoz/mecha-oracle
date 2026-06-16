@@ -87,6 +87,7 @@ pub fn cast_spell(
     player_id: PlayerId,
     object_id: ObjectId,
     declared_targets: Vec<crate::types::effect::EffectTarget>,
+    x_value: Option<u32>,
 ) -> Result<GameState, EngineError> {
     if state.priority_player != player_id {
         return Err(EngineError::NotYourPriority);
@@ -166,7 +167,7 @@ pub fn cast_spell(
         state,
         player_id,
         &[CostComponent::Mana(cost.clone())],
-        None,
+        x_value,
     )?;
     state.mana_checkpoint = None;
     state
@@ -296,7 +297,7 @@ mod tests {
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -313,7 +314,7 @@ mod tests {
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -340,7 +341,7 @@ mod tests {
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 2;
         let id = put_in_hand(&mut gs, PlayerId(0), make_flash_creature_def());
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -373,7 +374,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), id, vec![]),
+            cast_spell(gs, PlayerId(0), id, vec![], None),
             Err(EngineError::CannotCastNow)
         ));
     }
@@ -389,7 +390,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
 
         assert!(!gs.hands[&PlayerId(0)].contains(&id));
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
@@ -407,7 +408,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
 
         assert_eq!(gs.priority_player, PlayerId(0));
         assert_eq!(gs.consecutive_passes, 0);
@@ -472,7 +473,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), bear_id, vec![]),
+            cast_spell(gs, PlayerId(0), bear_id, vec![], None),
             Err(EngineError::InsufficientMana)
         ));
     }
@@ -494,7 +495,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap();
 
         assert!(gs.mana_checkpoint.is_none());
     }
@@ -525,7 +526,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap();
 
         assert!(!gs.battlefield.contains_key(&bear_id));
         assert!(gs.hands[&PlayerId(0)].is_empty());
@@ -544,7 +545,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap();
 
         // CR 117.3c: caster retains priority
         assert_eq!(gs.priority_player, PlayerId(0));
@@ -564,7 +565,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), bear_id, vec![]),
+            cast_spell(gs, PlayerId(0), bear_id, vec![], None),
             Err(EngineError::NotYourPriority)
         ));
     }
@@ -581,7 +582,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap();
         let gs = pass_priority(gs, PlayerId(0)).unwrap();
         let gs = pass_priority(gs, PlayerId(1)).unwrap();
 
@@ -640,7 +641,7 @@ mod tests {
             PlayerId(0),
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
-        let gs = cast_spell(gs, PlayerId(0), spell_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), spell_id, vec![], None).unwrap();
 
         // Spell on stack + 1 Prowess trigger on stack = 2 items.
         assert_eq!(gs.stack.len(), 2);
@@ -672,7 +673,7 @@ mod tests {
             colors: vec![],
         };
         let id = put_in_hand(&mut gs, PlayerId(0), targeted_instant_def);
-        let result = cast_spell(gs, PlayerId(0), id, vec![]);
+        let result = cast_spell(gs, PlayerId(0), id, vec![], None);
         assert!(matches!(result, Err(EngineError::WrongNumberOfTargets)));
     }
 
@@ -709,6 +710,7 @@ mod tests {
             PlayerId(0),
             id,
             vec![EffectTarget::Object { id: ObjectId(999) }],
+            None,
         );
         assert!(matches!(result, Err(EngineError::IllegalTarget)));
     }
@@ -768,6 +770,7 @@ mod tests {
             PlayerId(0),
             id,
             vec![EffectTarget::Object { id: creature_id }],
+            None,
         )
         .unwrap();
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
@@ -788,7 +791,7 @@ mod tests {
             PlayerId(0),
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
-        let gs = cast_spell(gs, PlayerId(0), id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
 
@@ -894,6 +897,7 @@ mod tests {
             PlayerId(0),
             spell_id,
             vec![EffectTarget::Object { id: ward_id }],
+            None,
         )
         .unwrap();
 
@@ -962,6 +966,7 @@ mod tests {
             PlayerId(0),
             spell_id,
             vec![EffectTarget::Object { id: ward_id }],
+            None,
         )
         .unwrap();
 
@@ -1009,6 +1014,7 @@ mod tests {
             PlayerId(0),
             spell_id,
             vec![EffectTarget::Object { id: ward_id }],
+            None,
         )
         .unwrap();
 
@@ -1026,6 +1032,27 @@ mod tests {
             }
             other => panic!("Expected TriggeredAbility, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn cast_spell_with_x_deducts_x_mana() {
+        use crate::types::mana::ManaPip;
+        let mut gs = GameState::new(vec![
+            Player::new(PlayerId(0), "Alice"),
+            Player::new(PlayerId(1), "Bob"),
+        ]);
+        gs.step = Step::PreCombatMain;
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red = 4;
+        let id = gs.alloc_id();
+        let def = make_instant_def("Fireball", vec![ManaPip::X, ManaPip::Red]);
+        let obj = CardObject::new(id, def, PlayerId(0), crate::types::Zone::Hand);
+        gs.add_object(obj);
+        gs.hands.entry(PlayerId(0)).or_default().push(id);
+        gs.priority_player = PlayerId(0);
+
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], Some(3)).unwrap();
+        // X=3 + R=1 = 4 red spent
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.red, 0);
     }
 
     // --- Counterspell integration tests (CR 701.5, CR 608.2b) ---
@@ -1095,7 +1122,7 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None).unwrap();
         let bears_sid = gs.stack[0];
 
         let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
@@ -1107,6 +1134,7 @@ mod tests {
             PlayerId(1),
             counter_id,
             vec![EffectTarget::StackObject { id: bears_sid }],
+            None,
         )
         .unwrap();
 
@@ -1153,7 +1181,7 @@ mod tests {
         };
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 1;
         let draw_id = put_in_hand(&mut gs, PlayerId(0), draw_def);
-        let gs = cast_spell(gs, PlayerId(0), draw_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), draw_id, vec![], None).unwrap();
         let draw_sid = gs.stack[0];
 
         let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
@@ -1165,6 +1193,7 @@ mod tests {
             PlayerId(1),
             negate_id,
             vec![EffectTarget::StackObject { id: draw_sid }],
+            None,
         )
         .unwrap();
 
@@ -1191,7 +1220,7 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None).unwrap();
         let bears_sid = gs.stack[0];
 
         let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
@@ -1203,6 +1232,7 @@ mod tests {
             PlayerId(1),
             negate_id,
             vec![EffectTarget::StackObject { id: bears_sid }],
+            None,
         );
 
         assert!(matches!(result, Err(EngineError::IllegalTarget)));
@@ -1224,7 +1254,7 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![]).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None).unwrap();
         let bears_sid = gs.stack[0];
 
         let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
@@ -1236,6 +1266,7 @@ mod tests {
             PlayerId(1),
             counter_id,
             vec![EffectTarget::StackObject { id: bears_sid }],
+            None,
         )
         .unwrap();
 
