@@ -22,7 +22,7 @@ const MANA_HEX = {};
 // render as", so no land/non-land distinction is needed here.
 function cardColorBackground(colors) {
   if (!colors || colors.length === 0) return MANA_HEX.c;
-  if (colors.length === 1) return MANA_HEX[colors[0].toLowerCase()];
+  if (colors.length === 1) return MANA_HEX[colors[0].toLowerCase()] || MANA_HEX.c;
   if (colors.length === 2) {
     const [a, b] = colors.map(c => MANA_HEX[c.toLowerCase()]);
     return `linear-gradient(to right, ${a}, ${b})`; // colors[0] left, colors[1] right
