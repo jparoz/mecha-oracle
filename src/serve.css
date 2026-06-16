@@ -2,6 +2,16 @@
 :root {
   --p1-color: #51cf66;
   --p2-color: #ff7b7b;
+  --mana-w-bg: #4d4a1a; --mana-w-border: #9a932d; --mana-w-fg: #e8e06f;
+  --mana-u-bg: #1a2a4d; --mana-u-border: #2d4a9a; --mana-u-fg: #6f8ee8;
+  --mana-b-bg: #2a1a2a; --mana-b-border: #6a3a6a; --mana-b-fg: #c06fc0;
+  --mana-r-bg: #4d1a1a; --mana-r-border: #9a2d2d; --mana-r-fg: #e86f6f;
+  --mana-g-bg: #1a4d1a; --mana-g-border: #2d7a2d; --mana-g-fg: #6fd86f;
+  --mana-c-bg: #2a2a2a; --mana-c-border: #666;    --mana-c-fg: #ccc;
+  --mana-gold-bg: #4a3a10; --mana-gold-border: #9a7a20; --mana-gold-fg: #e8c860;
+  --mana-x-bg: #161616; --mana-x-border: #444; --mana-x-fg: #eee;
+  --mana-s-bg: #1c2c34; --mana-s-border: #4a7a90; --mana-s-fg: #bfe6f5;
+  --mana-p-bg: #161616;
 }
 body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; height: 100vh; overflow: hidden; }
 #root { display: flex; height: 100vh; }
@@ -32,12 +42,17 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 .mana-pool-wrap.resettable:hover { border-color: #4a6a4a; }
 .mana-reset-hint { font-size: 9px; color: #4a7a4a; margin-left: 2px; }
 .pip { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #555; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; }
-.pip-W { background: #4d4a1a; border-color: #9a932d; color: #e8e06f; }
-.pip-U { background: #1a2a4d; border-color: #2d4a9a; color: #6f8ee8; }
-.pip-B { background: #2a1a2a; border-color: #6a3a6a; color: #c06fc0; }
-.pip-R { background: #4d1a1a; border-color: #9a2d2d; color: #e86f6f; }
-.pip-G { background: #1a4d1a; border-color: #2d7a2d; color: #6fd86f; }
-.pip-C { background: #2a2a2a; border-color: #666; color: #ccc; }
+.pip-W { background: var(--mana-w-bg); border-color: var(--mana-w-border); color: var(--mana-w-fg); }
+.pip-U { background: var(--mana-u-bg); border-color: var(--mana-u-border); color: var(--mana-u-fg); }
+.pip-B { background: var(--mana-b-bg); border-color: var(--mana-b-border); color: var(--mana-b-fg); }
+.pip-R { background: var(--mana-r-bg); border-color: var(--mana-r-border); color: var(--mana-r-fg); }
+.pip-G { background: var(--mana-g-bg); border-color: var(--mana-g-border); color: var(--mana-g-fg); }
+.pip-C { background: var(--mana-c-bg); border-color: var(--mana-c-border); color: var(--mana-c-fg); }
+.pip-generic { background: var(--mana-c-bg); border-color: var(--mana-c-border); color: var(--mana-c-fg); }
+.pip-X { background: var(--mana-x-bg); border-color: var(--mana-x-border); color: var(--mana-x-fg); }
+.pip-S { background: var(--mana-s-bg); border-color: var(--mana-s-border); color: var(--mana-s-fg); }
+.pip-split { font-size: 6px; }
+.pip-tap svg { display: block; }
 .zone-info { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 11px; color: #666; }
 
 /* Zone rows */
@@ -79,7 +94,7 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 .tooltip {
   display: none; position: fixed; left: 0; top: 0;
   width: 200px; background: #1e2430; border: 1px solid #4a6a9a;
-  border-radius: 6px; padding: 10px; z-index: 9999;
+  border-radius: 6px; padding: 10px; z-index: 350;
   font-size: 11px; color: #ccc; pointer-events: none;
   box-shadow: 0 4px 16px rgba(0,0,0,0.6); line-height: 1.5;
 }
