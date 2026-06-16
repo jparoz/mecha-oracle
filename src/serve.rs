@@ -147,6 +147,10 @@ struct StackItemView {
     card: Option<CardView>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cost_label: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    targets: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_name: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -729,6 +733,11 @@ fn build_game_view(state: &GameState) -> GameView {
         .iter()
         .map(|&sid| {
             let obj = &state.stack_objects[&sid];
+            let targets: Vec<String> = obj
+                .targets
+                .iter()
+                .map(|t| target_display_name(state, t))
+                .collect();
             match &obj.payload {
                 StackPayload::Spell { card_id } => {
                     let card = state.objects.get(card_id);
@@ -758,23 +767,39 @@ fn build_game_view(state: &GameState) -> GameView {
                             actions: vec![],
                         }),
                         cost_label: None,
+                        targets,
+                        source_name: None,
                     }
                 }
-                StackPayload::TriggeredAbility { label, .. } => StackItemView {
+                StackPayload::TriggeredAbility {
+                    label, source_id, ..
+                } => StackItemView {
                     id: sid.0,
                     kind: "triggered_ability".into(),
                     label: label.clone(),
                     controller: obj.controller,
                     card: None,
                     cost_label: None,
+                    targets,
+                    source_name: state
+                        .objects
+                        .get(source_id)
+                        .map(|o| o.definition.name.clone()),
                 },
-                StackPayload::ActivatedAbility { label, .. } => StackItemView {
+                StackPayload::ActivatedAbility {
+                    label, source_id, ..
+                } => StackItemView {
                     id: sid.0,
                     kind: "activated_ability".into(),
                     label: label.clone(),
                     controller: obj.controller,
                     card: None,
                     cost_label: None,
+                    targets,
+                    source_name: state
+                        .objects
+                        .get(source_id)
+                        .map(|o| o.definition.name.clone()),
                 },
             }
         })
@@ -2242,5 +2267,130 @@ mod tests {
             target_display_name(&gs, &EffectTarget::StackObject { id: spell_stack_id }),
             "Lightning Bolt"
         );
+    }
+
+    #[test]
+    fn stack_item_view_includes_targets_and_source_name_for_ability() {
+        use mecha_oracle::types::effect::EffectStep;
+        use mecha_oracle::types::stack::{StackObject, StackPayload};
+
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let source_id = gs.alloc_id();
+        let source = CardObject::new(
+            source_id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let perm = PermanentState::new(&source.definition);
+        gs.battlefield.insert(source_id, perm);
+        gs.add_object(source);
+
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::ActivatedAbility {
+                source_id,
+                effect: vec![EffectStep::DealDamage(2)],
+                label: "Grizzly Bears: activated ability".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![EffectTarget::Player { id: PlayerId(1) }],
+            x_value: None,
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let view = build_game_view(&gs);
+        assert_eq!(view.stack.len(), 1);
+        let item = &view.stack[0];
+        assert_eq!(item.targets, vec!["Player 2".to_string()]);
+        assert_eq!(item.source_name, Some("Grizzly Bears".to_string()));
+    }
+
+    #[test]
+    fn stack_item_view_includes_source_name_for_triggered_ability() {
+        use mecha_oracle::types::effect::EffectStep;
+        use mecha_oracle::types::stack::{StackObject, StackPayload};
+
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let source_id = gs.alloc_id();
+        let source = CardObject::new(
+            source_id,
+            db.get("Serra Angel").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let perm = PermanentState::new(&source.definition);
+        gs.battlefield.insert(source_id, perm);
+        gs.add_object(source);
+
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::TriggeredAbility {
+                source_id,
+                effect: vec![EffectStep::DealDamage(1)],
+                label: "Prowess".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![],
+            x_value: None,
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let view = build_game_view(&gs);
+        let item = &view.stack[0];
+        assert!(item.targets.is_empty());
+        assert_eq!(item.source_name, Some("Serra Angel".to_string()));
+    }
+
+    #[test]
+    fn stack_item_view_spell_has_no_source_name() {
+        use mecha_oracle::types::stack::{StackObject, StackPayload};
+
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let card_id = gs.alloc_id();
+        let card = CardObject::new(
+            card_id,
+            db.get("Lightning Bolt").unwrap().clone(),
+            PlayerId(0),
+            Zone::Stack,
+        );
+        gs.add_object(card);
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::Spell { card_id },
+            controller: PlayerId(0),
+            targets: vec![],
+            x_value: None,
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let view = build_game_view(&gs);
+        let item = &view.stack[0];
+        assert!(item.targets.is_empty());
+        assert_eq!(item.source_name, None);
     }
 }
