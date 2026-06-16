@@ -471,31 +471,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                     if !seen.insert(key) {
                         continue;
                     }
-                    let target_name = match &target {
-                        EffectTarget::Object { id } => state
-                            .objects
-                            .get(id)
-                            .map(|o| o.definition.name.clone())
-                            .unwrap_or_default(),
-                        EffectTarget::Player { id } => state
-                            .get_player(*id)
-                            .map(|p| p.name.clone())
-                            .unwrap_or_default(),
-                        EffectTarget::StackObject { id } => state
-                            .stack_objects
-                            .get(id)
-                            .and_then(|obj| {
-                                if let StackPayload::Spell { card_id } = &obj.payload {
-                                    state
-                                        .objects
-                                        .get(card_id)
-                                        .map(|c| c.definition.name.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .unwrap_or_default(),
-                    };
+                    let target_name = target_display_name(state, &target);
                     let target_val = serde_json::to_value(&target).unwrap();
                     actions.push(ActionItemView {
                         label: format!("Cast {} → {}", obj.definition.name, target_name),
@@ -720,6 +696,31 @@ fn format_ability_cost_label(cost: &[CostComponent]) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+fn target_display_name(state: &GameState, target: &EffectTarget) -> String {
+    match target {
+        EffectTarget::Object { id } => state
+            .objects
+            .get(id)
+            .map(|o| o.definition.name.clone())
+            .unwrap_or_default(),
+        EffectTarget::Player { id } => state
+            .get_player(*id)
+            .map(|p| p.name.clone())
+            .unwrap_or_default(),
+        EffectTarget::StackObject { id } => state
+            .stack_objects
+            .get(id)
+            .and_then(|obj| match &obj.payload {
+                StackPayload::Spell { card_id } => state
+                    .objects
+                    .get(card_id)
+                    .map(|c| c.definition.name.clone()),
+                _ => None,
+            })
+            .unwrap_or_default(),
+    }
 }
 
 fn build_game_view(state: &GameState) -> GameView {
@@ -2179,6 +2180,67 @@ mod tests {
         assert!(
             !blocker_targets.contains(&flying_atk.0),
             "ground blocker must not be offered as blocker for flying attacker"
+        );
+    }
+
+    #[test]
+    fn target_display_name_resolves_each_target_kind() {
+        use mecha_oracle::types::stack::{StackObject, StackPayload};
+
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let db = test_db();
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        // Object target: a creature on the battlefield
+        let creature_id = gs.alloc_id();
+        let creature = CardObject::new(
+            creature_id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let perm = PermanentState::new(&creature.definition);
+        gs.battlefield.insert(creature_id, perm);
+        gs.add_object(creature);
+
+        // StackObject target: a spell already on the stack
+        let spell_card_id = gs.alloc_id();
+        let spell_card = CardObject::new(
+            spell_card_id,
+            db.get("Lightning Bolt").unwrap().clone(),
+            PlayerId(1),
+            Zone::Stack,
+        );
+        gs.add_object(spell_card);
+        let spell_stack_id = gs.alloc_stack_id();
+        gs.stack.push(spell_stack_id);
+        gs.stack_objects.insert(
+            spell_stack_id,
+            StackObject {
+                id: spell_stack_id,
+                payload: StackPayload::Spell {
+                    card_id: spell_card_id,
+                },
+                controller: PlayerId(1),
+                targets: vec![],
+                x_value: None,
+            },
+        );
+
+        assert_eq!(
+            target_display_name(&gs, &EffectTarget::Object { id: creature_id }),
+            "Grizzly Bears"
+        );
+        assert_eq!(
+            target_display_name(&gs, &EffectTarget::Player { id: PlayerId(1) }),
+            "Player 2"
+        );
+        assert_eq!(
+            target_display_name(&gs, &EffectTarget::StackObject { id: spell_stack_id }),
+            "Lightning Bolt"
         );
     }
 }
