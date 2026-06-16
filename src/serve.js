@@ -246,6 +246,32 @@ function renderGYPile(prefix, graveyard) {
   document.getElementById(prefix + '-gy-wrap').style.cursor = graveyard.length > 0 ? 'pointer' : 'default';
 }
 
+function tooltipHTML({ name, manaCost, typeLine, oracleHtml, pt, tags, extraSections }) {
+  return `
+    <div class="tooltip">
+      <div class="tooltip-name">${esc(name)}</div>
+      ${manaCost ? `<div class="tooltip-cost">${esc(manaCost)}</div>` : ''}
+      <div class="tooltip-type">${esc(typeLine)}</div>
+      ${oracleHtml ? `<div class="tooltip-text">${oracleHtml}</div>` : ''}
+      ${pt ? `<div class="tooltip-pt">${pt}</div>` : ''}
+      ${tags && tags.length ? `<div class="tooltip-tags">${tags.join('')}</div>` : ''}
+      ${extraSections && extraSections.length ? extraSections.join('') : ''}
+    </div>`;
+}
+
+function targetsSectionHTML(targets) {
+  if (!targets || !targets.length) return '';
+  return `<div class="tooltip-targets">
+    <div class="tooltip-targets-label">Targets:</div>
+    ${targets.map(t => `<div class="tooltip-target">${esc(t)}</div>`).join('')}
+  </div>`;
+}
+
+function sourceSectionHTML(sourceName) {
+  if (!sourceName) return '';
+  return `<div class="tooltip-source">Source: ${esc(sourceName)}</div>`;
+}
+
 function cardHTML(card, s, pid, zone) {
   const isLand = card.type_line.includes('Land');
   const isSelected = attackersSelected.includes(card.id) ||
@@ -277,15 +303,14 @@ function cardHTML(card, s, pid, zone) {
   if (card.is_attacking)   tags.push('<span class="tag tag-attack">Attacking</span>');
   if (card.is_blocking)    tags.push('<span class="tag tag-block">Blocking</span>');
 
-  const tooltip = `
-    <div class="tooltip">
-      <div class="tooltip-name">${esc(card.name)}</div>
-      ${card.mana_cost ? `<div class="tooltip-cost">${esc(card.mana_cost)}</div>` : ''}
-      <div class="tooltip-type">${esc(card.type_line)}</div>
-      ${card.oracle_text ? `<div class="tooltip-text">${renderOracleText(card)}</div>` : ''}
-      ${card.power != null ? `<div class="tooltip-pt">${card.power} / ${card.toughness}</div>` : ''}
-      ${tags.length ? `<div class="tooltip-tags">${tags.join('')}</div>` : ''}
-    </div>`;
+  const tooltip = tooltipHTML({
+    name: card.name,
+    manaCost: card.mana_cost,
+    typeLine: card.type_line,
+    oracleHtml: card.oracle_text ? renderOracleText(card) : '',
+    pt: card.power != null ? `${card.power} / ${card.toughness}` : null,
+    tags,
+  });
 
   const pt = card.power != null
     ? `<span class="card-pt${card.damage_marked > 0 ? ' damaged' : ''}">${card.power}/${card.toughness}</span>`
