@@ -785,17 +785,37 @@ document.addEventListener('mouseover', e => {
   const tooltip = wrap.querySelector('.tooltip') || wrap._tooltipEl;
   if (!tooltip) return;
   if (wrap._tooltipEl) tooltip.style.display = 'block';
-  const rect = wrap.getBoundingClientRect();
-  const TW = 208; // tooltip width (200) + small buffer
-  const TH = 260; // conservative max tooltip height
-  // Horizontal: prefer right of card; flip left if it would overflow
-  let left = rect.right + 4;
-  if (left + TW > window.innerWidth - 8) left = rect.left - TW - 4;
-  left = Math.max(8, left);
-  // Vertical: prefer aligned to card top; flip above if it would overflow
-  let top = rect.top;
-  if (top + TH > window.innerHeight - 8) top = rect.bottom - TH;
-  top = Math.max(8, top);
+
+  const cardRect = wrap.getBoundingClientRect();
+  // Real rendered size, not a guess — the tooltip is visible by this point (either via
+  // the active :hover pseudo-class, or forced visible above for detached stack tooltips),
+  // so offsetWidth/offsetHeight reflect its actual content (including long oracle text).
+  const tw = tooltip.offsetWidth;
+  const th = tooltip.offsetHeight;
+  const GAP = 6;
+
+  let left, top;
+  if (wrap.classList.contains('stack-card')) {
+    // Stack: prefer left of the card, vertical centers aligned.
+    left = cardRect.left - tw - GAP;
+    if (left < 8) left = cardRect.right + GAP; // flip right only if there's no room on the left
+    top = cardRect.top + cardRect.height / 2 - th / 2;
+  } else {
+    // Hand / battlefield / graveyard-modal: prefer above/below, horizontal centers aligned.
+    left = cardRect.left + cardRect.width / 2 - tw / 2;
+    const spaceAbove = cardRect.top;
+    const spaceBelow = window.innerHeight - cardRect.bottom;
+    if (spaceAbove >= th + GAP || spaceAbove >= spaceBelow) {
+      top = cardRect.top - th - GAP;
+    } else {
+      top = cardRect.bottom + GAP;
+    }
+  }
+
+  // Universal viewport clamp — applies no matter which branch above ran, so a tooltip
+  // can never be positioned outside the viewport regardless of zone or content length.
+  left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+  top  = Math.max(8, Math.min(top,  window.innerHeight - th - 8));
   tooltip.style.left = left + 'px';
   tooltip.style.top  = top  + 'px';
 });
