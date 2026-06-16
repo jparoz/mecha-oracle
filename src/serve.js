@@ -269,8 +269,18 @@ function renderGYPile(prefix, graveyard) {
   if (top) {
     topEl.innerHTML = `<span class="gy-card-name">${top.name}</span><span class="gy-card-type">${top.type_line}</span>` +
       (top.power != null ? `<span class="gy-card-pt">${top.power}/${top.toughness}</span>` : '');
+    const bg = cardColorBackground(top.colors);
+    if (bg.startsWith('linear-gradient')) {
+      topEl.style.backgroundImage = bg;
+      topEl.style.backgroundColor = '';
+    } else {
+      topEl.style.backgroundImage = 'none';
+      topEl.style.backgroundColor = bg;
+    }
   } else {
     topEl.innerHTML = '<span style="font-size:10px;color:#442222;text-align:center;width:100%">empty</span>';
+    topEl.style.backgroundImage = 'none';
+    topEl.style.backgroundColor = '';
   }
   document.getElementById(prefix + '-gy-wrap').style.cursor = graveyard.length > 0 ? 'pointer' : 'default';
 }
@@ -787,6 +797,9 @@ function renderStack(stack) {
       el = document.createElement('div');
       el.className       = 'card-wrap stack-card ' + (item.controller === 0 ? 'p1' : 'p2');
       el.dataset.stackId = idStr;
+      const stackColors = item.card ? item.card.colors : item.source_colors;
+      el.style.backgroundImage  = cardColorBackground(stackColors).startsWith('linear-gradient') ? cardColorBackground(stackColors) : 'none';
+      el.style.backgroundColor  = cardColorBackground(stackColors).startsWith('linear-gradient') ? '' : cardColorBackground(stackColors);
       const tooltipHtml = item.card
         ? tooltipHTML({
             name: item.card.name,
