@@ -514,6 +514,8 @@ cargo clippy --all-targets 2>&1 | grep -E "error|warning"
 
 Expected: all green. `format_mana_cost` (unbraced) keeps its own two direct unit tests (`format_mana_cost_green_green`, `format_mana_cost_generic_and_color`) — those still pass since the function itself is unchanged, only its callers moved to the braced variant. Clippy may now warn `format_mana_cost` is unused outside tests — if so, that's expected and fine (it's still exercised directly by its own tests in the same module); if clippy actually errors on dead code (it shouldn't, since `#[cfg(test)]` callers count), re-check before suppressing anything.
 
+**Deviation (recorded during implementation):** clippy did flag `format_mana_cost` as `dead_code` under `--all-targets` once all three callers moved to `format_mana_cost_braced`, since none of its remaining callers fell outside its own `#[cfg(test)]` block. Per repo-wide grep confirming zero callers anywhere outside that one function's own tests, and per this project's "delete code that's truly unused rather than suppress with `#[allow(dead_code)]`" convention, `format_mana_cost` and its two direct unit tests were deleted entirely in a follow-up commit (`3b33d9b`) rather than kept per this section's original text. No later task in this plan needs the unbraced format.
+
 ```bash
 git add src/serve.rs
 git commit -m "feat: serialize mana costs in braced notation for icon rendering"
