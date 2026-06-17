@@ -408,15 +408,9 @@ function manaPipHTML(parts) {
 }
 
 function tapPipHTML(untap) {
-  const circle = untap ? '#1a1a1a' : '#cfcfcf';
-  const arrow  = untap ? '#fff'    : '#1a1a1a';
-  const rotate = untap ? ' transform="rotate(180 12 12)"' : '';
-  return `<span class="pip pip-tap">` +
-    `<svg viewBox="0 0 24 24" width="12" height="12"><g${rotate}>` +
-    `<circle cx="12" cy="12" r="11" fill="${circle}" stroke="#555" stroke-width="1"/>` +
-    `<path d="M12 4.5 A7.5 7.5 0 1 1 5.0 8.8" fill="none" stroke="${arrow}" stroke-width="2.2" stroke-linecap="round"/>` +
-    `<path d="M5.0 8.8 L3.4 5.2 L7.6 6.4 Z" fill="${arrow}"/>` +
-    `</g></svg></span>`;
+  return untap
+    ? `<span class="pip pip-Q">Q</span>`
+    : `<span class="pip pip-T">T</span>`;
 }
 
 function renderManaSymbols(str) {
@@ -448,13 +442,13 @@ function renderOracleText(card) {
   const parts = [];
   let pos = 0;
   for (const ann of annotations) {
-    if (ann.start > pos) parts.push(esc(text.slice(pos, ann.start)));
+    if (ann.start > pos) parts.push(renderManaSymbols(text.slice(pos, ann.start)));
     const style = annStyle(ann.kind);
-    const content = esc(text.slice(ann.start, ann.end));
+    const content = renderManaSymbols(text.slice(ann.start, ann.end));
     parts.push(style ? `<span style="${style}">${content}</span>` : content);
     pos = ann.end;
   }
-  if (pos < text.length) parts.push(esc(text.slice(pos)));
+  if (pos < text.length) parts.push(renderManaSymbols(text.slice(pos)));
   return `<div style="white-space:pre-wrap">${parts.join('')}</div>`;
 }
 

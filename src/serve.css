@@ -7,7 +7,7 @@
   --mana-b-bg: #2a1a2a; --mana-b-border: #6a3a6a; --mana-b-fg: #c06fc0;
   --mana-r-bg: #4d1a1a; --mana-r-border: #9a2d2d; --mana-r-fg: #e86f6f;
   --mana-g-bg: #1a4d1a; --mana-g-border: #2d7a2d; --mana-g-fg: #6fd86f;
-  --mana-c-bg: #2a2a2a; --mana-c-border: #666;    --mana-c-fg: #ccc;
+  --mana-c-bg: #909090; --mana-c-border: #666;    --mana-c-fg: #000;
   --mana-gold-bg: #4a3a10; --mana-gold-border: #9a7a20; --mana-gold-fg: #e8c860;
   --mana-x-bg: #161616; --mana-x-border: #444; --mana-x-fg: #eee;
   --mana-s-bg: #1c2c34; --mana-s-border: #4a7a90; --mana-s-fg: #bfe6f5;
@@ -52,7 +52,8 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 .pip-X { background: var(--mana-x-bg); border-color: var(--mana-x-border); color: var(--mana-x-fg); }
 .pip-S { background: var(--mana-s-bg); border-color: var(--mana-s-border); color: var(--mana-s-fg); }
 .pip-split { font-size: 6px; }
-.pip-tap svg { display: block; }
+.pip-T { background: #909090; border-color: #666; color: #000; }
+.pip-Q { background: #111;    border-color: #444; color: #fff; }
 .zone-info { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 11px; color: #666; }
 
 /* Zone rows */
