@@ -30,7 +30,7 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
         }
     }
 
-    // CR 122.1f: player with 10 or more poison counters loses.
+    // CR 704.5c / 122.1f: player with 10 or more poison counters loses.
     for player in &state.players {
         if !player.has_lost && player.counter_count(&CounterKind::Poison) >= 10 {
             sbas.push(Sba::PlayerLoses(player.id));
@@ -53,7 +53,7 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
         }
     }
 
-    // CR 122.3: if a permanent has both +1/+1 and -1/-1 counters, remove N of each
+    // CR 704.5q / 122.3: if a permanent has both +1/+1 and -1/-1 counters, remove N of each
     // where N = min of the two counts.
     let plus_key = CounterKind::PtModifier {
         power: 1,
@@ -89,22 +89,20 @@ fn apply_sbas(mut state: GameState, sbas: Vec<Sba>) -> GameState {
             }
             Sba::CancelCounters(id, n) => {
                 if let Some(perm) = state.battlefield.get_mut(&id) {
-                    let plus_key = CounterKind::PtModifier {
-                        power: 1,
-                        toughness: 1,
-                    };
-                    let minus_key = CounterKind::PtModifier {
-                        power: -1,
-                        toughness: -1,
-                    };
-                    for key in [plus_key, minus_key] {
-                        let new_val = perm.counter_count(&key).saturating_sub(n);
-                        if new_val == 0 {
-                            perm.counters.remove(&key);
-                        } else {
-                            perm.counters.insert(key, new_val);
-                        }
-                    }
+                    perm.remove_counters(
+                        &CounterKind::PtModifier {
+                            power: 1,
+                            toughness: 1,
+                        },
+                        n,
+                    );
+                    perm.remove_counters(
+                        &CounterKind::PtModifier {
+                            power: -1,
+                            toughness: -1,
+                        },
+                        n,
+                    );
                 }
             }
         }
@@ -458,6 +456,42 @@ mod tests {
 
         assert!(gs.is_game_over());
         assert_eq!(gs.winner(), Some(PlayerId(0)));
+    }
+
+    #[test]
+    fn sba_counter_cancellation_and_toughness_zero_chain() {
+        // A 1/1 with one +1/+1 and two -1/-1 counters:
+        // First SBA loop: cancel one of each → 0 +1/+1, one -1/-1 remain → effective toughness 0.
+        // Second SBA loop: toughness ≤ 0 → move to graveyard.
+        use crate::types::CounterKind;
+        let mut gs = make_state();
+        let id = keyword_creature_on_battlefield(
+            &mut gs,
+            PlayerId(0),
+            1, // power
+            1, // toughness
+            vec![],
+        );
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            1,
+        );
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            2,
+        );
+
+        let gs = check_and_apply_sbas(gs);
+
+        // Should be in graveyard — died from effective toughness 0 after counter cancellation.
+        assert!(!gs.battlefield.contains_key(&id));
+        assert!(gs.graveyards[&PlayerId(0)].contains(&id));
     }
 
     #[test]

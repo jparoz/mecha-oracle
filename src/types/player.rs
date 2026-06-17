@@ -33,6 +33,16 @@ impl Player {
     pub fn add_counters(&mut self, kind: CounterKind, n: u32) {
         *self.counters.entry(kind).or_insert(0) += n;
     }
+
+    /// Remove up to `n` counters of the given kind. Removes the map entry when count reaches 0.
+    pub fn remove_counters(&mut self, kind: &CounterKind, n: u32) {
+        let new_val = self.counter_count(kind).saturating_sub(n);
+        if new_val == 0 {
+            self.counters.remove(kind);
+        } else {
+            self.counters.insert(kind.clone(), new_val);
+        }
+    }
 }
 
 #[cfg(test)]
