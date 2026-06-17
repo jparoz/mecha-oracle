@@ -369,7 +369,7 @@ function cardHTML(card, s, pid, zone) {
     oracleHtml: card.oracle_text ? renderOracleText(card) : '',
     pt: card.power != null ? `${card.power} / ${card.toughness}` : null,
     tags,
-    extraSections: [countersSectionHTML(card.counters || [])],
+    extraSections: [countersSectionHTML(card.counters || [])].filter(Boolean),
   });
 
   const pt = card.power != null

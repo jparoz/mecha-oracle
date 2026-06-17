@@ -215,6 +215,8 @@ struct CounterView {
     sublabel: Option<String>,
 }
 
+// kind strings ("plus", "minus", "mixed", "poison", "named") are used as CSS class
+// name suffixes (hex-{kind}) — must contain only letters, digits, and hyphens.
 fn counter_to_view(kind: &CounterKind, count: u32) -> CounterView {
     match kind {
         CounterKind::PtModifier { power, toughness } => {
