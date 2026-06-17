@@ -30,6 +30,13 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
         }
     }
 
+    // CR 122.1f: player with 10 or more poison counters loses.
+    for player in &state.players {
+        if !player.has_lost && player.counter_count(&CounterKind::Poison) >= 10 {
+            sbas.push(Sba::PlayerLoses(player.id));
+        }
+    }
+
     // CR 704.5g: creature on battlefield with toughness ≤ 0 → graveyard.
     // CR 704.5h: creature with damage ≥ toughness → graveyard.
     // CR 704.5h (deathtouch): creature dealt any deathtouch damage → graveyard.
@@ -437,5 +444,32 @@ mod tests {
             }),
             1
         );
+    }
+
+    #[test]
+    fn ten_poison_counters_causes_loss() {
+        use crate::types::CounterKind;
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(1))
+            .unwrap()
+            .add_counters(CounterKind::Poison, 10);
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(gs.is_game_over());
+        assert_eq!(gs.winner(), Some(PlayerId(0)));
+    }
+
+    #[test]
+    fn nine_poison_counters_does_not_cause_loss() {
+        use crate::types::CounterKind;
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(1))
+            .unwrap()
+            .add_counters(CounterKind::Poison, 9);
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert!(!gs.is_game_over());
     }
 }
