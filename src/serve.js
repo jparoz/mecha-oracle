@@ -356,7 +356,7 @@ function cardHTML(card, s, pid, zone) {
     : '';
 
   const bg = cardColorBackground(card.colors);
-  const fg = bestTextColor(card.colors && card.colors.length === 1 ? MANA_HEX[card.colors[0].toLowerCase()] : '#000000');
+  const fg = bestTextColor(card.colors && card.colors.length === 1 ? MANA_HEX[card.colors[0].toLowerCase()] : MANA_HEX.gold);
   const cardStyle = `style="background:${bg};color:${fg}"`;
 
   return `<div class="${wrap}"><div class="${classes}" data-id="${card.id}" ${clickAttr} ${cardStyle}>
