@@ -22,7 +22,9 @@ use mecha_oracle::types::ability::{
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
 use mecha_oracle::types::stack::StackPayload;
-use mecha_oracle::types::{CardObject, GameState, ObjectId, Player, PlayerId, Step, Zone};
+use mecha_oracle::types::{
+    CardObject, CounterKind, GameState, ObjectId, Player, PlayerId, Step, Zone,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
@@ -201,6 +203,58 @@ struct PlayerView {
     creatures: Vec<CardView>,
     library_count: usize,
     graveyard: Vec<CardView>,
+}
+
+#[derive(Serialize)]
+struct CounterView {
+    label: String,
+    kind: String,
+    count: u32,
+    sublabel: Option<String>,
+}
+
+fn counter_to_view(kind: &CounterKind, count: u32) -> CounterView {
+    match kind {
+        CounterKind::PtModifier { power, toughness } => {
+            let label = format!("{:+}/{:+}", power, toughness);
+            let kind_str = if *power >= 0 && *toughness >= 0 && (*power > 0 || *toughness > 0) {
+                "plus"
+            } else if *power <= 0 && *toughness <= 0 && (*power < 0 || *toughness < 0) {
+                "minus"
+            } else {
+                "mixed"
+            };
+            let net_p = *power * count as i32;
+            let net_t = *toughness * count as i32;
+            CounterView {
+                label,
+                kind: kind_str.to_string(),
+                count,
+                sublabel: Some(format!("{:+}/{:+} to P/T", net_p, net_t)),
+            }
+        }
+        CounterKind::Poison => CounterView {
+            label: "Poison".to_string(),
+            kind: "poison".to_string(),
+            count,
+            sublabel: None,
+        },
+        CounterKind::Named(name) => {
+            let label = {
+                let mut chars = name.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                }
+            };
+            CounterView {
+                label,
+                kind: "named".to_string(),
+                count,
+                sublabel: None,
+            }
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -2712,5 +2766,74 @@ mod tests {
             .find(|a| a.label.starts_with("Cycle"))
             .expect("expected a Cycle action");
         assert_eq!(cycle_action.label, "Cycle ({2})");
+    }
+
+    #[test]
+    fn counter_to_view_plus_modifier() {
+        let v = counter_to_view(
+            &CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            3,
+        );
+        assert_eq!(v.label, "+1/+1");
+        assert_eq!(v.kind, "plus");
+        assert_eq!(v.count, 3);
+        assert_eq!(v.sublabel.as_deref(), Some("+3/+3 to P/T"));
+    }
+
+    #[test]
+    fn counter_to_view_minus_modifier() {
+        let v = counter_to_view(
+            &CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            2,
+        );
+        assert_eq!(v.label, "-1/-1");
+        assert_eq!(v.kind, "minus");
+        assert_eq!(v.count, 2);
+        assert_eq!(v.sublabel.as_deref(), Some("-2/-2 to P/T"));
+    }
+
+    #[test]
+    fn counter_to_view_mixed_modifier() {
+        let v = counter_to_view(
+            &CounterKind::PtModifier {
+                power: 2,
+                toughness: -1,
+            },
+            3,
+        );
+        assert_eq!(v.label, "+2/-1");
+        assert_eq!(v.kind, "mixed");
+        assert_eq!(v.sublabel.as_deref(), Some("+6/-3 to P/T"));
+    }
+
+    #[test]
+    fn counter_to_view_poison() {
+        let v = counter_to_view(&CounterKind::Poison, 5);
+        assert_eq!(v.label, "Poison");
+        assert_eq!(v.kind, "poison");
+        assert_eq!(v.count, 5);
+        assert!(v.sublabel.is_none());
+    }
+
+    #[test]
+    fn counter_to_view_named_capitalizes_first_letter() {
+        let v = counter_to_view(&CounterKind::Named("charge".to_string()), 4);
+        assert_eq!(v.label, "Charge");
+        assert_eq!(v.kind, "named");
+        assert!(v.sublabel.is_none());
+    }
+
+    #[test]
+    fn counter_to_view_named_already_capitalized() {
+        let v = counter_to_view(&CounterKind::Named("Time".to_string()), 1);
+        assert_eq!(v.label, "Time");
+        assert_eq!(v.kind, "named");
+        assert!(v.sublabel.is_none());
     }
 }
