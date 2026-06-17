@@ -112,6 +112,19 @@ pub(crate) fn execute_effect_steps(
                     perm.pt_boost_until_eot.toughness += delta.toughness;
                 }
             }
+            EffectStep::AddCounter { kind, count } => match targets.first() {
+                Some(EffectTarget::Object { id }) => {
+                    if let Some(perm) = state.battlefield.get_mut(id) {
+                        perm.add_counters(kind.clone(), *count);
+                    }
+                }
+                Some(EffectTarget::Player { id }) => {
+                    if let Some(player) = state.get_player_mut(*id) {
+                        player.add_counters(kind.clone(), *count);
+                    }
+                }
+                _ => {}
+            },
             // TODO CR 702.2c/702.15a: deathtouch and lifelink propagation not yet
             // implemented; DealDamage carries no source-keyword context.
             EffectStep::DealDamage(n) => match targets.first() {
@@ -1194,6 +1207,104 @@ mod tests {
                 pips: vec![ManaPip::Generic(4)]
             })]
         );
+    }
+
+    #[test]
+    fn add_counter_to_creature_places_counter_on_permanent() {
+        use crate::types::CounterKind;
+        use crate::types::effect::EffectTarget;
+
+        let mut gs = make_state();
+        let def = CardDefinition {
+            name: "Target".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
+        gs.battlefield
+            .insert(id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::TriggeredAbility {
+                source_id: id,
+                effect: vec![EffectStep::AddCounter {
+                    kind: CounterKind::PtModifier {
+                        power: 1,
+                        toughness: 1,
+                    },
+                    count: 2,
+                }],
+                label: "add counter test".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![EffectTarget::Object { id }],
+            x_value: None,
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(
+            gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: 1,
+                toughness: 1
+            }),
+            2
+        );
+        assert_eq!(gs.battlefield[&id].effective_power(), Some(4)); // 2 base + 2 counters
+        assert_eq!(gs.battlefield[&id].effective_toughness(), Some(4));
+        assert!(gs.stack.is_empty());
+    }
+
+    #[test]
+    fn add_counter_to_player_places_counter_on_player() {
+        use crate::types::CounterKind;
+        use crate::types::effect::EffectTarget;
+
+        let mut gs = make_state();
+
+        let stack_id = gs.alloc_stack_id();
+        let stack_obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::TriggeredAbility {
+                source_id: ObjectId(99),
+                effect: vec![EffectStep::AddCounter {
+                    kind: CounterKind::Poison,
+                    count: 3,
+                }],
+                label: "poison test".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![EffectTarget::Player { id: PlayerId(1) }],
+            x_value: None,
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, stack_obj);
+
+        let gs = resolve_top(gs);
+
+        assert_eq!(
+            gs.get_player(PlayerId(1))
+                .unwrap()
+                .counter_count(&CounterKind::Poison),
+            3
+        );
+        assert!(gs.stack.is_empty());
     }
 
     #[test]

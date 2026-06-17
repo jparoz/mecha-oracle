@@ -380,6 +380,7 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
             EffectStep::BoostPermanentPT(delta) => {
                 format!("Boost by {}/{}", delta.power, delta.toughness)
             }
+            EffectStep::AddCounter { kind, count } => format!("Add {count} {kind:?} counter(s)"),
             EffectStep::DealDamage(n) => format!("Deal {n} damage"),
             EffectStep::CounterSpell => "Counter target spell".to_string(),
             EffectStep::Payment { .. } => "Pay cost".to_string(),

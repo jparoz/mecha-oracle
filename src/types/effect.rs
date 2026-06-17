@@ -1,4 +1,5 @@
 use super::ability::Cost;
+use super::counter::CounterKind;
 use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
 use super::permanent::PTDelta;
@@ -21,6 +22,11 @@ pub enum EffectStep {
     DrawCard(u32),
     GainLife(u32),
     BoostPermanentPT(PTDelta),
+    /// CR 122.6: put one or more counters of a given kind onto the target.
+    AddCounter {
+        kind: CounterKind,
+        count: u32,
+    },
     DealDamage(u32),
     CounterSpell, // CR 701.5: counter the target spell on the stack
     /// CR 118.12: inline cost-payment obligation raised during resolution.
