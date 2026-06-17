@@ -274,7 +274,10 @@ mod tests {
     fn counter_count_returns_zero_for_absent_key() {
         use crate::types::CounterKind;
         let perm = grizzly_bears_perm();
-        assert_eq!(perm.counter_count(&CounterKind::Poison), 0);
+        assert_eq!(
+            perm.counter_count(&CounterKind::Named("absent".to_string())),
+            0
+        );
         assert_eq!(
             perm.counter_count(&CounterKind::PtModifier {
                 power: 1,
@@ -327,10 +330,10 @@ mod tests {
     }
 
     #[test]
-    fn effective_power_unaffected_by_poison_or_named_counters() {
+    fn effective_power_unaffected_by_named_counters() {
         use crate::types::CounterKind;
         let mut perm = grizzly_bears_perm(); // base 2/2
-        perm.add_counters(CounterKind::Poison, 5);
+        perm.add_counters(CounterKind::Named("test".to_string()), 5);
         perm.add_counters(CounterKind::Named("charge".to_string()), 10);
         assert_eq!(perm.effective_power(), Some(2)); // unchanged
         assert_eq!(perm.effective_toughness(), Some(2));
