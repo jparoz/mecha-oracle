@@ -1,4 +1,4 @@
-use crate::types::{GameState, ObjectId, PlayerId, Zone, ability::StaticAbility};
+use crate::types::{CounterKind, GameState, ObjectId, PlayerId, Zone, ability::StaticAbility};
 
 /// Repeatedly finds and applies SBAs until no new ones trigger (CR 704.3).
 pub fn check_and_apply_sbas(state: GameState) -> GameState {
@@ -17,6 +17,7 @@ pub fn check_and_apply_sbas(state: GameState) -> GameState {
 enum Sba {
     PlayerLoses(PlayerId),
     MoveToGraveyard(ObjectId),
+    CancelCounters(ObjectId, u32),
 }
 
 fn find_sbas(state: &GameState) -> Vec<Sba> {
@@ -45,6 +46,25 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
         }
     }
 
+    // CR 122.3: if a permanent has both +1/+1 and -1/-1 counters, remove N of each
+    // where N = min of the two counts.
+    let plus_key = CounterKind::PtModifier {
+        power: 1,
+        toughness: 1,
+    };
+    let minus_key = CounterKind::PtModifier {
+        power: -1,
+        toughness: -1,
+    };
+    for (&id, perm) in &state.battlefield {
+        let n = perm
+            .counter_count(&plus_key)
+            .min(perm.counter_count(&minus_key));
+        if n > 0 {
+            sbas.push(Sba::CancelCounters(id, n));
+        }
+    }
+
     sbas
 }
 
@@ -59,6 +79,26 @@ fn apply_sbas(mut state: GameState, sbas: Vec<Sba>) -> GameState {
             }
             Sba::MoveToGraveyard(id) => {
                 state = move_to_graveyard(state, id);
+            }
+            Sba::CancelCounters(id, n) => {
+                if let Some(perm) = state.battlefield.get_mut(&id) {
+                    let plus_key = CounterKind::PtModifier {
+                        power: 1,
+                        toughness: 1,
+                    };
+                    let minus_key = CounterKind::PtModifier {
+                        power: -1,
+                        toughness: -1,
+                    };
+                    for key in [plus_key, minus_key] {
+                        let new_val = perm.counter_count(&key).saturating_sub(n);
+                        if new_val == 0 {
+                            perm.counters.remove(&key);
+                        } else {
+                            perm.counters.insert(key, new_val);
+                        }
+                    }
+                }
             }
         }
     }
@@ -267,5 +307,135 @@ mod tests {
 
         assert!(gs.battlefield.is_empty());
         assert_eq!(gs.graveyards[&PlayerId(0)].len(), 2);
+    }
+
+    #[test]
+    fn sba_cancels_equal_plus_and_minus_one_counters() {
+        use crate::types::CounterKind;
+        let db = test_db();
+        let mut gs = make_state();
+        let id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            3,
+        );
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            3,
+        );
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert_eq!(
+            gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: 1,
+                toughness: 1
+            }),
+            0
+        );
+        assert_eq!(
+            gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: -1,
+                toughness: -1
+            }),
+            0
+        );
+    }
+
+    #[test]
+    fn sba_removes_min_of_unequal_counter_counts() {
+        use crate::types::CounterKind;
+        let db = test_db();
+        let mut gs = make_state();
+        let id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            5,
+        );
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            2,
+        );
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert_eq!(
+            gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: 1,
+                toughness: 1
+            }),
+            3
+        );
+        assert_eq!(
+            gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: -1,
+                toughness: -1
+            }),
+            0
+        );
+    }
+
+    #[test]
+    fn sba_does_not_cancel_mismatched_pt_modifier_counters() {
+        // CR 122.3 only cancels +1/+1 against -1/-1; other PtModifier pairs are unaffected.
+        use crate::types::CounterKind;
+        let db = test_db();
+        let mut gs = make_state();
+        let id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: 2,
+                toughness: 0,
+            },
+            1,
+        );
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            1,
+        );
+
+        let gs = check_and_apply_sbas(gs);
+
+        assert_eq!(
+            gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: 2,
+                toughness: 0
+            }),
+            1
+        );
+        assert_eq!(
+            gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: -1,
+                toughness: -1
+            }),
+            1
+        );
     }
 }
