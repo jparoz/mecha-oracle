@@ -350,3 +350,29 @@ body { background: #0d1117; color: #e0e0e0; font-family: 'Segoe UI', system-ui, 
 #payment-confirm:disabled { background: #444; color: #888; cursor: not-allowed; }
 #payment-cancel { background: #7a3030; color: #fff; }
 #payment-decline { background: #6a4a00; color: #fff; }
+
+/* Counter badge row below card face */
+.card-counters {
+  display: flex; gap: 2px; flex-wrap: wrap; justify-content: center;
+}
+.hex-counter {
+  width: 14px; height: 14px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 7px; font-weight: bold; color: #fff; flex-shrink: 0;
+}
+.hex-plus   { background: #2a6a2a; }
+.hex-minus  { background: #6a1a1a; }
+.hex-mixed  { background: #1a5a5a; }
+.hex-poison { background: #4a1a5a; }
+.hex-named  { background: #3a3a0a; }
+
+/* Poison counter in player header */
+.poison-counter { font-size: 14px; font-weight: bold; color: #c06fc0; margin-left: 4px; }
+
+/* Tooltip counter section */
+.tooltip-counters { margin-top: 6px; border-top: 1px solid #2a3a4a; padding-top: 6px; }
+.tooltip-counters-label { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.counter-row { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 4px; }
+.counter-label { font-size: 11px; color: #ccc; display: flex; flex-direction: column; }
+.counter-sublabel { font-size: 10px; color: #666; }
