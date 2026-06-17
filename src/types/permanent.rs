@@ -1,5 +1,7 @@
 use super::ability::{Ability, OracleSpan, StaticAbility};
 use super::card::CardDefinition;
+use super::counter::CounterKind;
+use std::collections::HashMap;
 
 /// Temporary power/toughness modification accumulated from until-end-of-turn effects
 /// (e.g. Exalted, Prowess). Applied in `effective_power`/`effective_toughness` and
@@ -29,6 +31,8 @@ pub struct PermanentState {
     /// CR 704.5h — flagged when deathtouch damage lands; cleared by SBAs.
     pub damaged_by_deathtouch: bool,
     pub pt_boost_until_eot: PTDelta,
+    /// Counters on this permanent (CR 122).
+    pub counters: HashMap<CounterKind, u32>,
 }
 
 impl PermanentState {
@@ -42,6 +46,7 @@ impl PermanentState {
             damage_marked: 0,
             damaged_by_deathtouch: false,
             pt_boost_until_eot: PTDelta::default(),
+            counters: HashMap::new(),
         }
     }
 
@@ -72,15 +77,31 @@ impl PermanentState {
     }
 
     pub fn effective_power(&self) -> Option<i32> {
-        // MTG P/T values are small integers; plain addition cannot overflow i32 in practice.
-        self.current_power
-            .map(|p| p + self.pt_boost_until_eot.power)
+        self.current_power.map(|p| {
+            let counter_bonus: i32 = self
+                .counters
+                .iter()
+                .filter_map(|(kind, &count)| match kind {
+                    CounterKind::PtModifier { power, .. } => Some(power * count as i32),
+                    _ => None,
+                })
+                .sum();
+            p + self.pt_boost_until_eot.power + counter_bonus
+        })
     }
 
     pub fn effective_toughness(&self) -> Option<i32> {
-        // MTG P/T values are small integers; plain addition cannot overflow i32 in practice.
-        self.current_toughness
-            .map(|t| t + self.pt_boost_until_eot.toughness)
+        self.current_toughness.map(|t| {
+            let counter_bonus: i32 = self
+                .counters
+                .iter()
+                .filter_map(|(kind, &count)| match kind {
+                    CounterKind::PtModifier { toughness, .. } => Some(toughness * count as i32),
+                    _ => None,
+                })
+                .sum();
+            t + self.pt_boost_until_eot.toughness + counter_bonus
+        })
     }
 
     /// CR 302.6 — a creature is summoning sick if it has not been under its controller's
@@ -104,6 +125,14 @@ impl PermanentState {
     /// CR 509.1a — a creature can block if untapped and not Decayed.
     pub fn can_block(&self) -> bool {
         self.is_creature() && !self.tapped && !self.has_keyword(StaticAbility::Decayed)
+    }
+
+    pub fn counter_count(&self, kind: &CounterKind) -> u32 {
+        *self.counters.get(kind).unwrap_or(&0)
+    }
+
+    pub fn add_counters(&mut self, kind: CounterKind, n: u32) {
+        *self.counters.entry(kind).or_insert(0) += n;
     }
 }
 
@@ -239,5 +268,86 @@ mod tests {
         };
         let span = OracleSpan::Parsed(Ability::Cycling(cost.clone()));
         assert_eq!(span, OracleSpan::Parsed(Ability::Cycling(cost)));
+    }
+
+    #[test]
+    fn counter_count_returns_zero_for_absent_key() {
+        use crate::types::CounterKind;
+        let perm = grizzly_bears_perm();
+        assert_eq!(perm.counter_count(&CounterKind::Poison), 0);
+        assert_eq!(
+            perm.counter_count(&CounterKind::PtModifier {
+                power: 1,
+                toughness: 1
+            }),
+            0
+        );
+    }
+
+    #[test]
+    fn add_counters_accumulates() {
+        use crate::types::CounterKind;
+        let mut perm = grizzly_bears_perm();
+        perm.add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            2,
+        );
+        perm.add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            3,
+        );
+        assert_eq!(
+            perm.counter_count(&CounterKind::PtModifier {
+                power: 1,
+                toughness: 1
+            }),
+            5
+        );
+    }
+
+    #[test]
+    fn effective_power_includes_pt_modifier_counters() {
+        use crate::types::CounterKind;
+        let mut perm = grizzly_bears_perm(); // base 2/2
+        perm.add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            3,
+        );
+        assert_eq!(perm.effective_power(), Some(5)); // 2 + 3
+        assert_eq!(perm.effective_toughness(), Some(5));
+    }
+
+    #[test]
+    fn effective_power_unaffected_by_poison_or_named_counters() {
+        use crate::types::CounterKind;
+        let mut perm = grizzly_bears_perm(); // base 2/2
+        perm.add_counters(CounterKind::Poison, 5);
+        perm.add_counters(CounterKind::Named("charge".to_string()), 10);
+        assert_eq!(perm.effective_power(), Some(2)); // unchanged
+        assert_eq!(perm.effective_toughness(), Some(2));
+    }
+
+    #[test]
+    fn negative_pt_modifier_counters_reduce_power_and_toughness() {
+        use crate::types::CounterKind;
+        let mut perm = grizzly_bears_perm(); // base 2/2
+        perm.add_counters(
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            2,
+        );
+        assert_eq!(perm.effective_power(), Some(0));
+        assert_eq!(perm.effective_toughness(), Some(0));
     }
 }
