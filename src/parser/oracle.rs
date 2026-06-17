@@ -1296,6 +1296,74 @@ fn parse_unless_suffix(s: &str) -> (&str, Option<crate::types::ability::Cost>) {
     (s, None) // unrecognised unless suffix — leave as-is
 }
 
+/// Parses "put [a|N] [+1/+1|-1/-1] counter[s] on target [creature|player]" (CR 122.1).
+fn try_parse_add_counter_on_target(lc: &str) -> Option<crate::types::ability::SpellAbility> {
+    use crate::types::ability::{SpellAbility, TargetFilter};
+    use crate::types::counter::CounterKind;
+    use crate::types::effect::EffectStep;
+
+    let rest = lc.strip_prefix("put ")?;
+
+    let (count, rest) = if let Some(r) = rest.strip_prefix("a ") {
+        (1u32, r)
+    } else {
+        let space = rest.find(' ')?;
+        let n = parse_number_word(&rest[..space])?;
+        (n, &rest[space + 1..])
+    };
+
+    let (kind, rest) = if let Some(r) = rest.strip_prefix("+1/+1 counters ") {
+        (
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            r,
+        )
+    } else if let Some(r) = rest.strip_prefix("+1/+1 counter ") {
+        (
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            r,
+        )
+    } else if let Some(r) = rest.strip_prefix("-1/-1 counters ") {
+        (
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            r,
+        )
+    } else if let Some(r) = rest.strip_prefix("-1/-1 counter ") {
+        (
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            r,
+        )
+    } else {
+        return None;
+    };
+
+    let rest = rest.strip_prefix("on target ")?;
+
+    let filter = if rest.starts_with("creature") {
+        TargetFilter::Creature
+    } else if rest.starts_with("player") {
+        TargetFilter::Player
+    } else {
+        return None;
+    };
+
+    Some(SpellAbility {
+        target_requirements: vec![filter],
+        steps: vec![EffectStep::AddCounter { kind, count }],
+    })
+}
+
 /// Detects targeting patterns in a spell paragraph and returns a SpellAbility.
 ///
 /// Pattern A (target at front): "Target creature ..." → Creature filter; strip prefix.
@@ -1355,6 +1423,10 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
     }
     // Counter patterns — CR 701.5
     if let Some(spell_ability) = try_parse_counter(lc.as_str()) {
+        return spell_ability;
+    }
+    // Counter-placement patterns — CR 122.1
+    if let Some(spell_ability) = try_parse_add_counter_on_target(lc.as_str()) {
         return spell_ability;
     }
     // No targeting pattern found — untargeted spell
@@ -2334,6 +2406,75 @@ mod tests {
             panic!("expected SpellEffect");
         };
         assert!(sa.target_requirements.is_empty());
+    }
+
+    #[test]
+    fn battlegrowth_put_counter_on_target_creature() {
+        use crate::types::ability::TargetFilter;
+        use crate::types::counter::CounterKind;
+        use crate::types::effect::EffectStep;
+        let result = parse_spell("Put a +1/+1 counter on target creature.", "Battlegrowth");
+        assert_eq!(result.len(), 1);
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect, got {:?}", result[0]);
+        };
+        assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
+        assert_eq!(
+            sa.steps,
+            vec![EffectStep::AddCounter {
+                kind: CounterKind::PtModifier {
+                    power: 1,
+                    toughness: 1
+                },
+                count: 1,
+            }]
+        );
+    }
+
+    #[test]
+    fn put_two_counters_on_target_creature() {
+        use crate::types::ability::TargetFilter;
+        use crate::types::counter::CounterKind;
+        use crate::types::effect::EffectStep;
+        let result = parse_spell("Put two +1/+1 counters on target creature.", "");
+        assert_eq!(result.len(), 1);
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect, got {:?}", result[0]);
+        };
+        assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
+        assert_eq!(
+            sa.steps,
+            vec![EffectStep::AddCounter {
+                kind: CounterKind::PtModifier {
+                    power: 1,
+                    toughness: 1
+                },
+                count: 2,
+            }]
+        );
+    }
+
+    #[test]
+    fn put_minus_counter_on_target_creature() {
+        use crate::types::ability::TargetFilter;
+        use crate::types::counter::CounterKind;
+        use crate::types::effect::EffectStep;
+        let result = parse_spell("Put a -1/-1 counter on target creature.", "");
+        assert_eq!(result.len(), 1);
+        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+            panic!("expected SpellEffect, got {:?}", result[0]);
+        };
+        assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
+        assert_eq!(
+            sa.steps,
+            vec![EffectStep::AddCounter {
+                kind: CounterKind::PtModifier {
+                    power: -1,
+                    toughness: -1
+                },
+                count: 1,
+            }]
+        );
     }
 
     #[test]
