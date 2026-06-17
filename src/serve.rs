@@ -192,6 +192,7 @@ struct CardView {
     is_attacking: bool,
     is_blocking: bool,
     actions: Vec<ActionItemView>,
+    counters: Vec<CounterView>,
 }
 
 #[derive(Serialize)]
@@ -203,6 +204,7 @@ struct PlayerView {
     creatures: Vec<CardView>,
     library_count: usize,
     graveyard: Vec<CardView>,
+    poison_counters: u32,
 }
 
 #[derive(Serialize)]
@@ -725,6 +727,14 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             is_attacking: state.combat.attackers.contains(&obj.id),
             is_blocking: all_blockers.contains(&obj.id),
             actions: compute_actions(state, pid, obj),
+            counters: perm
+                .map(|p| {
+                    p.counters
+                        .iter()
+                        .map(|(kind, &count)| counter_to_view(kind, count))
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     };
 
@@ -766,6 +776,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
             .filter_map(|id| state.objects.get(id))
             .map(to_card_view)
             .collect(),
+        poison_counters: player.counter_count(&CounterKind::Poison),
     }
 }
 
@@ -849,6 +860,7 @@ fn build_game_view(state: &GameState) -> GameView {
                             is_attacking: false,
                             is_blocking: false,
                             actions: vec![],
+                            counters: vec![],
                         }),
                         cost_label: None,
                         targets,
@@ -2835,5 +2847,92 @@ mod tests {
         assert_eq!(v.label, "Time");
         assert_eq!(v.kind, "named");
         assert!(v.sublabel.is_none());
+    }
+
+    #[test]
+    fn card_view_includes_counters_for_permanent() {
+        use mecha_oracle::types::{CardObject, CounterKind, Zone};
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            3,
+        );
+        perm.add_counters(CounterKind::Named("charge".to_string()), 2);
+        gs.battlefield.insert(id, perm);
+        gs.add_object(obj);
+
+        let view = build_game_view(&gs);
+        let card = view.p1.creatures.iter().find(|c| c.id == id).unwrap();
+        assert_eq!(card.counters.len(), 2);
+
+        let plus = card.counters.iter().find(|c| c.kind == "plus").unwrap();
+        assert_eq!(plus.label, "+1/+1");
+        assert_eq!(plus.count, 3);
+        assert_eq!(plus.sublabel.as_deref(), Some("+3/+3 to P/T"));
+
+        let named = card.counters.iter().find(|c| c.kind == "named").unwrap();
+        assert_eq!(named.label, "Charge");
+        assert_eq!(named.count, 2);
+    }
+
+    #[test]
+    fn card_view_empty_counters_when_none() {
+        use mecha_oracle::types::{CardObject, Zone};
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let id = gs.alloc_id();
+        let obj = CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Battlefield,
+        );
+        let perm = PermanentState::new(&obj.definition);
+        gs.battlefield.insert(id, perm);
+        gs.add_object(obj);
+
+        let view = build_game_view(&gs);
+        let card = view.p1.creatures.iter().find(|c| c.id == id).unwrap();
+        assert!(card.counters.is_empty());
+    }
+
+    #[test]
+    fn player_view_includes_poison_counters() {
+        use mecha_oracle::types::CounterKind;
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        gs.get_player_mut(PlayerId(0))
+            .unwrap()
+            .add_counters(CounterKind::Poison, 4);
+
+        let view = build_game_view(&gs);
+        assert_eq!(view.p1.poison_counters, 4);
+        assert_eq!(view.p2.poison_counters, 0);
     }
 }
