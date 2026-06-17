@@ -223,6 +223,11 @@ function render(s) {
   document.getElementById('p1-life').textContent = '♥ ' + s.p1.life;
   document.getElementById('p2-life').textContent = '♥ ' + s.p2.life;
 
+  const p1Poison = document.getElementById('p1-poison');
+  const p2Poison = document.getElementById('p2-poison');
+  if (p1Poison) p1Poison.textContent = s.p1.poison_counters > 0 ? `☠ ${s.p1.poison_counters}` : '';
+  if (p2Poison) p2Poison.textContent = s.p2.poison_counters > 0 ? `☠ ${s.p2.poison_counters}` : '';
+
   renderMana('p1-mana', s.p1.mana_pool, s.active_player === 0 && s.can_reset_mana);
   renderMana('p2-mana', s.p2.mana_pool, s.active_player === 1 && s.can_reset_mana);
 
@@ -293,8 +298,8 @@ function tooltipHTML({ name, manaCost, typeLine, oracleHtml, pt, tags, extraSect
       <div class="tooltip-type">${esc(typeLine)}</div>
       ${oracleHtml ? `<div class="tooltip-text">${oracleHtml}</div>` : ''}
       ${pt ? `<div class="tooltip-pt">${pt}</div>` : ''}
-      ${tags && tags.length ? `<div class="tooltip-tags">${tags.join('')}</div>` : ''}
       ${extraSections && extraSections.length ? extraSections.join('') : ''}
+      ${tags && tags.length ? `<div class="tooltip-tags">${tags.join('')}</div>` : ''}
     </div>`;
 }
 
@@ -309,6 +314,21 @@ function targetsSectionHTML(targets) {
 function sourceSectionHTML(sourceName) {
   if (!sourceName) return '';
   return `<div class="tooltip-source">Source: ${esc(sourceName)}</div>`;
+}
+
+function countersSectionHTML(counters) {
+  if (!counters || !counters.length) return '';
+  const rows = counters.map(c => {
+    const sub = c.sublabel
+      ? `<span class="counter-sublabel">${esc(c.sublabel)}</span>`
+      : '';
+    return `<div class="counter-row">` +
+      `<span class="hex-counter hex-${esc(c.kind)}" style="width:16px;height:16px;font-size:8px">${esc(String(c.count))}</span>` +
+      `<span class="counter-label"><b>${esc(String(c.count))}× ${esc(c.label)}</b>${sub}</span>` +
+      `</div>`;
+  }).join('');
+  return `<div class="tooltip-counters">` +
+    `<div class="tooltip-counters-label">Counters</div>${rows}</div>`;
 }
 
 function cardHTML(card, s, pid, zone) {
@@ -349,6 +369,7 @@ function cardHTML(card, s, pid, zone) {
     oracleHtml: card.oracle_text ? renderOracleText(card) : '',
     pt: card.power != null ? `${card.power} / ${card.toughness}` : null,
     tags,
+    extraSections: [countersSectionHTML(card.counters || [])],
   });
 
   const pt = card.power != null
@@ -359,12 +380,18 @@ function cardHTML(card, s, pid, zone) {
   const fg = bestTextColor(card.colors && card.colors.length === 1 ? MANA_HEX[card.colors[0].toLowerCase()] : MANA_HEX.gold);
   const cardStyle = `style="background:${bg};color:${fg}"`;
 
+  const counterBadges = (card.counters && card.counters.length)
+    ? `<div class="card-counters">${card.counters.map(c =>
+        `<span class="hex-counter hex-${esc(c.kind)}" title="${esc(c.label)}">${esc(String(c.count))}</span>`
+      ).join('')}</div>`
+    : '';
+
   return `<div class="${wrap}"><div class="${classes}" data-id="${card.id}" ${clickAttr} ${cardStyle}>
     <span class="card-name">${esc(card.name)}</span>
     ${card.mana_cost ? `<span class="card-cost">${renderManaSymbols(card.mana_cost)}</span>` : ''}
     <span class="card-type">${esc(card.type_line)}</span>
     ${pt}
-  </div>${tooltip}</div>`;
+  </div>${counterBadges}${tooltip}</div>`;
 }
 
 function esc(s) {
