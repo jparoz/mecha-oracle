@@ -1,6 +1,7 @@
 pub mod ability;
 pub mod card;
 pub mod card_object;
+pub mod counter;
 pub mod effect;
 pub mod game_state;
 pub mod ids;
@@ -17,6 +18,7 @@ pub use ability::{
 };
 pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;
+pub use counter::CounterKind;
 pub use effect::{Effect, EffectStep, EffectTarget};
 pub use game_state::{CombatState, GameState, ManaCheckpoint, PendingPayment, Phase, Step};
 pub use ids::{ObjectId, PlayerId};
