@@ -1,7 +1,6 @@
 use super::{
     EngineError,
     state_based_actions::check_and_apply_sbas,
-    triggered::collect_etb_triggers,
     turn::{advance_step, draw_card},
 };
 use crate::types::effect::EffectStep;
@@ -313,23 +312,17 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     state.battlefield.insert(card_id, perm);
                 }
 
-                // CR 603.3: collect ETB triggers and push onto stack (CR 405.3 APNAP order —
-                // for a single entering permanent, all triggers share the same controller
-                // so order is trivial; multi-permanent APNAP ordering is a future concern).
-                let triggers = collect_etb_triggers(&mut state, card_id);
-                for trigger in triggers {
+                // CR 603.2 / CR 702.100b: collect ETB triggers and Evolve triggers via unified dispatch.
+                let etb_triggers = crate::engine::triggered::collect_triggers_for_event(
+                    &mut state,
+                    &crate::types::GameEvent::EntersTheBattlefield {
+                        subject_id: card_id,
+                    },
+                );
+                for trigger in etb_triggers {
                     let id = trigger.id;
                     state.stack.push(id);
                     state.stack_objects.insert(id, trigger);
-                }
-                // CR 702.100b: collect Evolve triggers from other creatures under the same
-                // controller when the new permanent enters the battlefield.
-                let evolve_triggers =
-                    crate::engine::triggered::collect_evolve_triggers(&mut state, card_id);
-                for t in evolve_triggers {
-                    let id = t.id;
-                    state.stack.push(id);
-                    state.stack_objects.insert(id, t);
                 }
             } else {
                 // CR 608.2b: instant/sorcery — execute effects, then move to graveyard.

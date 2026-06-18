@@ -1,57 +1,442 @@
 use crate::types::ability::{Ability, CastFilter, StaticAbility, TriggerEvent};
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
-use crate::types::{GameState, ObjectId, OracleSpan, PTDelta, PlayerId};
+use crate::types::{
+    GameEvent, GameState, ObjectId, OracleSpan, PTDelta, PlayerId, TriggerCondition,
+    TriggerSubjectFilter, TriggerTargetMode, TurnOwner,
+};
 
-// CR 603.2: collect ETB triggers from `entering_id` into stack objects.
-// Returns Vec<StackObject> to be pushed onto the stack by the caller.
-pub fn collect_etb_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec<StackObject> {
-    let entries: Vec<(PlayerId, Vec<crate::types::EffectStep>, String)> = {
-        let obj = match state.objects.get(&entering_id) {
-            Some(o) => o,
-            None => return vec![],
-        };
-        obj.definition
-            .abilities
-            .iter()
-            .filter_map(|span| match span {
-                OracleSpan::Parsed(Ability::Triggered(t))
-                    if matches!(
-                        &t.trigger,
-                        TriggerEvent::EntersTheBattlefield { subject }
-                            if subject.is_self == Some(true)
-                    ) =>
-                {
-                    let label = format!("{}: ETB trigger", obj.definition.name);
-                    Some((obj.controller, t.effect.clone(), label))
-                }
-                _ => None,
-            })
-            .collect()
+/// Returns true if filter matches the given subject.
+/// source_id: the permanent that owns the triggered ability.
+/// source_controller: that permanent's controller.
+fn subject_filter_matches(
+    filter: &TriggerSubjectFilter,
+    subject_id: Option<ObjectId>,
+    source_id: ObjectId,
+    source_controller: PlayerId,
+    state: &GameState,
+) -> bool {
+    let sid = match subject_id {
+        Some(id) => id,
+        // No subject satisfies any non-empty filter.
+        None => return filter == &TriggerSubjectFilter::default(),
     };
 
-    let source_abilities: Vec<crate::types::OracleSpan> = state
-        .objects
-        .get(&entering_id)
-        .map(|o| o.definition.abilities.clone())
-        .unwrap_or_default();
-    entries
-        .into_iter()
-        .map(|(controller, effect, label)| {
-            let id = state.alloc_stack_id();
-            StackObject {
-                id,
+    if let Some(is_self) = filter.is_self
+        && is_self != (sid == source_id)
+    {
+        return false;
+    }
+
+    if let Some(ref required_owner) = filter.controller {
+        let subject_controller = state.objects.get(&sid).map(|o| o.controller);
+        let ok = match required_owner {
+            TurnOwner::You => subject_controller == Some(source_controller),
+            TurnOwner::Opponent => subject_controller
+                .map(|c| c != source_controller)
+                .unwrap_or(false),
+            TurnOwner::Any => true,
+        };
+        if !ok {
+            return false;
+        }
+    }
+
+    if let Some(obj) = state.objects.get(&sid) {
+        if !filter.card_types.is_empty()
+            && !filter
+                .card_types
+                .iter()
+                .any(|t| obj.definition.type_line.card_types.contains(t))
+        {
+            return false;
+        }
+        if !filter.subtypes.is_empty()
+            && !filter
+                .subtypes
+                .iter()
+                .all(|t| obj.definition.type_line.subtypes.contains(t))
+        {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Returns true if the trigger condition is satisfied given the current game state and event subject.
+fn trigger_condition_satisfied(
+    condition: &TriggerCondition,
+    subject_id: Option<ObjectId>,
+    source_id: ObjectId,
+    state: &GameState,
+) -> bool {
+    match condition {
+        TriggerCondition::ExactlyOneAttacker => state.combat.attackers.len() == 1,
+
+        TriggerCondition::AttackingAlongsideGreaterPowerCreature => {
+            let my_power = state
+                .battlefield
+                .get(&source_id)
+                .and_then(|p| p.effective_power())
+                .unwrap_or(0);
+            state
+                .combat
+                .attackers
+                .iter()
+                .filter(|&&id| id != source_id)
+                .any(|&id| {
+                    state
+                        .battlefield
+                        .get(&id)
+                        .and_then(|p| p.effective_power())
+                        .map(|p| p > my_power)
+                        .unwrap_or(false)
+                })
+        }
+
+        TriggerCondition::EnteringCreatureHasGreaterPower => {
+            let sid = match subject_id {
+                Some(id) => id,
+                None => return false,
+            };
+            let entering_power = match state
+                .battlefield
+                .get(&sid)
+                .and_then(|p| p.effective_power())
+            {
+                Some(p) => p,
+                None => return false,
+            };
+            let my_power = state
+                .battlefield
+                .get(&source_id)
+                .and_then(|p| p.effective_power())
+                .unwrap_or(0);
+            entering_power > my_power
+        }
+
+        TriggerCondition::EnteringCreatureHasGreaterToughness => {
+            let sid = match subject_id {
+                Some(id) => id,
+                None => return false,
+            };
+            let entering_toughness = match state
+                .battlefield
+                .get(&sid)
+                .and_then(|p| p.effective_toughness())
+            {
+                Some(t) => t,
+                None => return false,
+            };
+            let my_toughness = state
+                .battlefield
+                .get(&source_id)
+                .and_then(|p| p.effective_toughness())
+                .unwrap_or(0);
+            entering_toughness > my_toughness
+        }
+
+        TriggerCondition::EnteringCreatureHasGreaterPowerOrToughness => {
+            let sid = match subject_id {
+                Some(id) => id,
+                None => return false,
+            };
+            let ep = state
+                .battlefield
+                .get(&sid)
+                .and_then(|p| p.effective_power());
+            let et = state
+                .battlefield
+                .get(&sid)
+                .and_then(|p| p.effective_toughness());
+            let mp = state
+                .battlefield
+                .get(&source_id)
+                .and_then(|p| p.effective_power())
+                .unwrap_or(0);
+            let mt = state
+                .battlefield
+                .get(&source_id)
+                .and_then(|p| p.effective_toughness())
+                .unwrap_or(0);
+            ep.map(|p| p > mp).unwrap_or(false) || et.map(|t| t > mt).unwrap_or(false)
+        }
+
+        TriggerCondition::SubjectLacksKeyword(kw) => {
+            let sid = match subject_id {
+                Some(id) => id,
+                None => return false,
+            };
+            !state
+                .battlefield
+                .get(&sid)
+                .map(|p| p.has_keyword(kw.clone()))
+                .unwrap_or(false)
+        }
+    }
+}
+
+/// CR 603.2: collect all triggered abilities on the battlefield that fire for the given game event.
+pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> Vec<StackObject> {
+    use crate::engine::stack::inject_source_flags;
+    use crate::types::effect::EffectTarget;
+
+    // Snapshot source IDs to avoid borrow conflicts during iteration.
+    let source_ids: Vec<ObjectId> = state.battlefield.keys().copied().collect();
+    let mut result = Vec::new();
+
+    for source_id in source_ids {
+        let (controller, abilities) = match state.objects.get(&source_id) {
+            Some(o) => (o.controller, o.definition.abilities.clone()),
+            None => continue,
+        };
+
+        for span in &abilities {
+            let triggered = match span {
+                OracleSpan::Parsed(Ability::Triggered(t)) => t,
+                _ => continue,
+            };
+
+            // Match event discriminant and subject filter.
+            let subject_id: Option<ObjectId> = match (event, &triggered.trigger) {
+                (
+                    GameEvent::EntersTheBattlefield { subject_id },
+                    TriggerEvent::EntersTheBattlefield { subject },
+                ) if subject_filter_matches(
+                    subject,
+                    Some(*subject_id),
+                    source_id,
+                    controller,
+                    state,
+                ) =>
+                {
+                    Some(*subject_id)
+                }
+                (GameEvent::Dies { subject_id }, TriggerEvent::Dies { subject })
+                    if subject_filter_matches(
+                        subject,
+                        Some(*subject_id),
+                        source_id,
+                        controller,
+                        state,
+                    ) =>
+                {
+                    Some(*subject_id)
+                }
+                (GameEvent::Attacks { subject_id }, TriggerEvent::Attacks { subject })
+                    if subject_filter_matches(
+                        subject,
+                        Some(*subject_id),
+                        source_id,
+                        controller,
+                        state,
+                    ) =>
+                {
+                    Some(*subject_id)
+                }
+                (GameEvent::Blocks { subject_id }, TriggerEvent::Blocks { subject })
+                    if subject_filter_matches(
+                        subject,
+                        Some(*subject_id),
+                        source_id,
+                        controller,
+                        state,
+                    ) =>
+                {
+                    Some(*subject_id)
+                }
+                (
+                    GameEvent::BecomesBlocked { subject_id },
+                    TriggerEvent::BecomesBlocked { subject },
+                ) if subject_filter_matches(
+                    subject,
+                    Some(*subject_id),
+                    source_id,
+                    controller,
+                    state,
+                ) =>
+                {
+                    Some(*subject_id)
+                }
+                (
+                    GameEvent::SpellCast { caster, spell_id },
+                    TriggerEvent::SpellCast {
+                        caster: required_caster,
+                        filter,
+                    },
+                ) => {
+                    let caster_ok = match required_caster {
+                        TurnOwner::You => *caster == controller,
+                        TurnOwner::Opponent => *caster != controller,
+                        TurnOwner::Any => true,
+                    };
+                    if !caster_ok {
+                        continue;
+                    }
+                    let spell_ok = state
+                        .objects
+                        .get(spell_id)
+                        .map(|o| {
+                            filter.matches(
+                                &o.definition.type_line.card_types,
+                                o.definition
+                                    .mana_cost
+                                    .as_ref()
+                                    .map(|c| c.mana_value())
+                                    .unwrap_or(0),
+                                &o.definition.colors,
+                            )
+                        })
+                        .unwrap_or(false);
+                    if !spell_ok {
+                        continue;
+                    }
+                    None
+                }
+                (
+                    GameEvent::TargetedBy {
+                        target_id,
+                        acting_player,
+                    },
+                    TriggerEvent::TargetedBy {
+                        controller: required,
+                    },
+                ) => {
+                    if *target_id != source_id {
+                        continue;
+                    }
+                    let ok = match required {
+                        TurnOwner::Opponent => *acting_player != controller,
+                        TurnOwner::You => *acting_player == controller,
+                        TurnOwner::Any => true,
+                    };
+                    if !ok {
+                        continue;
+                    }
+                    None
+                }
+                _ => continue,
+            };
+
+            // Check condition.
+            if let Some(cond) = &triggered.condition
+                && !trigger_condition_satisfied(cond, subject_id, source_id, state)
+            {
+                continue;
+            }
+
+            // Resolve targets.
+            let triggered_clone = triggered.clone();
+            let targets: Vec<EffectTarget> = match &triggered_clone.target_mode {
+                TriggerTargetMode::None => vec![],
+                TriggerTargetMode::Source => vec![EffectTarget::Object { id: source_id }],
+                TriggerTargetMode::Subject => match subject_id {
+                    Some(sid) => vec![EffectTarget::Object { id: sid }],
+                    None => vec![],
+                },
+                TriggerTargetMode::AllOtherAttackers => state
+                    .combat
+                    .attackers
+                    .iter()
+                    .filter(|&&id| id != source_id)
+                    .map(|&id| EffectTarget::Object { id })
+                    .collect(),
+            };
+
+            let effect = inject_source_flags(triggered_clone.effect, &abilities);
+            let sid = state.alloc_stack_id();
+            let label = format!(
+                "{}: trigger",
+                state
+                    .objects
+                    .get(&source_id)
+                    .map(|o| o.definition.name.as_str())
+                    .unwrap_or("?")
+            );
+            result.push(StackObject {
+                id: sid,
                 payload: StackPayload::TriggeredAbility {
-                    source_id: entering_id,
-                    effect: crate::engine::stack::inject_source_flags(effect, &source_abilities),
+                    source_id,
+                    effect,
                     label,
                 },
                 controller,
-                targets: vec![], // ETB effects use DrawCard/GainLife; never targeted
+                targets,
                 x_value: None,
+            });
+        }
+
+        // Handle StaticAbility::Evolve — fires when an ETB event has a subject under the
+        // same controller with greater power or toughness (CR 702.100b).
+        if let GameEvent::EntersTheBattlefield {
+            subject_id: entering_id,
+        } = event
+        {
+            let entering_id = *entering_id;
+            if source_id != entering_id
+                && state
+                    .objects
+                    .get(&source_id)
+                    .map(|o| o.controller == controller)
+                    .unwrap_or(false)
+                && state
+                    .battlefield
+                    .get(&source_id)
+                    .map(|p| p.has_keyword(StaticAbility::Evolve))
+                    .unwrap_or(false)
+            {
+                let entering_controller = state.objects.get(&entering_id).map(|o| o.controller);
+                if entering_controller == Some(controller) {
+                    let entering_power = state
+                        .battlefield
+                        .get(&entering_id)
+                        .and_then(|p| p.effective_power());
+                    let entering_toughness = state
+                        .battlefield
+                        .get(&entering_id)
+                        .and_then(|p| p.effective_toughness());
+                    let my_power = state
+                        .battlefield
+                        .get(&source_id)
+                        .and_then(|p| p.effective_power())
+                        .unwrap_or(0);
+                    let my_toughness = state
+                        .battlefield
+                        .get(&source_id)
+                        .and_then(|p| p.effective_toughness())
+                        .unwrap_or(0);
+                    let qualifies = entering_power.map(|ep| ep > my_power).unwrap_or(false)
+                        || entering_toughness
+                            .map(|et| et > my_toughness)
+                            .unwrap_or(false);
+                    if qualifies {
+                        use crate::types::CounterKind;
+                        let sid = state.alloc_stack_id();
+                        result.push(StackObject {
+                            id: sid,
+                            payload: StackPayload::TriggeredAbility {
+                                source_id,
+                                effect: vec![EffectStep::AddCounter {
+                                    kind: CounterKind::PtModifier {
+                                        power: 1,
+                                        toughness: 1,
+                                    },
+                                    count: 1,
+                                }],
+                                label: "Evolve".into(),
+                            },
+                            controller,
+                            targets: vec![EffectTarget::Object { id: source_id }],
+                            x_value: None,
+                        });
+                    }
+                }
             }
-        })
-        .collect()
+        }
+    }
+
+    result
 }
 
 /// CR 702.108b: collect triggered abilities that fire when a spell is cast.
@@ -380,78 +765,6 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
     }
 
     result
-}
-
-/// CR 702.100b: Collect Evolve triggers for battlefield permanents when `entering_id` ETBs.
-pub fn collect_evolve_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec<StackObject> {
-    use crate::types::CounterKind;
-    use crate::types::effect::EffectTarget;
-
-    let entering_power = state
-        .battlefield
-        .get(&entering_id)
-        .and_then(|p| p.effective_power());
-    let entering_toughness = state
-        .battlefield
-        .get(&entering_id)
-        .and_then(|p| p.effective_toughness());
-
-    let Some(controller) = state.objects.get(&entering_id).map(|o| o.controller) else {
-        return vec![];
-    };
-
-    let evolve_ids: Vec<ObjectId> = state
-        .battlefield
-        .keys()
-        .filter(|&&id| {
-            id != entering_id
-                && state
-                    .objects
-                    .get(&id)
-                    .map(|o| o.controller == controller)
-                    .unwrap_or(false)
-                && state
-                    .battlefield
-                    .get(&id)
-                    .map(|p| p.has_keyword(StaticAbility::Evolve))
-                    .unwrap_or(false)
-        })
-        .copied()
-        .collect();
-
-    evolve_ids
-        .into_iter()
-        .filter_map(|evolve_id| {
-            let perm = state.battlefield.get(&evolve_id)?;
-            let my_power = perm.effective_power().unwrap_or(0);
-            let my_toughness = perm.effective_toughness().unwrap_or(0);
-            let qualifies = entering_power.map(|ep| ep > my_power).unwrap_or(false)
-                || entering_toughness
-                    .map(|et| et > my_toughness)
-                    .unwrap_or(false);
-            if !qualifies {
-                return None;
-            }
-            let sid = state.alloc_stack_id();
-            Some(StackObject {
-                id: sid,
-                payload: StackPayload::TriggeredAbility {
-                    source_id: evolve_id,
-                    effect: vec![EffectStep::AddCounter {
-                        kind: CounterKind::PtModifier {
-                            power: 1,
-                            toughness: 1,
-                        },
-                        count: 1,
-                    }],
-                    label: "Evolve".into(),
-                },
-                controller,
-                targets: vec![EffectTarget::Object { id: evolve_id }],
-                x_value: None,
-            })
-        })
-        .collect()
 }
 
 /// CR 702.21a: Collect ward triggered abilities for any declared targets that are
@@ -830,7 +1143,12 @@ mod tests {
             enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 3, 2, vec![]);
 
-        let triggers = collect_evolve_triggers(&mut gs, entering_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: entering_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 1);
         let t = &triggers[0];
@@ -863,7 +1181,12 @@ mod tests {
             enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 3, vec![]);
 
-        let triggers = collect_evolve_triggers(&mut gs, entering_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: entering_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 1);
         assert!(
@@ -883,7 +1206,12 @@ mod tests {
             enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![]);
 
-        let triggers = collect_evolve_triggers(&mut gs, entering_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: entering_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 0);
     }
@@ -897,7 +1225,12 @@ mod tests {
             enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(1), 5, 5, vec![]);
 
-        let triggers = collect_evolve_triggers(&mut gs, entering_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: entering_id,
+            },
+        );
 
         assert_eq!(
             triggers.len(),
@@ -914,7 +1247,12 @@ mod tests {
         let evolve_id =
             enter_creature_on_battlefield(&mut gs, PlayerId(0), 5, 5, vec![StaticAbility::Evolve]);
 
-        let triggers = collect_evolve_triggers(&mut gs, evolve_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: evolve_id,
+            },
+        );
 
         assert_eq!(
             triggers.len(),
@@ -930,7 +1268,12 @@ mod tests {
         put_in_library(&mut gs, PlayerId(0));
         let creature_id = place_on_battlefield(&mut gs, etb_draw_def(), PlayerId(0));
 
-        let triggers = collect_etb_triggers(&mut gs, creature_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: creature_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 1);
         assert_eq!(triggers[0].controller, PlayerId(0));
@@ -950,7 +1293,12 @@ mod tests {
         let mut gs = two_player_state();
         let creature_id = place_on_battlefield(&mut gs, etb_gain_life_def(), PlayerId(0));
 
-        let triggers = collect_etb_triggers(&mut gs, creature_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: creature_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 1);
         let StackPayload::TriggeredAbility {
@@ -983,7 +1331,12 @@ mod tests {
         };
         let creature_id = place_on_battlefield(&mut gs, def, PlayerId(0));
 
-        let triggers = collect_etb_triggers(&mut gs, creature_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: creature_id,
+            },
+        );
 
         assert!(triggers.is_empty());
     }
@@ -1570,7 +1923,12 @@ mod tests {
         };
         let creature_id = place_on_battlefield(&mut gs, def, PlayerId(0));
 
-        let triggers = collect_etb_triggers(&mut gs, creature_id);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: creature_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 2);
         assert_ne!(triggers[0].id, triggers[1].id);
@@ -1644,6 +2002,77 @@ mod tests {
         assert_eq!(
             trigger.targets,
             vec![EffectTarget::StackObject { id: triggering_sid }]
+        );
+    }
+
+    #[test]
+    fn collect_triggers_for_event_etb_fires_draw_trigger() {
+        use crate::types::GameEvent;
+        let mut gs = two_player_state();
+        put_in_library(&mut gs, PlayerId(0));
+        let creature_id = place_on_battlefield(&mut gs, etb_draw_def(), PlayerId(0));
+
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: creature_id,
+            },
+        );
+
+        assert_eq!(triggers.len(), 1);
+        use crate::types::stack::StackPayload;
+        let StackPayload::TriggeredAbility {
+            source_id, effect, ..
+        } = &triggers[0].payload
+        else {
+            panic!("expected TriggeredAbility");
+        };
+        assert_eq!(*source_id, creature_id);
+        assert_eq!(*effect, vec![EffectStep::DrawCard(1)]);
+    }
+
+    #[test]
+    fn collect_triggers_for_event_etb_does_not_fire_for_other_events() {
+        use crate::types::GameEvent;
+        let mut gs = two_player_state();
+        put_in_library(&mut gs, PlayerId(0));
+        let creature_id = place_on_battlefield(&mut gs, etb_draw_def(), PlayerId(0));
+
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: creature_id,
+            },
+        );
+
+        assert!(
+            triggers.is_empty(),
+            "ETB trigger should not fire on Attacks event"
+        );
+    }
+
+    #[test]
+    fn collect_triggers_for_event_evolve_fires_on_etb_with_greater_power() {
+        use crate::types::GameEvent;
+        let mut gs = two_player_state();
+        let evolve_id =
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+        let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 3, 2, vec![]);
+
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::EntersTheBattlefield {
+                subject_id: entering_id,
+            },
+        );
+
+        assert_eq!(triggers.len(), 1);
+        use crate::types::effect::EffectTarget;
+        assert!(
+            triggers[0]
+                .targets
+                .iter()
+                .any(|t| matches!(t, EffectTarget::Object { id } if *id == evolve_id))
         );
     }
 

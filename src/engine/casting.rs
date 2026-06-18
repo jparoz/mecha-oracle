@@ -59,15 +59,14 @@ pub fn play_land(
     state.consecutive_passes = 0;
     state.priority_player = player_id; // CR 116.3 / 117.3c: actor retains priority after special action
 
-    // Collect any ETB triggers from the land entering and push onto stack.
-    let triggers = crate::engine::triggered::collect_etb_triggers(&mut state, object_id);
-    for trigger in triggers {
-        let id = trigger.id;
-        state.stack.push(id);
-        state.stack_objects.insert(id, trigger);
-    }
-    let evolve_triggers = crate::engine::triggered::collect_evolve_triggers(&mut state, object_id);
-    for t in evolve_triggers {
+    // CR 603.2 / CR 702.100b: collect ETB triggers and Evolve triggers via unified dispatch.
+    let etb_triggers = crate::engine::triggered::collect_triggers_for_event(
+        &mut state,
+        &crate::types::GameEvent::EntersTheBattlefield {
+            subject_id: object_id,
+        },
+    );
+    for t in etb_triggers {
         let id = t.id;
         state.stack.push(id);
         state.stack_objects.insert(id, t);
