@@ -1,4 +1,4 @@
-use crate::types::ability::{Ability, CastFilter, StaticAbility, TriggerEvent, TriggeredAbility};
+use crate::types::ability::{Ability, StaticAbility, TriggerEvent, TriggeredAbility};
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
 use crate::types::{
@@ -174,6 +174,23 @@ fn trigger_condition_satisfied(
                 .map(|p| p.has_keyword(kw.clone()))
                 .unwrap_or(false)
         }
+    }
+}
+
+/// CR 702.108a: Prowess — whenever you cast a noncreature spell, this creature gets +1/+1 until EOT.
+pub fn prowess_triggered_ability() -> TriggeredAbility {
+    use crate::types::ability::SpellFilter;
+    TriggeredAbility {
+        trigger: TriggerEvent::SpellCast {
+            caster: TurnOwner::You,
+            filter: SpellFilter::noncreature(),
+        },
+        condition: None,
+        target_mode: TriggerTargetMode::Source,
+        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+            power: 1,
+            toughness: 1,
+        })],
     }
 }
 
@@ -512,66 +529,6 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
     }
 
     result
-}
-
-/// CR 702.108b: collect triggered abilities that fire when a spell is cast.
-/// Currently handles: Prowess (noncreature filter → +1/+1 until EOT on each Prowess creature).
-/// Add additional StaticAbility branches here as new cast-triggered keywords are implemented.
-pub fn collect_cast_triggers(
-    state: &mut GameState,
-    caster: PlayerId,
-    spell_id: ObjectId,
-    filter: &CastFilter,
-) -> Vec<StackObject> {
-    // Check whether the cast spell satisfies the filter.
-    let spell_types: Vec<crate::types::card::CardType> = state
-        .objects
-        .get(&spell_id)
-        .map(|o| o.definition.type_line.card_types.clone())
-        .unwrap_or_default();
-    if !filter.matches(&spell_types) {
-        return vec![];
-    }
-
-    // Collect permanents that have cast-triggered abilities.
-    let prowess_creature_ids: Vec<(ObjectId, PlayerId)> = state
-        .battlefield
-        .keys()
-        .filter_map(|&id| {
-            let obj = state.objects.get(&id)?;
-            if obj.controller != caster {
-                return None;
-            }
-            let perm = state.battlefield.get(&id)?;
-            if perm.is_creature() && perm.has_keyword(StaticAbility::Prowess) {
-                Some((id, obj.controller))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    prowess_creature_ids
-        .into_iter()
-        .map(|(creature_id, controller)| {
-            let sid = state.alloc_stack_id();
-            use crate::types::effect::EffectTarget;
-            StackObject {
-                id: sid,
-                payload: StackPayload::TriggeredAbility {
-                    source_id: creature_id,
-                    effect: vec![EffectStep::BoostPermanentPT(PTDelta {
-                        power: 1,
-                        toughness: 1,
-                    })],
-                    label: "Prowess".into(),
-                },
-                controller,
-                targets: vec![EffectTarget::Object { id: creature_id }],
-                x_value: None,
-            }
-        })
-        .collect()
 }
 
 /// CR 702.25a: Flanking — when a non-Flanking creature blocks this, it gets -1/-1.
@@ -1253,15 +1210,14 @@ mod tests {
 
     #[test]
     fn collect_cast_triggers_prowess_fires_on_noncreature() {
-        use crate::engine::triggered::collect_cast_triggers;
-        use crate::types::ability::{Ability, CastFilter, StaticAbility};
+        use crate::types::ability::Ability;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::mana::ManaCost;
-        use crate::types::{CardObject, OracleSpan, Zone};
+        use crate::types::{CardObject, GameEvent, OracleSpan, Zone};
 
         let mut gs = two_player_state();
 
-        // A creature with Prowess on the battlefield.
+        // A creature with Prowess (as TriggeredAbility) on the battlefield.
         let prowess_def = CardDefinition {
             name: "Prowess Monk".into(),
             mana_cost: None,
@@ -1271,7 +1227,9 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Prowess".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+                prowess_triggered_ability(),
+            ))],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
@@ -1299,8 +1257,13 @@ mod tests {
         let spell_obj = CardObject::new(spell_id, instant_def, PlayerId(0), Zone::Stack);
         gs.add_object(spell_obj);
 
-        let triggers =
-            collect_cast_triggers(&mut gs, PlayerId(0), spell_id, &CastFilter::noncreature());
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::SpellCast {
+                caster: PlayerId(0),
+                spell_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 1);
         assert_eq!(triggers[0].controller, PlayerId(0));
@@ -1329,10 +1292,9 @@ mod tests {
 
     #[test]
     fn collect_cast_triggers_prowess_silent_on_creature_spell() {
-        use crate::engine::triggered::collect_cast_triggers;
-        use crate::types::ability::{Ability, CastFilter, StaticAbility};
+        use crate::types::ability::Ability;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
-        use crate::types::{CardObject, OracleSpan, Zone};
+        use crate::types::{CardObject, GameEvent, OracleSpan, Zone};
 
         let mut gs = two_player_state();
 
@@ -1345,7 +1307,9 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+                prowess_triggered_ability(),
+            ))],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
@@ -1373,8 +1337,13 @@ mod tests {
         let spell_obj = CardObject::new(spell_id, creature_spell_def, PlayerId(0), Zone::Stack);
         gs.add_object(spell_obj);
 
-        let triggers =
-            collect_cast_triggers(&mut gs, PlayerId(0), spell_id, &CastFilter::noncreature());
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::SpellCast {
+                caster: PlayerId(0),
+                spell_id,
+            },
+        );
         assert!(triggers.is_empty());
     }
 

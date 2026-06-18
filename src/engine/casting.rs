@@ -1,6 +1,5 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
-use crate::engine::triggered::collect_cast_triggers;
-use crate::types::ability::{CastFilter, StaticAbility};
+use crate::types::ability::StaticAbility;
 use crate::types::card::CardType;
 use crate::types::{GameState, ObjectId, PermanentState, PlayerId, Step, Zone};
 
@@ -200,10 +199,15 @@ pub fn cast_spell(
     state.consecutive_passes = 0;
     state.priority_player = player_id;
 
-    // CR 702.108b: collect Prowess and other cast-triggered ability triggers.
-    let cast_triggers =
-        collect_cast_triggers(&mut state, player_id, object_id, &CastFilter::noncreature());
-    for t in cast_triggers {
+    // CR 603.2: fire SpellCast event for triggered abilities (e.g. Prowess — CR 702.108a).
+    let spell_cast_triggers = crate::engine::triggered::collect_triggers_for_event(
+        &mut state,
+        &crate::types::GameEvent::SpellCast {
+            caster: player_id,
+            spell_id: object_id,
+        },
+    );
+    for t in spell_cast_triggers {
         let id = t.id;
         state.stack.push(id);
         state.stack_objects.insert(id, t);
@@ -614,13 +618,14 @@ mod tests {
 
     #[test]
     fn cast_noncreature_with_prowess_creature_puts_boost_on_stack() {
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::engine::triggered::prowess_triggered_ability;
+        use crate::types::ability::Ability;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::mana::ManaPip;
         use crate::types::{CardObject, OracleSpan, PermanentState, Zone};
 
         let mut gs = make_state();
-        // Prowess creature on battlefield.
+        // Prowess creature (as TriggeredAbility) on battlefield.
         let prowess_def = CardDefinition {
             name: "Monk".into(),
             mana_cost: None,
@@ -630,7 +635,9 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Prowess))],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+                prowess_triggered_ability(),
+            ))],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
