@@ -59,6 +59,42 @@ fn resolve_x_in_cost(
         .collect()
 }
 
+/// Reads keyword flags from `source_abilities` and injects them into any `DealDamage`
+/// steps in `effect`. Called at stack-push time so flags are snapshotted from the
+/// source's current state (CR 702.2e — last-known information at activation time).
+pub(crate) fn inject_source_flags(
+    effect: crate::types::effect::Effect,
+    source_abilities: &[crate::types::OracleSpan],
+) -> crate::types::effect::Effect {
+    use crate::types::ability::StaticAbility;
+    use crate::types::effect::{DamageStep, EffectStep};
+
+    effect
+        .into_iter()
+        .map(|step| match step {
+            EffectStep::DealDamage(s) => EffectStep::DealDamage(DamageStep {
+                lifelink: has_damage_kw(source_abilities, &StaticAbility::Lifelink),
+                deathtouch: has_damage_kw(source_abilities, &StaticAbility::Deathtouch),
+                wither: has_damage_kw(source_abilities, &StaticAbility::Wither),
+                infect: has_damage_kw(source_abilities, &StaticAbility::Infect),
+                ..s
+            }),
+            other => other,
+        })
+        .collect()
+}
+
+fn has_damage_kw(
+    abilities: &[crate::types::OracleSpan],
+    kw: &crate::types::ability::StaticAbility,
+) -> bool {
+    use crate::types::OracleSpan;
+    use crate::types::ability::Ability;
+    abilities
+        .iter()
+        .any(|span| matches!(span, OracleSpan::Parsed(Ability::Static(k)) if k == kw))
+}
+
 // CR 608.2b: execute each effect step for the given controller.
 // Shared by instant/sorcery spell resolution and triggered/activated ability resolution.
 pub(crate) fn execute_effect_steps(
@@ -1672,6 +1708,87 @@ mod tests {
         );
         let gs = resolve_top(gs);
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life - 3);
+    }
+
+    // ── inject_source_flags unit tests ──────────────────────────────────────────
+
+    #[test]
+    fn inject_source_flags_sets_lifelink_from_abilities() {
+        use crate::engine::stack::inject_source_flags;
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::effect::{DamageStep, EffectStep};
+
+        let abilities = vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Lifelink))];
+        let effect = vec![EffectStep::DealDamage(DamageStep {
+            amount: 2,
+            ..Default::default()
+        })];
+        let result = inject_source_flags(effect, &abilities);
+        match &result[0] {
+            EffectStep::DealDamage(s) => {
+                assert!(s.lifelink);
+                assert!(!s.deathtouch);
+                assert!(!s.wither);
+                assert!(!s.infect);
+                assert_eq!(s.amount, 2);
+            }
+            other => panic!("expected DealDamage, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn inject_source_flags_sets_wither_and_infect() {
+        use crate::engine::stack::inject_source_flags;
+        use crate::types::OracleSpan;
+        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::effect::{DamageStep, EffectStep};
+
+        let abilities = vec![
+            OracleSpan::Parsed(Ability::Static(StaticAbility::Wither)),
+            OracleSpan::Parsed(Ability::Static(StaticAbility::Infect)),
+        ];
+        let effect = vec![EffectStep::DealDamage(DamageStep {
+            amount: 1,
+            ..Default::default()
+        })];
+        let result = inject_source_flags(effect, &abilities);
+        match &result[0] {
+            EffectStep::DealDamage(s) => {
+                assert!(s.wither);
+                assert!(s.infect);
+            }
+            other => panic!("expected DealDamage, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn inject_source_flags_empty_abilities_leaves_flags_false() {
+        use crate::engine::stack::inject_source_flags;
+        use crate::types::effect::{DamageStep, EffectStep};
+
+        let effect = vec![EffectStep::DealDamage(DamageStep {
+            amount: 5,
+            ..Default::default()
+        })];
+        let result = inject_source_flags(effect, &[]);
+        match &result[0] {
+            EffectStep::DealDamage(s) => {
+                assert!(!s.lifelink && !s.deathtouch && !s.wither && !s.infect);
+                assert_eq!(s.amount, 5);
+            }
+            other => panic!("expected DealDamage, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn inject_source_flags_non_deal_damage_step_passes_through() {
+        use crate::engine::stack::inject_source_flags;
+        use crate::types::effect::EffectStep;
+
+        let effect = vec![EffectStep::DrawCard(1)];
+        let result = inject_source_flags(effect, &[]);
+        assert!(matches!(result[0], EffectStep::DrawCard(1)));
     }
 
     #[test]

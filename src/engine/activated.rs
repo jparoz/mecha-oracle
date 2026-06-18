@@ -181,12 +181,26 @@ pub fn activate_ability(
             .get(&object_id)
             .map(|o| format!("{}: activated ability", o.definition.name))
             .unwrap_or_else(|| "activated ability".into());
+        let source_abilities: Vec<crate::types::OracleSpan> = state
+            .battlefield
+            .get(&object_id)
+            .map(|_| {
+                state
+                    .objects
+                    .get(&object_id)
+                    .map(|o| o.definition.abilities.clone())
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
         let stack_id = state.alloc_stack_id();
         let stack_obj = crate::types::StackObject {
             id: stack_id,
             payload: crate::types::StackPayload::ActivatedAbility {
                 source_id: object_id,
-                effect: ability.effect.clone(),
+                effect: crate::engine::stack::inject_source_flags(
+                    ability.effect.clone(),
+                    &source_abilities,
+                ),
                 label,
             },
             controller: activating_player,
