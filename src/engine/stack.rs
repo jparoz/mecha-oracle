@@ -61,7 +61,10 @@ fn resolve_x_in_cost(
 
 /// Reads keyword flags from `source_abilities` and injects them into any `DealDamage`
 /// steps in `effect`. Called at stack-push time so flags are snapshotted from the
-/// source's current state (CR 702.2e — last-known information at activation time).
+/// source's current state. CR 702.2e, 702.15b, 702.80a, 702.90b each define last-known
+/// information rules for their respective keywords; snapshotting at push time captures
+/// the source's state when the ability is activated, which is equivalent to LKI if the
+/// source later leaves the battlefield.
 pub(crate) fn inject_source_flags(
     effect: crate::types::effect::Effect,
     source_abilities: &[crate::types::OracleSpan],

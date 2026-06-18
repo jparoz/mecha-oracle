@@ -181,6 +181,8 @@ pub fn activate_ability(
             .get(&object_id)
             .map(|o| format!("{}: activated ability", o.definition.name))
             .unwrap_or_else(|| "activated ability".into());
+        // Guard: only inject keyword flags from permanents currently on the battlefield.
+        // The outer battlefield.get ensures we do not inject from any lingering object ID.
         let source_abilities: Vec<crate::types::OracleSpan> = state
             .battlefield
             .get(&object_id)
