@@ -368,7 +368,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     }
                     state.consecutive_passes = 0;
                     state.priority_player = state.active_player;
-                    return check_and_apply_sbas(state);
+                    return apply_sbas_and_push_triggers(state);
                 }
 
                 state = execute_effect_steps(state, controller, &steps, &targets, x_value);
@@ -386,7 +386,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                 let paying_player = pp.paying_player;
                 state.consecutive_passes = 0;
                 state.priority_player = paying_player;
-                return check_and_apply_sbas(state);
+                return apply_sbas_and_push_triggers(state);
             }
 
             // CR 117.3b: after triggered abilities are put on the stack, active player
@@ -394,7 +394,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
             // after casting a spell or activating an ability).
             state.consecutive_passes = 0;
             state.priority_player = state.active_player;
-            check_and_apply_sbas(state)
+            apply_sbas_and_push_triggers(state)
         }
         StackPayload::TriggeredAbility { effect, .. }
         | StackPayload::ActivatedAbility { effect, .. } => {
@@ -407,7 +407,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
             {
                 state.consecutive_passes = 0;
                 state.priority_player = state.active_player;
-                return check_and_apply_sbas(state);
+                return apply_sbas_and_push_triggers(state);
             }
             state = execute_effect_steps(state, controller, &effect, &targets, x_value);
 
@@ -416,14 +416,26 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                 let paying_player = pp.paying_player;
                 state.consecutive_passes = 0;
                 state.priority_player = paying_player;
-                return check_and_apply_sbas(state);
+                return apply_sbas_and_push_triggers(state);
             }
 
             state.consecutive_passes = 0;
             state.priority_player = state.active_player;
-            check_and_apply_sbas(state)
+            apply_sbas_and_push_triggers(state)
         }
     }
+}
+
+/// Run SBAs and push any resulting triggers (e.g. Dies) onto the stack.
+/// CR 704.3 / CR 603.2.
+fn apply_sbas_and_push_triggers(state: GameState) -> GameState {
+    let (mut state, sba_triggers) = check_and_apply_sbas(state);
+    for t in sba_triggers {
+        let id = t.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, t);
+    }
+    state
 }
 
 #[cfg(test)]

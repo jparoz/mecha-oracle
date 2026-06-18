@@ -592,7 +592,13 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
         }
     }
 
-    check_and_apply_sbas(state)
+    let (mut state, sba_triggers) = check_and_apply_sbas(state);
+    for t in sba_triggers {
+        let id = t.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, t);
+    }
+    state
 }
 
 #[cfg(test)]

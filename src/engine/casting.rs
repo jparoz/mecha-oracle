@@ -71,7 +71,13 @@ pub fn play_land(
         state.stack_objects.insert(id, t);
     }
 
-    Ok(check_and_apply_sbas(state))
+    let (mut state, sba_triggers) = check_and_apply_sbas(state);
+    for t in sba_triggers {
+        let id = t.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, t);
+    }
+    Ok(state)
 }
 
 // CR 702.8a, CR 304.1: instants and Flash permanents may be cast at instant speed

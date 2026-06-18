@@ -1,16 +1,24 @@
-use crate::types::{CounterKind, GameState, ObjectId, PlayerId, Zone, ability::StaticAbility};
+use crate::types::{
+    CounterKind, GameEvent, GameState, ObjectId, PlayerId, Zone, ability::StaticAbility,
+};
 
 /// Repeatedly finds and applies SBAs until no new ones trigger (CR 704.3).
-pub fn check_and_apply_sbas(state: GameState) -> GameState {
+/// Returns the updated GameState and any triggered abilities that fired (CR 603.2).
+pub fn check_and_apply_sbas(
+    state: GameState,
+) -> (GameState, Vec<crate::types::stack::StackObject>) {
     let mut state = state;
+    let mut all_triggers: Vec<crate::types::stack::StackObject> = Vec::new();
     loop {
         let sbas = find_sbas(&state);
         if sbas.is_empty() {
             break;
         }
-        state = apply_sbas(state, sbas);
+        let (new_state, triggers) = apply_sbas(state, sbas);
+        state = new_state;
+        all_triggers.extend(triggers);
     }
-    state
+    (state, all_triggers)
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +83,11 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     sbas
 }
 
-fn apply_sbas(mut state: GameState, sbas: Vec<Sba>) -> GameState {
+fn apply_sbas(
+    mut state: GameState,
+    sbas: Vec<Sba>,
+) -> (GameState, Vec<crate::types::stack::StackObject>) {
+    let mut triggers = Vec::new();
     for sba in sbas {
         match sba {
             Sba::PlayerLoses(pid) => {
@@ -85,7 +97,15 @@ fn apply_sbas(mut state: GameState, sbas: Vec<Sba>) -> GameState {
                 state.game_over = true;
             }
             Sba::MoveToGraveyard(id) => {
+                // CR 603.2: collect Dies triggers before the zone change so that
+                // sources on the battlefield (including the dying creature itself,
+                // per LKI) are still visible to the trigger collector.
+                let mut t = crate::engine::triggered::collect_triggers_for_event(
+                    &mut state,
+                    &GameEvent::Dies { subject_id: id },
+                );
                 state = move_to_graveyard(state, id);
+                triggers.append(&mut t);
             }
             Sba::CancelCounters(id, n) => {
                 if let Some(perm) = state.battlefield.get_mut(&id) {
@@ -107,7 +127,7 @@ fn apply_sbas(mut state: GameState, sbas: Vec<Sba>) -> GameState {
             }
         }
     }
-    state
+    (state, triggers)
 }
 
 pub fn move_to_graveyard(mut state: GameState, object_id: ObjectId) -> GameState {
@@ -160,7 +180,7 @@ mod tests {
         );
         gs.battlefield.get_mut(&bear_id).unwrap().damage_marked = 2; // toughness = 2, lethal
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(!gs.battlefield.contains_key(&bear_id));
         assert!(gs.graveyards[&PlayerId(0)].contains(&bear_id));
@@ -178,7 +198,7 @@ mod tests {
         );
         gs.battlefield.get_mut(&bear_id).unwrap().damage_marked = 1; // toughness = 2, survives
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(gs.battlefield.contains_key(&bear_id));
     }
@@ -188,7 +208,7 @@ mod tests {
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(1)).unwrap().life = 0;
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(gs.is_game_over());
         assert_eq!(gs.winner(), Some(PlayerId(0)));
@@ -199,7 +219,7 @@ mod tests {
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(0)).unwrap().life = -3;
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert_eq!(gs.winner(), Some(PlayerId(1)));
     }
@@ -252,7 +272,7 @@ mod tests {
         );
         gs.battlefield.get_mut(&id).unwrap().damage_marked = 5; // more than toughness
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(gs.battlefield.contains_key(&id)); // survives
     }
@@ -268,7 +288,7 @@ mod tests {
         );
         gs.battlefield.get_mut(&id).unwrap().damaged_by_deathtouch = true;
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(!gs.battlefield.contains_key(&id));
     }
@@ -286,7 +306,7 @@ mod tests {
         );
         gs.battlefield.get_mut(&id).unwrap().damaged_by_deathtouch = true;
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(gs.battlefield.contains_key(&id)); // indestructible ignores both 704.5g and 704.5h
     }
@@ -308,7 +328,7 @@ mod tests {
         gs.battlefield.get_mut(&bear1).unwrap().damage_marked = 5;
         gs.battlefield.get_mut(&bear2).unwrap().damage_marked = 5;
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(gs.battlefield.is_empty());
         assert_eq!(gs.graveyards[&PlayerId(0)].len(), 2);
@@ -339,7 +359,7 @@ mod tests {
             3,
         );
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert_eq!(
             gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
@@ -382,7 +402,7 @@ mod tests {
             2,
         );
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert_eq!(
             gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
@@ -426,7 +446,7 @@ mod tests {
             1,
         );
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert_eq!(
             gs.battlefield[&id].counter_count(&CounterKind::PtModifier {
@@ -452,7 +472,7 @@ mod tests {
             .unwrap()
             .add_counters(CounterKind::Poison, 10);
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(gs.is_game_over());
         assert_eq!(gs.winner(), Some(PlayerId(0)));
@@ -487,7 +507,7 @@ mod tests {
             2,
         );
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         // Should be in graveyard — died from effective toughness 0 after counter cancellation.
         assert!(!gs.battlefield.contains_key(&id));
@@ -502,8 +522,62 @@ mod tests {
             .unwrap()
             .add_counters(CounterKind::Poison, 9);
 
-        let gs = check_and_apply_sbas(gs);
+        let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(!gs.is_game_over());
+    }
+
+    #[test]
+    fn check_and_apply_sbas_returns_dies_trigger_when_creature_dies() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{
+            Ability, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+        };
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::EffectStep;
+
+        let mut state = make_state();
+
+        // A permanent with "when this dies, draw a card"
+        let watcher_def = CardDefinition {
+            name: "Doomed Watcher".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::Dies {
+                    subject: TriggerSubjectFilter {
+                        is_self: Some(true),
+                        ..Default::default()
+                    },
+                },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
+                effect: vec![EffectStep::DrawCard(1)],
+            }))],
+            text_annotations: vec![],
+            power: Some(1),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let watcher_id = add_creature_to_battlefield(&mut state, PlayerId(0), watcher_def);
+        // Mark it as having lethal damage so SBA kills it.
+        state
+            .battlefield
+            .get_mut(&watcher_id)
+            .unwrap()
+            .damage_marked = 99;
+
+        let (new_state, triggers) = check_and_apply_sbas(state);
+
+        assert!(
+            !new_state.battlefield.contains_key(&watcher_id),
+            "creature should be dead"
+        );
+        assert_eq!(triggers.len(), 1, "should have one Dies trigger");
     }
 }
