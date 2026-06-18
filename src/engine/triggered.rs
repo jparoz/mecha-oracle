@@ -1,8 +1,8 @@
-use crate::types::ability::{Ability, CastFilter, StaticAbility, TriggerEvent};
+use crate::types::ability::{Ability, CastFilter, StaticAbility, TriggerEvent, TriggeredAbility};
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
 use crate::types::{
-    GameEvent, GameState, ObjectId, OracleSpan, PTDelta, PlayerId, TriggerCondition,
+    CounterKind, GameEvent, GameState, ObjectId, OracleSpan, PTDelta, PlayerId, TriggerCondition,
     TriggerSubjectFilter, TriggerTargetMode, TurnOwner,
 };
 
@@ -174,6 +174,81 @@ fn trigger_condition_satisfied(
                 .map(|p| p.has_keyword(kw.clone()))
                 .unwrap_or(false)
         }
+    }
+}
+
+/// CR 702.83b: Exalted — when exactly one creature you control attacks, that creature gets +1/+1.
+pub fn exalted_triggered_ability() -> TriggeredAbility {
+    TriggeredAbility {
+        trigger: TriggerEvent::Attacks {
+            subject: TriggerSubjectFilter {
+                controller: Some(TurnOwner::You),
+                ..Default::default()
+            },
+        },
+        condition: Some(TriggerCondition::ExactlyOneAttacker),
+        target_mode: TriggerTargetMode::Subject,
+        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+            power: 1,
+            toughness: 1,
+        })],
+    }
+}
+
+/// CR 702.121b: Melee — when this attacks, it gets +1/+1 until end of turn (2-player = 1 opponent always).
+pub fn melee_triggered_ability() -> TriggeredAbility {
+    TriggeredAbility {
+        trigger: TriggerEvent::Attacks {
+            subject: TriggerSubjectFilter {
+                is_self: Some(true),
+                ..Default::default()
+            },
+        },
+        condition: None,
+        target_mode: TriggerTargetMode::Source,
+        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+            power: 1,
+            toughness: 1,
+        })],
+    }
+}
+
+/// CR 702.91b: Battle Cry — when this attacks, each other attacking creature gets +1/+0 until end of turn.
+pub fn battle_cry_triggered_ability() -> TriggeredAbility {
+    TriggeredAbility {
+        trigger: TriggerEvent::Attacks {
+            subject: TriggerSubjectFilter {
+                is_self: Some(true),
+                ..Default::default()
+            },
+        },
+        condition: None,
+        target_mode: TriggerTargetMode::AllOtherAttackers,
+        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+            power: 1,
+            toughness: 0,
+        })],
+    }
+}
+
+/// CR 702.149a: Training — when this attacks alongside a creature with greater power, put a +1/+1 counter on it.
+pub fn training_triggered_ability() -> TriggeredAbility {
+    TriggeredAbility {
+        trigger: TriggerEvent::Attacks {
+            subject: TriggerSubjectFilter {
+                is_self: Some(true),
+                ..Default::default()
+            },
+        },
+        condition: Some(TriggerCondition::AttackingAlongsideGreaterPowerCreature),
+        target_mode: TriggerTargetMode::Source,
+        effect: vec![EffectStep::AddCounter {
+            kind: CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            count: 1,
+        }],
     }
 }
 
@@ -602,171 +677,6 @@ pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
     result
 }
 
-/// Collect triggered abilities that fire when creatures are declared as attackers.
-/// Handles: Exalted (CR 702.83b), Melee (CR 702.121b), Battle Cry (CR 702.91b).
-pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
-    let attackers = state.combat.attackers.clone();
-    let attacking_player = state.active_player;
-    let mut result = Vec::new();
-
-    // Exalted (CR 702.83b): fires once per Exalted permanent when exactly one creature attacks.
-    if attackers.len() == 1 {
-        let attacker_id = attackers[0];
-        let exalted_sources: Vec<ObjectId> = state
-            .battlefield
-            .keys()
-            .filter(|&&id| {
-                state
-                    .objects
-                    .get(&id)
-                    .map(|o| o.controller == attacking_player)
-                    .unwrap_or(false)
-                    && state
-                        .battlefield
-                        .get(&id)
-                        .map(|p| p.has_keyword(StaticAbility::Exalted))
-                        .unwrap_or(false)
-            })
-            .copied()
-            .collect();
-        for source_id in exalted_sources {
-            let sid = state.alloc_stack_id();
-            use crate::types::effect::EffectTarget;
-            result.push(StackObject {
-                id: sid,
-                payload: StackPayload::TriggeredAbility {
-                    source_id,
-                    effect: vec![EffectStep::BoostPermanentPT(PTDelta {
-                        power: 1,
-                        toughness: 1,
-                    })],
-                    label: "Exalted".into(),
-                },
-                controller: attacking_player,
-                targets: vec![EffectTarget::Object { id: attacker_id }],
-                x_value: None,
-            });
-        }
-    }
-
-    // Melee (CR 702.121b): +1/+1 per opponent attacked; 2-player = always 1 opponent.
-    let melee_attackers: Vec<ObjectId> = attackers
-        .iter()
-        .filter(|&&id| {
-            state
-                .battlefield
-                .get(&id)
-                .map(|p| p.has_keyword(StaticAbility::Melee))
-                .unwrap_or(false)
-        })
-        .copied()
-        .collect();
-    for attacker_id in melee_attackers {
-        let sid = state.alloc_stack_id();
-        use crate::types::effect::EffectTarget;
-        result.push(StackObject {
-            id: sid,
-            payload: StackPayload::TriggeredAbility {
-                source_id: attacker_id,
-                effect: vec![EffectStep::BoostPermanentPT(PTDelta {
-                    power: 1,
-                    toughness: 1,
-                })],
-                label: "Melee".into(),
-            },
-            controller: attacking_player,
-            targets: vec![EffectTarget::Object { id: attacker_id }],
-            x_value: None,
-        });
-    }
-
-    // Battle Cry (CR 702.91b): each other attacking creature gets +1/+0 until end of turn.
-    let battle_cry_attackers: Vec<ObjectId> = attackers
-        .iter()
-        .filter(|&&id| {
-            state
-                .battlefield
-                .get(&id)
-                .map(|p| p.has_keyword(StaticAbility::BattleCry))
-                .unwrap_or(false)
-        })
-        .copied()
-        .collect();
-    for source_id in battle_cry_attackers {
-        for &other_id in attackers.iter().filter(|&&id| id != source_id) {
-            let sid = state.alloc_stack_id();
-            use crate::types::effect::EffectTarget;
-            result.push(StackObject {
-                id: sid,
-                payload: StackPayload::TriggeredAbility {
-                    source_id,
-                    effect: vec![EffectStep::BoostPermanentPT(PTDelta {
-                        power: 1,
-                        toughness: 0,
-                    })],
-                    label: "Battle Cry".into(),
-                },
-                controller: attacking_player,
-                targets: vec![EffectTarget::Object { id: other_id }],
-                x_value: None,
-            });
-        }
-    }
-
-    // Training (CR 702.149a): +1/+1 counter when attacking alongside a creature with greater power.
-    for &attacker_id in &attackers {
-        let has_training = state
-            .battlefield
-            .get(&attacker_id)
-            .map(|p| p.has_keyword(StaticAbility::Training))
-            .unwrap_or(false);
-        if !has_training {
-            continue;
-        }
-        let my_power = state
-            .battlefield
-            .get(&attacker_id)
-            .and_then(|p| p.effective_power())
-            .unwrap_or(0);
-        let has_greater_power_ally = attackers
-            .iter()
-            .filter(|&&id| id != attacker_id)
-            .any(|&id| {
-                state
-                    .battlefield
-                    .get(&id)
-                    .and_then(|p| p.effective_power())
-                    .map(|p| p > my_power)
-                    .unwrap_or(false)
-            });
-        if !has_greater_power_ally {
-            continue;
-        }
-        let sid = state.alloc_stack_id();
-        use crate::types::CounterKind;
-        use crate::types::effect::EffectTarget;
-        result.push(StackObject {
-            id: sid,
-            payload: StackPayload::TriggeredAbility {
-                source_id: attacker_id,
-                effect: vec![EffectStep::AddCounter {
-                    kind: CounterKind::PtModifier {
-                        power: 1,
-                        toughness: 1,
-                    },
-                    count: 1,
-                }],
-                label: "Training".into(),
-            },
-            controller: attacking_player,
-            targets: vec![EffectTarget::Object { id: attacker_id }],
-            x_value: None,
-        });
-    }
-
-    result
-}
-
 /// CR 702.21a: Collect ward triggered abilities for any declared targets that are
 /// opponent-controlled permanents with Ward. Each Ward ability on such a target generates
 /// one TriggeredAbility with a Payment effect pushed above the triggering spell/ability on the stack.
@@ -986,6 +896,33 @@ mod tests {
         place_on_battlefield(state, def, owner)
     }
 
+    /// Place a creature on the battlefield carrying the given TriggeredAbility oracle spans.
+    fn triggered_attacker(
+        state: &mut GameState,
+        owner: PlayerId,
+        power: i32,
+        toughness: i32,
+        abilities: Vec<OracleSpan>,
+    ) -> ObjectId {
+        use crate::types::card::{CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Test Attacker".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities,
+            text_annotations: vec![],
+            power: Some(power),
+            toughness: Some(toughness),
+            colors: vec![],
+        };
+        place_on_battlefield(state, def, owner)
+    }
+
     fn enter_creature_on_battlefield(
         state: &mut GameState,
         owner: PlayerId,
@@ -1026,19 +963,24 @@ mod tests {
     #[test]
     fn training_triggers_when_attacking_with_higher_power_ally() {
         // CR 702.149a: Training fires when attacking alongside a creature with greater power.
-        use crate::types::ability::StaticAbility;
+        use crate::types::GameEvent;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
-        let training_id =
-            keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Training]);
+        let training_span = OracleSpan::Parsed(Ability::Triggered(training_triggered_ability()));
+        let training_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![training_span]);
         let ally_id = keyword_attacker(&mut gs, PlayerId(0), 3, 3, vec![]);
         gs.combat.attackers = vec![training_id, ally_id];
 
-        let triggers = collect_attack_triggers(&mut gs);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: training_id,
+            },
+        );
 
         assert_eq!(
             triggers.iter().filter(|t| {
-                matches!(&t.payload, StackPayload::TriggeredAbility { label, .. } if label == "Training")
+                matches!(&t.payload, StackPayload::TriggeredAbility { source_id, .. } if *source_id == training_id)
             }).count(),
             1,
             "Should have exactly one Training trigger"
@@ -1048,19 +990,24 @@ mod tests {
     #[test]
     fn training_does_not_trigger_when_no_ally_with_greater_power() {
         // CR 702.149a: Training requires the ally to have GREATER power; equal doesn't count.
-        use crate::types::ability::StaticAbility;
+        use crate::types::GameEvent;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
-        let training_id =
-            keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Training]);
+        let training_span = OracleSpan::Parsed(Ability::Triggered(training_triggered_ability()));
+        let training_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![training_span]);
         let ally_id = keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![]);
         gs.combat.attackers = vec![training_id, ally_id];
 
-        let triggers = collect_attack_triggers(&mut gs);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: training_id,
+            },
+        );
 
         assert_eq!(
             triggers.iter().filter(|t| {
-                matches!(&t.payload, StackPayload::TriggeredAbility { label, .. } if label == "Training")
+                matches!(&t.payload, StackPayload::TriggeredAbility { source_id, .. } if *source_id == training_id)
             }).count(),
             0,
             "Training should not trigger when ally power equals training creature's power"
@@ -1070,17 +1017,22 @@ mod tests {
     #[test]
     fn training_does_not_trigger_when_attacking_alone() {
         // CR 702.149a: No trigger if attacking alone (no other creatures attacking).
-        use crate::types::ability::StaticAbility;
+        use crate::types::GameEvent;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
-        let training_id =
-            keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Training]);
+        let training_span = OracleSpan::Parsed(Ability::Triggered(training_triggered_ability()));
+        let training_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![training_span]);
         gs.combat.attackers = vec![training_id];
 
-        let triggers = collect_attack_triggers(&mut gs);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: training_id,
+            },
+        );
 
         let training_count = triggers.iter().filter(|t| {
-            matches!(&t.payload, StackPayload::TriggeredAbility { label, .. } if label == "Training")
+            matches!(&t.payload, StackPayload::TriggeredAbility { source_id, .. } if *source_id == training_id)
         }).count();
         assert_eq!(
             training_count, 0,
@@ -1092,19 +1044,24 @@ mod tests {
     fn training_trigger_targets_training_creature_itself() {
         // The +1/+1 counter should go on the Training creature, not the ally.
         use crate::types::CounterKind;
-        use crate::types::ability::StaticAbility;
+        use crate::types::GameEvent;
         use crate::types::effect::EffectTarget;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
-        let training_id =
-            keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Training]);
+        let training_span = OracleSpan::Parsed(Ability::Triggered(training_triggered_ability()));
+        let training_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![training_span]);
         let ally_id = keyword_attacker(&mut gs, PlayerId(0), 3, 3, vec![]);
         gs.combat.attackers = vec![training_id, ally_id];
 
-        let triggers = collect_attack_triggers(&mut gs);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: training_id,
+            },
+        );
 
         let training_trigger = triggers.iter().find(|t| {
-            matches!(&t.payload, StackPayload::TriggeredAbility { label, .. } if label == "Training")
+            matches!(&t.payload, StackPayload::TriggeredAbility { source_id, .. } if *source_id == training_id)
         }).expect("should have a Training trigger");
 
         // Check the trigger targets the Training creature itself.
@@ -1470,9 +1427,7 @@ mod tests {
 
     #[test]
     fn collect_attack_triggers_exalted_single_attacker() {
-        use crate::engine::triggered::collect_attack_triggers;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::GameEvent;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = two_player_state();
@@ -1493,26 +1448,17 @@ mod tests {
             colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, attacker_def, PlayerId(0));
-        // An Exalted creature also controlled by P0.
-        let exalted_def = CardDefinition {
-            name: "Exalted Permanent".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
-            text_annotations: vec![],
-            power: Some(1),
-            toughness: Some(1),
-            colors: vec![],
-        };
-        let _exalted_id = place_on_battlefield(&mut gs, exalted_def, PlayerId(0));
+        // An Exalted permanent also controlled by P0.
+        let exalted_span = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
+        let _exalted_id = triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span]);
         gs.combat.attackers = vec![attacker_id];
 
-        let triggers = collect_attack_triggers(&mut gs);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: attacker_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 1);
         use crate::types::stack::StackPayload;
@@ -1538,40 +1484,28 @@ mod tests {
 
     #[test]
     fn collect_attack_triggers_exalted_multiple_attackers_no_trigger() {
-        use crate::engine::triggered::collect_attack_triggers;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::GameEvent;
 
         let mut gs = two_player_state();
-        let make_def = |name: &str| CardDefinition {
-            name: name.into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
-            text_annotations: vec![],
-            power: Some(1),
-            toughness: Some(1),
-            colors: vec![],
-        };
-        let a = place_on_battlefield(&mut gs, make_def("A"), PlayerId(0));
-        let b = place_on_battlefield(&mut gs, make_def("B"), PlayerId(0));
-        gs.combat.attackers = vec![a, b]; // two attackers — not alone
+        let exalted_span_a = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
+        let exalted_span_b = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
+        let a = triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span_a]);
+        let b = triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span_b]);
+        gs.combat.attackers = vec![a, b]; // two attackers — ExactlyOneAttacker condition fails
 
-        let triggers = collect_attack_triggers(&mut gs);
+        // Fire Attacks event for each attacker; neither should trigger because condition fails.
+        let mut triggers =
+            collect_triggers_for_event(&mut gs, &GameEvent::Attacks { subject_id: a });
+        triggers.extend(collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks { subject_id: b },
+        ));
         assert!(triggers.is_empty());
     }
 
     #[test]
     fn collect_attack_triggers_two_exalted_permanents_give_two_triggers() {
-        use crate::engine::triggered::collect_attack_triggers;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::GameEvent;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = two_player_state();
@@ -1591,56 +1525,36 @@ mod tests {
             colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, plain_def, PlayerId(0));
-        let exalted_def = CardDefinition {
-            name: "Exalted".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
-            text_annotations: vec![],
-            power: Some(1),
-            toughness: Some(1),
-            colors: vec![],
-        };
-        place_on_battlefield(&mut gs, exalted_def.clone(), PlayerId(0));
-        place_on_battlefield(&mut gs, exalted_def, PlayerId(0));
+        let exalted_span_a = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
+        let exalted_span_b = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
+        triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span_a]);
+        triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span_b]);
         gs.combat.attackers = vec![attacker_id];
 
-        let triggers = collect_attack_triggers(&mut gs);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: attacker_id,
+            },
+        );
         assert_eq!(triggers.len(), 2); // one per Exalted permanent
     }
 
     #[test]
     fn collect_attack_triggers_melee_in_two_player_gives_one_boost() {
-        use crate::engine::triggered::collect_attack_triggers;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::GameEvent;
 
         let mut gs = two_player_state();
-        let melee_def = CardDefinition {
-            name: "Melee Creature".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Melee))],
-            text_annotations: vec![],
-            power: Some(2),
-            toughness: Some(2),
-            colors: vec![],
-        };
-        let attacker_id = place_on_battlefield(&mut gs, melee_def, PlayerId(0));
+        let melee_span = OracleSpan::Parsed(Ability::Triggered(melee_triggered_ability()));
+        let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![melee_span]);
         gs.combat.attackers = vec![attacker_id];
 
-        let triggers = collect_attack_triggers(&mut gs);
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: attacker_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 1);
         use crate::types::stack::StackPayload;
@@ -2079,32 +1993,16 @@ mod tests {
     #[test]
     fn battle_cry_boosts_other_attackers_not_self() {
         // CR 702.91b: each OTHER attacking creature gets +1/+0
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::GameEvent;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::effect::EffectTarget;
         use crate::types::stack::StackPayload;
 
         let mut gs = two_player_state();
 
-        let battle_cry_def = CardDefinition {
-            name: "Battle Cry Creature".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::BattleCry,
-            ))],
-            text_annotations: vec![],
-            power: Some(2),
-            toughness: Some(2),
-            colors: vec![],
-        };
-        let battle_cry_id = place_on_battlefield(&mut gs, battle_cry_def, PlayerId(0));
+        let battle_cry_span =
+            OracleSpan::Parsed(Ability::Triggered(battle_cry_triggered_ability()));
+        let battle_cry_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![battle_cry_span]);
 
         let ally_def = CardDefinition {
             name: "Ally".into(),
@@ -2125,10 +2023,17 @@ mod tests {
 
         gs.combat.attackers = vec![battle_cry_id, ally_id];
 
-        // Act
-        let triggers = collect_attack_triggers(&mut gs);
+        // Act: fire Attacks event for battle_cry_id (the source of Battle Cry)
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: battle_cry_id,
+            },
+        );
 
-        // Assert: exactly one trigger from battle_cry_id, targeting the ally (not itself)
+        // Assert: exactly one trigger from battle_cry_id, targeting the ally (not itself).
+        // Battle Cry uses AllOtherAttackers target mode, so the single StackObject has
+        // targets = [ally_id] (all attackers != source_id).
         let battle_cry_triggers: Vec<_> = triggers
             .iter()
             .filter(|t| {
@@ -2138,7 +2043,7 @@ mod tests {
         assert_eq!(
             battle_cry_triggers.len(),
             1,
-            "Battle Cry should generate exactly one boost trigger (for the ally)"
+            "Battle Cry should generate exactly one boost trigger (with all other attackers as targets)"
         );
 
         let trigger = &battle_cry_triggers[0];

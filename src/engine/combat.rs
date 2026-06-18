@@ -1,7 +1,7 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
-use crate::engine::triggered::{collect_attack_triggers, collect_block_triggers};
+use crate::engine::triggered::collect_block_triggers;
 use crate::types::ability::StaticAbility;
-use crate::types::{GameState, ObjectId, PlayerId, Step};
+use crate::types::{GameEvent, GameState, ObjectId, PlayerId, Step};
 use std::collections::HashMap;
 
 /// Declare attackers: tap them and record in CombatState (CR 508).
@@ -50,12 +50,21 @@ pub fn declare_attackers(
     state.combat.blocking_map = attacker_ids.iter().map(|&id| (id, vec![])).collect();
     state.combat.attackers_declared = true;
 
-    // Collect attack-triggered abilities (Exalted, Melee) and push onto stack.
-    let triggers = collect_attack_triggers(&mut state);
-    for t in triggers {
-        let id = t.id;
+    // CR 603.2: fire Attacks event for each attacker; collect triggered abilities.
+    let mut attack_triggers = Vec::new();
+    for &attacker_id in &state.combat.attackers.clone() {
+        let mut t = crate::engine::triggered::collect_triggers_for_event(
+            &mut state,
+            &GameEvent::Attacks {
+                subject_id: attacker_id,
+            },
+        );
+        attack_triggers.append(&mut t);
+    }
+    for trigger in attack_triggers {
+        let id = trigger.id;
         state.stack.push(id);
-        state.stack_objects.insert(id, t);
+        state.stack_objects.insert(id, trigger);
     }
     if !state.stack.is_empty() {
         state.consecutive_passes = 0;
@@ -622,8 +631,9 @@ mod tests {
 
     #[test]
     fn declare_attackers_exalted_puts_trigger_on_stack() {
+        use crate::engine::triggered::exalted_triggered_ability;
         use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::ability::Ability;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = make_combat_state();
@@ -652,7 +662,9 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Exalted))],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+                exalted_triggered_ability(),
+            ))],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),

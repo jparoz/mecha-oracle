@@ -143,11 +143,15 @@ pub(crate) fn execute_effect_steps(
                 unreachable!("AddMana in stack object");
             }
             EffectStep::BoostPermanentPT(delta) => {
-                if let Some(EffectTarget::Object { id }) = targets.first()
-                    && let Some(perm) = state.battlefield.get_mut(id)
-                {
-                    perm.pt_boost_until_eot.power += delta.power;
-                    perm.pt_boost_until_eot.toughness += delta.toughness;
+                // Iterate all targets so multi-target effects (e.g. Battle Cry via
+                // AllOtherAttackers) boost every creature, not just the first.
+                for target in targets {
+                    if let EffectTarget::Object { id } = target
+                        && let Some(perm) = state.battlefield.get_mut(id)
+                    {
+                        perm.pt_boost_until_eot.power += delta.power;
+                        perm.pt_boost_until_eot.toughness += delta.toughness;
+                    }
                 }
             }
             EffectStep::AddCounter { kind, count } => match targets.first() {
