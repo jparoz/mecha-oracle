@@ -445,6 +445,14 @@ fn match_keyword(kw: &str) -> OracleSpan {
         "prowess" => return parsed!(Prowess),
         "shroud" => return parsed!(Shroud),
         "hexproof" => return parsed!(Hexproof),
+        // CR 702.80 Wither
+        "wither" => return parsed!(Wither),
+        // CR 702.90 Infect
+        "infect" => return parsed!(Infect),
+        // CR 702.100 Evolve
+        "evolve" => return parsed!(Evolve),
+        // CR 702.149 Training
+        "training" => return parsed!(Training),
         _ => {}
     }
 
@@ -453,6 +461,13 @@ fn match_keyword(kw: &str) -> OracleSpan {
         && let Some(n) = parse_number_word(rest.trim())
     {
         return OracleSpan::Parsed(Ability::Static(StaticAbility::BushidoN(n)));
+    }
+
+    // CR 702.164 Toxic N
+    if let Some(rest) = s.strip_prefix("toxic ")
+        && let Ok(n) = rest.trim().parse::<u32>()
+    {
+        return OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(n)));
     }
 
     // Plain cycling (not type-cycling variants like mountaincycling).
@@ -588,8 +603,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "conspire" |
         // 702.79
         "persist" |
-        // 702.80
-        "wither" |
+        // 702.80 wither — promoted to StaticAbility::Wither
         // 702.81
         "retrace" |
         // 702.83
@@ -600,8 +614,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "rebound" |
         // 702.89
         "umbra armor" |
-        // 702.90
-        "infect" |
+        // 702.90 infect — promoted to StaticAbility::Infect
         // 702.91 battle cry — promoted to StaticAbility::BattleCry
         // 702.92
         "living weapon" |
@@ -613,8 +626,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "unleash" |
         // 702.99
         "cipher" |
-        // 702.100
-        "evolve" |
+        // 702.100 evolve — promoted to StaticAbility::Evolve
         // 702.101
         "extort" |
         // 702.102
@@ -663,8 +675,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "daybound" | "nightbound" |
         // 702.147 decayed — implemented
         // "decayed" |
-        // 702.149
-        "training" |
+        // 702.149 training — promoted to StaticAbility::Training
         // 702.150
         "compleated" |
         // 702.154
@@ -878,8 +889,7 @@ fn is_cr702_keyword(s: &str) -> bool {
     s.starts_with("prototype") ||
     // 702.162 More Than Meets the Eye [cost]
     s.starts_with("more than meets the eye") ||
-    // 702.164 Toxic N
-    s.starts_with("toxic ") ||
+    // 702.164 Toxic N — promoted to StaticAbility::ToxicN
     // 702.165 Backup N
     s.starts_with("backup ") ||
     // 702.167 Craft with [description] [cost]
@@ -2507,6 +2517,41 @@ mod tests {
             vec![OracleSpan::Parsed(Ability::Static(
                 StaticAbility::BushidoN(2)
             ))]
+        );
+    }
+
+    #[test]
+    fn parse_wither_keyword() {
+        let spans = parse_perm("Wither", "");
+        assert_eq!(spans, vec![parsed(StaticAbility::Wither)]);
+    }
+
+    #[test]
+    fn parse_infect_keyword() {
+        let spans = parse_perm("Infect", "");
+        assert_eq!(spans, vec![parsed(StaticAbility::Infect)]);
+    }
+
+    #[test]
+    fn parse_evolve_keyword() {
+        let spans = parse_perm("Evolve", "");
+        assert_eq!(spans, vec![parsed(StaticAbility::Evolve)]);
+    }
+
+    #[test]
+    fn parse_training_keyword() {
+        let spans = parse_perm("Training", "");
+        assert_eq!(spans, vec![parsed(StaticAbility::Training)]);
+    }
+
+    #[test]
+    fn parse_toxic_n_keyword() {
+        let spans = parse_perm("Toxic 3", "");
+        assert_eq!(
+            spans,
+            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(
+                3
+            )))]
         );
     }
 
