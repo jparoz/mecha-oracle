@@ -351,6 +351,13 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     })
                     .unwrap_or_default();
 
+                let spell_abilities: Vec<crate::types::OracleSpan> = state
+                    .objects
+                    .get(&card_id)
+                    .map(|o| o.definition.abilities.clone())
+                    .unwrap_or_default();
+                let steps = inject_source_flags(steps, &spell_abilities);
+
                 // CR 608.2b: if all targets are illegal at resolution, spell is countered
                 // by the rules (instant/sorcery still moves to graveyard, effects not applied).
                 if !targets.is_empty()

@@ -31,6 +31,11 @@ pub fn collect_etb_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec
             .collect()
     };
 
+    let source_abilities: Vec<crate::types::OracleSpan> = state
+        .objects
+        .get(&entering_id)
+        .map(|o| o.definition.abilities.clone())
+        .unwrap_or_default();
     entries
         .into_iter()
         .map(|(controller, effect, label)| {
@@ -39,7 +44,7 @@ pub fn collect_etb_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec
                 id,
                 payload: StackPayload::TriggeredAbility {
                     source_id: entering_id,
-                    effect,
+                    effect: crate::engine::stack::inject_source_flags(effect, &source_abilities),
                     label,
                 },
                 controller,
