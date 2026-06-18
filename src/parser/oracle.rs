@@ -927,7 +927,9 @@ fn is_cr702_keyword(s: &str) -> bool {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<OracleSpan> {
-    use crate::types::ability::{Ability, TriggerEvent, TriggeredAbility};
+    use crate::types::ability::{
+        Ability, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+    };
 
     // Strip "When " or "Whenever " prefix (case-insensitive).
     let lower = paragraph.to_lowercase();
@@ -979,8 +981,13 @@ fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<OracleSpan>
     match parse_ability_effect(effect_str) {
         Some(effect) => Some(OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
             trigger: TriggerEvent::EntersTheBattlefield {
-                subject_is_self: true,
+                subject: TriggerSubjectFilter {
+                    is_self: Some(true),
+                    ..Default::default()
+                },
             },
+            condition: None,
+            target_mode: TriggerTargetMode::None,
             effect,
         }))),
         None => Some(OracleSpan::ParsedUnimplemented(paragraph.to_string())),
@@ -2149,9 +2156,10 @@ mod tests {
         assert!(matches!(
             &result[0],
             OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
-                trigger: TriggerEvent::EntersTheBattlefield { subject_is_self: true },
+                trigger: TriggerEvent::EntersTheBattlefield { subject },
                 effect,
-            })) if effect == &vec![EffectStep::DrawCard(1)]
+                ..
+            })) if subject.is_self == Some(true) && effect == &vec![EffectStep::DrawCard(1)]
         ));
     }
 
@@ -2165,9 +2173,10 @@ mod tests {
         assert!(matches!(
             &result[0],
             OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
-                trigger: TriggerEvent::EntersTheBattlefield { subject_is_self: true },
+                trigger: TriggerEvent::EntersTheBattlefield { subject },
                 effect,
-            })) if effect == &vec![EffectStep::DrawCard(1)]
+                ..
+            })) if subject.is_self == Some(true) && effect == &vec![EffectStep::DrawCard(1)]
         ));
     }
 
@@ -2180,9 +2189,10 @@ mod tests {
         assert!(matches!(
             &result[0],
             OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
-                trigger: TriggerEvent::EntersTheBattlefield { subject_is_self: true },
+                trigger: TriggerEvent::EntersTheBattlefield { subject },
                 effect,
-            })) if effect == &vec![EffectStep::GainLife(3)]
+                ..
+            })) if subject.is_self == Some(true) && effect == &vec![EffectStep::GainLife(3)]
         ));
     }
 
@@ -2198,9 +2208,10 @@ mod tests {
         assert!(matches!(
             &result[0],
             OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
-                trigger: TriggerEvent::EntersTheBattlefield { subject_is_self: true },
+                trigger: TriggerEvent::EntersTheBattlefield { subject },
                 effect,
-            })) if effect == &vec![EffectStep::DrawCard(1)]
+                ..
+            })) if subject.is_self == Some(true) && effect == &vec![EffectStep::DrawCard(1)]
         ));
     }
 

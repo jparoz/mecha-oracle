@@ -843,7 +843,9 @@ mod tests {
 
     #[test]
     fn resolve_top_spell_collects_etb_triggers_onto_stack() {
-        use crate::types::ability::{TriggerEvent, TriggeredAbility};
+        use crate::types::ability::{
+            TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+        };
 
         let mut gs = make_state();
         put_in_library(&mut gs, PlayerId(0));
@@ -861,8 +863,13 @@ mod tests {
             oracle_text: "When this enters, draw a card.".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
-                    subject_is_self: true,
+                    subject: TriggerSubjectFilter {
+                        is_self: Some(true),
+                        ..Default::default()
+                    },
                 },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
                 effect: vec![EffectStep::DrawCard(1)],
             }))],
             text_annotations: vec![],

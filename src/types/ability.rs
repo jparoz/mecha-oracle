@@ -1,5 +1,6 @@
 use super::card::CardType;
 use super::effect::Effect;
+use super::ids::{ObjectId, PlayerId};
 use super::mana::{ManaColor, ManaCost};
 
 // CR 702.14
@@ -48,14 +49,157 @@ pub enum StaticAbility {
     Training,                       // CR 702.149
 }
 
+/// CR 109.5: who "you" refers to in a triggered ability — the controller of the source
+/// at the time the ability triggered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnOwner {
+    You,
+    Opponent,
+    Any,
+}
+
+/// Open-ended filter describing which objects satisfy a trigger event's subject requirement.
+/// All fields are optional; the empty filter (all defaults) matches any object.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TriggerSubjectFilter {
+    /// Some(true) = subject must be the source card itself; Some(false) = must not be self; None = any.
+    pub is_self: Option<bool>,
+    /// Restrict by controller relative to the trigger source's controller. None = any.
+    pub controller: Option<TurnOwner>,
+    /// Subject must have at least one of these card types. Empty = no constraint.
+    pub card_types: Vec<CardType>,
+    /// Subject must have all of these subtypes. Empty = no constraint.
+    pub subtypes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DamageTargetKind {
+    Player,
+    Creature,
+    Any,
+}
+
+/// Controls how targets are populated on the StackObject at trigger dispatch time.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum TriggerTargetMode {
+    /// No targets — effect resolves without targeting (DrawCard, GainLife, Payment).
+    #[default]
+    None,
+    /// Target the source permanent itself (Prowess, Training, Melee, Bushido).
+    Source,
+    /// Target the object that triggered the event — the subject (Exalted, Flanking).
+    Subject,
+    /// Target all current attackers except the source (Battle Cry).
+    AllOtherAttackers,
+}
+
+/// Closed enum of game-state predicates checked at trigger time.
+/// Each variant corresponds to a condition that cannot be expressed by TriggerSubjectFilter alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TriggerCondition {
+    ExactlyOneAttacker,                         // CR 702.83b Exalted
+    AttackingAlongsideGreaterPowerCreature,     // CR 702.149a Training
+    EnteringCreatureHasGreaterPower,            // CR 702.100b Evolve (power)
+    EnteringCreatureHasGreaterToughness,        // CR 702.100b Evolve (toughness)
+    EnteringCreatureHasGreaterPowerOrToughness, // CR 702.100b Evolve (either)
+    SubjectLacksKeyword(StaticAbility),         // CR 702.25b Flanking
+}
+
+/// Concrete runtime event data fired by the engine at each trigger point.
+/// Distinct from TriggerEvent (which carries filter patterns); GameEvent carries IDs and values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GameEvent {
+    EntersTheBattlefield {
+        subject_id: ObjectId,
+    },
+    Dies {
+        subject_id: ObjectId,
+    },
+    LeavesBattlefield {
+        subject_id: ObjectId,
+    },
+    Attacks {
+        subject_id: ObjectId,
+    },
+    Blocks {
+        subject_id: ObjectId,
+    },
+    BecomesBlocked {
+        subject_id: ObjectId,
+    },
+    DealsCombatDamage {
+        subject_id: ObjectId,
+        to: DamageTargetKind,
+    },
+    SpellCast {
+        caster: PlayerId,
+        spell_id: ObjectId,
+    },
+    // TODO: add PhaseStep { step: Step, active_player: PlayerId } once Step is accessible
+    // without creating a circular import (game_state imports ability::Cost).
+    DrawsCard {
+        player: PlayerId,
+    },
+    TargetedBy {
+        target_id: ObjectId,
+        acting_player: PlayerId,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TriggerEvent {
-    EntersTheBattlefield { subject_is_self: bool },
+    // Zone changes
+    EntersTheBattlefield {
+        subject: TriggerSubjectFilter,
+    },
+    Dies {
+        subject: TriggerSubjectFilter,
+    },
+    LeavesBattlefield {
+        subject: TriggerSubjectFilter,
+    },
+
+    // Combat
+    Attacks {
+        subject: TriggerSubjectFilter,
+    },
+    Blocks {
+        subject: TriggerSubjectFilter,
+    },
+    BecomesBlocked {
+        subject: TriggerSubjectFilter,
+    },
+    DealsCombatDamage {
+        subject: TriggerSubjectFilter,
+        to: DamageTargetKind,
+    },
+
+    // Cast
+    SpellCast {
+        caster: TurnOwner,
+        filter: SpellFilter,
+    },
+
+    // Phase/step
+    // TODO: add PhaseStep { step: Step, whose_turn: TurnOwner } once Step is accessible
+    // without creating a circular import (game_state imports ability::Cost).
+
+    // Draw
+    DrawsCard {
+        who: TurnOwner,
+    },
+
+    // Targeting (CR 702.21: Ward)
+    TargetedBy {
+        controller: TurnOwner,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TriggeredAbility {
     pub trigger: TriggerEvent,
+    pub condition: Option<TriggerCondition>,
+    pub target_mode: TriggerTargetMode,
     pub effect: Effect,
 }
 
@@ -516,5 +660,30 @@ mod tests {
         assert_eq!(StaticAbility::ToxicN(2).display_name(), "Toxic 2");
         assert_eq!(StaticAbility::Evolve.display_name(), "Evolve");
         assert_eq!(StaticAbility::Training.display_name(), "Training");
+    }
+
+    #[test]
+    fn trigger_subject_filter_is_self_matches_same_id() {
+        let filter = TriggerSubjectFilter {
+            is_self: Some(true),
+            ..Default::default()
+        };
+        // is_self matching is a structural check only — tested via subject_filter_matches in triggered.rs
+        assert_eq!(filter.is_self, Some(true));
+        assert!(filter.card_types.is_empty());
+    }
+
+    #[test]
+    fn trigger_subject_filter_default_is_empty() {
+        let filter = TriggerSubjectFilter::default();
+        assert!(filter.is_self.is_none());
+        assert!(filter.controller.is_none());
+        assert!(filter.card_types.is_empty());
+        assert!(filter.subtypes.is_empty());
+    }
+
+    #[test]
+    fn trigger_target_mode_default_is_none() {
+        assert_eq!(TriggerTargetMode::default(), TriggerTargetMode::None);
     }
 }

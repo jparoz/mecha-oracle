@@ -17,10 +17,9 @@ pub fn collect_etb_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec
             .filter_map(|span| match span {
                 OracleSpan::Parsed(Ability::Triggered(t))
                     if matches!(
-                        t.trigger,
-                        TriggerEvent::EntersTheBattlefield {
-                            subject_is_self: true
-                        }
+                        &t.trigger,
+                        TriggerEvent::EntersTheBattlefield { subject }
+                            if subject.is_self == Some(true)
                     ) =>
                 {
                     let label = format!("{}: ETB trigger", obj.definition.name);
@@ -586,6 +585,7 @@ mod tests {
     }
 
     fn etb_draw_def() -> CardDefinition {
+        use crate::types::ability::{TriggerSubjectFilter, TriggerTargetMode};
         CardDefinition {
             name: "Elvish Visionary".into(),
             mana_cost: Some(ManaCost { pips: vec![] }),
@@ -597,8 +597,13 @@ mod tests {
             oracle_text: "When this enters, draw a card.".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
-                    subject_is_self: true,
+                    subject: TriggerSubjectFilter {
+                        is_self: Some(true),
+                        ..Default::default()
+                    },
                 },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
                 effect: vec![EffectStep::DrawCard(1)],
             }))],
             text_annotations: vec![],
@@ -609,6 +614,7 @@ mod tests {
     }
 
     fn etb_gain_life_def() -> CardDefinition {
+        use crate::types::ability::{TriggerSubjectFilter, TriggerTargetMode};
         CardDefinition {
             name: "Pelakka Wurm".into(),
             mana_cost: Some(ManaCost { pips: vec![] }),
@@ -620,8 +626,13 @@ mod tests {
             oracle_text: "When this enters, you gain 7 life.".into(),
             abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
-                    subject_is_self: true,
+                    subject: TriggerSubjectFilter {
+                        is_self: Some(true),
+                        ..Default::default()
+                    },
                 },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
                 effect: vec![EffectStep::GainLife(7)],
             }))],
             text_annotations: vec![],
@@ -1531,14 +1542,24 @@ mod tests {
             abilities: vec![
                 OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                     trigger: TriggerEvent::EntersTheBattlefield {
-                        subject_is_self: true,
+                        subject: crate::types::ability::TriggerSubjectFilter {
+                            is_self: Some(true),
+                            ..Default::default()
+                        },
                     },
+                    condition: None,
+                    target_mode: crate::types::ability::TriggerTargetMode::None,
                     effect: vec![EffectStep::DrawCard(1)],
                 })),
                 OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
                     trigger: TriggerEvent::EntersTheBattlefield {
-                        subject_is_self: true,
+                        subject: crate::types::ability::TriggerSubjectFilter {
+                            is_self: Some(true),
+                            ..Default::default()
+                        },
                     },
+                    condition: None,
+                    target_mode: crate::types::ability::TriggerTargetMode::None,
                     effect: vec![EffectStep::GainLife(2)],
                 })),
             ],
