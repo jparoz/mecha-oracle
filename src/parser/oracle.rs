@@ -257,7 +257,10 @@ fn try_parse_effect_step(s: &str) -> Option<EffectStep> {
         && let Some(damage_str) = rest.strip_suffix(" damage")
         && let Ok(n) = damage_str.trim().parse::<u32>()
     {
-        return Some(EffectStep::DealDamage(n));
+        return Some(EffectStep::DealDamage(crate::types::effect::DamageStep {
+            amount: n,
+            ..Default::default()
+        }));
     }
     None
 }
@@ -2405,7 +2408,13 @@ mod tests {
             panic!("expected SpellEffect, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Any]);
-        assert_eq!(sa.steps, vec![EffectStep::DealDamage(3)]);
+        assert_eq!(
+            sa.steps,
+            vec![EffectStep::DealDamage(crate::types::effect::DamageStep {
+                amount: 3,
+                ..Default::default()
+            })]
+        );
     }
 
     #[test]

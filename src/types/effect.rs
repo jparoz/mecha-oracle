@@ -15,6 +15,18 @@ pub enum EffectTarget {
     StackObject { id: StackId },
 }
 
+/// CR 702.15b, 702.2b, 702.80a, 702.90b/c — source keyword flags snapshotted at
+/// stack-push time. All flags default to false; the parser always produces flag-less
+/// steps and inject_source_flags fills them in at runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DamageStep {
+    pub amount: u32,
+    pub lifelink: bool,
+    pub deathtouch: bool,
+    pub wither: bool,
+    pub infect: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EffectStep {
     AddMana(ManaPool),
@@ -27,7 +39,7 @@ pub enum EffectStep {
         kind: CounterKind,
         count: u32,
     },
-    DealDamage(u32),
+    DealDamage(DamageStep),
     CounterSpell, // CR 701.5: counter the target spell on the stack
     /// CR 118.12: inline cost-payment obligation raised during resolution.
     /// Pauses effect resolution; `pay_pending_cost`/`decline_pending_cost` resume it.

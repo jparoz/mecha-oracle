@@ -125,17 +125,17 @@ pub(crate) fn execute_effect_steps(
                 }
                 _ => {}
             },
-            // TODO CR 702.2c/702.15a: deathtouch and lifelink propagation not yet
-            // implemented; DealDamage carries no source-keyword context.
-            EffectStep::DealDamage(n) => match targets.first() {
+            // TODO CR 702.2b/702.15b/702.80a/702.90b/c: keyword flags checked at resolution.
+            // Flags are injected by inject_source_flags at stack-push time.
+            EffectStep::DealDamage(s) => match targets.first() {
                 Some(EffectTarget::Object { id }) => {
                     if let Some(perm) = state.battlefield.get_mut(id) {
-                        perm.damage_marked += n;
+                        perm.damage_marked += s.amount;
                     }
                 }
                 Some(EffectTarget::Player { id }) => {
                     if let Some(player) = state.get_player_mut(*id) {
-                        player.life -= *n as i32;
+                        player.life -= s.amount as i32;
                     }
                 }
                 _ => {}
@@ -929,7 +929,10 @@ mod tests {
             id: stack_id,
             payload: StackPayload::TriggeredAbility {
                 source_id: ObjectId(99),
-                effect: vec![EffectStep::DealDamage(3)],
+                effect: vec![EffectStep::DealDamage(crate::types::effect::DamageStep {
+                    amount: 3,
+                    ..Default::default()
+                })],
                 label: "test damage".into(),
             },
             controller: PlayerId(0),
@@ -956,7 +959,10 @@ mod tests {
             id: stack_id,
             payload: StackPayload::TriggeredAbility {
                 source_id: ObjectId(99),
-                effect: vec![EffectStep::DealDamage(3)],
+                effect: vec![EffectStep::DealDamage(crate::types::effect::DamageStep {
+                    amount: 3,
+                    ..Default::default()
+                })],
                 label: "test damage".into(),
             },
             controller: PlayerId(0),
@@ -1062,7 +1068,10 @@ mod tests {
             id: stack_id,
             payload: StackPayload::ActivatedAbility {
                 source_id: ObjectId(99),
-                effect: vec![EffectStep::DealDamage(3)],
+                effect: vec![EffectStep::DealDamage(crate::types::effect::DamageStep {
+                    amount: 3,
+                    ..Default::default()
+                })],
                 label: "test damage".into(),
             },
             controller: PlayerId(0),

@@ -439,7 +439,7 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
                 format!("Boost by {}/{}", delta.power, delta.toughness)
             }
             EffectStep::AddCounter { kind, count } => format!("Add {count} {kind:?} counter(s)"),
-            EffectStep::DealDamage(n) => format!("Deal {n} damage"),
+            EffectStep::DealDamage(s) => format!("Deal {} damage", s.amount),
             EffectStep::CounterSpell => "Counter target spell".to_string(),
             EffectStep::Payment { .. } => "Pay cost".to_string(),
             EffectStep::Unimplemented(s) => s.clone(),
@@ -2394,7 +2394,12 @@ mod tests {
             id: stack_id,
             payload: StackPayload::ActivatedAbility {
                 source_id,
-                effect: vec![EffectStep::DealDamage(2)],
+                effect: vec![EffectStep::DealDamage(
+                    mecha_oracle::types::effect::DamageStep {
+                        amount: 2,
+                        ..Default::default()
+                    },
+                )],
                 label: "Grizzly Bears: activated ability".into(),
             },
             controller: PlayerId(0),
@@ -2439,7 +2444,12 @@ mod tests {
             id: stack_id,
             payload: StackPayload::ActivatedAbility {
                 source_id,
-                effect: vec![EffectStep::DealDamage(2)],
+                effect: vec![EffectStep::DealDamage(
+                    mecha_oracle::types::effect::DamageStep {
+                        amount: 2,
+                        ..Default::default()
+                    },
+                )],
                 label: "Grizzly Bears: activated ability".into(),
             },
             controller: PlayerId(0),
@@ -2482,7 +2492,12 @@ mod tests {
             id: stack_id,
             payload: StackPayload::TriggeredAbility {
                 source_id,
-                effect: vec![EffectStep::DealDamage(1)],
+                effect: vec![EffectStep::DealDamage(
+                    mecha_oracle::types::effect::DamageStep {
+                        amount: 1,
+                        ..Default::default()
+                    },
+                )],
                 label: "Prowess".into(),
             },
             controller: PlayerId(0),

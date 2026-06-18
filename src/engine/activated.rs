@@ -604,7 +604,10 @@ mod tests {
             abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![TargetFilter::Creature],
-                effect: vec![EffectStep::DealDamage(1)],
+                effect: vec![EffectStep::DealDamage(crate::types::effect::DamageStep {
+                    amount: 1,
+                    ..Default::default()
+                })],
             }))],
             text_annotations: vec![],
             power: Some(1),
