@@ -497,13 +497,26 @@ fn match_keyword(kw: &str) -> OracleSpan {
     }
 
     // Ward {cost} (CR 702.21a) — mana cost form e.g. "Ward {2}"
+    // Ward is a triggered ability (CR 702.21a): emitted as TriggeredAbility { trigger: TargetedBy }.
     if let Some(_rest) = s.strip_prefix("ward ")
         && let Some(cost) = try_parse_mana_cost(kw["ward ".len()..].trim())
     {
-        use crate::types::ability::CostComponent;
-        return OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(vec![
-            CostComponent::Mana(cost),
-        ])));
+        use crate::types::ability::{
+            CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+        };
+        let components = vec![CostComponent::Mana(cost)];
+        return OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            trigger: TriggerEvent::TargetedBy {
+                controller: TurnOwner::Opponent,
+            },
+            condition: None,
+            target_mode: TriggerTargetMode::None,
+            effect: vec![EffectStep::Payment {
+                cost: components,
+                on_paid: vec![],
+                on_declined: vec![EffectStep::CounterSpell],
+            }],
+        }));
     }
 
     // Protection from [color] (CR 702.16)
@@ -1014,7 +1027,8 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
             let left = paragraph[..dash_pos].trim();
             let right = paragraph[dash_pos + EM_DASH.len_utf8()..].trim();
 
-            // Ward em-dash life cost: "Ward—Pay N life." (CR 702.21a)
+            // Ward—Pay N life. (CR 702.21a)
+            // Ward is a triggered ability (CR 702.21a): emitted as TriggeredAbility { trigger: TargetedBy }.
             let left_lower = left.to_lowercase();
             if left_lower == "ward" {
                 let right_lower = right.to_lowercase();
@@ -1024,10 +1038,22 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
                 if let Some(n_str) = life_str
                     && let Some(n) = parse_number_word(n_str.trim())
                 {
-                    use crate::types::ability::CostComponent;
-                    spans.push(OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
-                        vec![CostComponent::PayLife(n)],
-                    ))));
+                    use crate::types::ability::{
+                        CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+                    };
+                    let components = vec![CostComponent::PayLife(n)];
+                    spans.push(OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                        trigger: TriggerEvent::TargetedBy {
+                            controller: TurnOwner::Opponent,
+                        },
+                        condition: None,
+                        target_mode: TriggerTargetMode::None,
+                        effect: vec![EffectStep::Payment {
+                            cost: components,
+                            on_paid: vec![],
+                            on_declined: vec![EffectStep::CounterSpell],
+                        }],
+                    })));
                     continue;
                 }
                 // Unrecognized Ward—... form falls through to normal em-dash handling
@@ -2791,30 +2817,55 @@ mod tests {
     }
 
     #[test]
-    fn ward_mana_parses_as_ward_mana() {
-        use crate::types::ability::CostComponent;
+    fn ward_mana_parses_as_triggered_ability() {
+        // CR 702.21a: Ward is a triggered ability; emitted as TriggeredAbility { trigger: TargetedBy }.
+        use crate::types::ability::{
+            CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+        };
+        use crate::types::effect::EffectStep;
         use crate::types::mana::{ManaCost, ManaPip};
         let (spans, _) = parse_permanent("Ward {2}", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
-                vec![CostComponent::Mana(ManaCost {
-                    pips: vec![ManaPip::Generic(2)]
-                })]
-            )))]
+            vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::TargetedBy {
+                    controller: TurnOwner::Opponent,
+                },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
+                effect: vec![EffectStep::Payment {
+                    cost: vec![CostComponent::Mana(ManaCost {
+                        pips: vec![ManaPip::Generic(2)]
+                    })],
+                    on_paid: vec![],
+                    on_declined: vec![EffectStep::CounterSpell],
+                }],
+            }))]
         );
     }
 
     #[test]
-    fn ward_life_parses_from_em_dash_paragraph() {
-        // "Ward—Pay 2 life." is a whole paragraph; parse_permanent handles em-dash
-        use crate::types::ability::CostComponent;
+    fn ward_life_parses_as_triggered_ability() {
+        // CR 702.21a: Ward—Pay N life. is a triggered ability; emitted as TriggeredAbility { trigger: TargetedBy }.
+        use crate::types::ability::{
+            CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+        };
+        use crate::types::effect::EffectStep;
         let (spans, _) = parse_permanent("Ward\u{2014}Pay 2 life.", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
-                vec![CostComponent::PayLife(2)]
-            )))]
+            vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::TargetedBy {
+                    controller: TurnOwner::Opponent,
+                },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
+                effect: vec![EffectStep::Payment {
+                    cost: vec![CostComponent::PayLife(2)],
+                    on_paid: vec![],
+                    on_declined: vec![EffectStep::CounterSpell],
+                }],
+            }))]
         );
     }
 

@@ -213,12 +213,36 @@ pub fn cast_spell(
         state.stack_objects.insert(id, t);
     }
 
-    // CR 702.21a: if any declared target is an opponent's permanent with Ward, push a
-    // ward TriggeredAbility (with Payment effect) above the spell.
+    // CR 702.21a: if any declared target is an opponent-controlled battlefield permanent,
+    // fire TargetedBy event to collect Ward triggers (Ward is now a TriggeredAbility).
     let spell_targets = state.stack_objects[&stack_id].targets.clone();
-    let ward_triggers =
-        super::triggered::collect_ward_triggers(&mut state, stack_id, player_id, &spell_targets);
-    for wt in ward_triggers {
+    let mut ward_triggers = Vec::new();
+    for target in &spell_targets {
+        if let crate::types::effect::EffectTarget::Object { id: target_id } = target
+            && state
+                .objects
+                .get(target_id)
+                .map(|o| o.controller != player_id)
+                .unwrap_or(false)
+            && state.battlefield.contains_key(target_id)
+        {
+            let mut t = super::triggered::collect_triggers_for_event(
+                &mut state,
+                &crate::types::GameEvent::TargetedBy {
+                    target_id: *target_id,
+                    acting_player: player_id,
+                },
+            );
+            // Ward triggers must target the triggering spell so CounterSpell resolves correctly.
+            for trigger in &mut t {
+                trigger
+                    .targets
+                    .push(crate::types::effect::EffectTarget::StackObject { id: stack_id });
+            }
+            ward_triggers.append(&mut t);
+        }
+    }
+    for wt in ward_triggers.into_iter().rev() {
         let id = wt.id;
         state.stack.push(id);
         state.stack_objects.insert(id, wt);
@@ -843,6 +867,11 @@ mod tests {
     // --- CR 702.21a Ward trigger tests ---
 
     fn make_ward_creature_def(ward_cost: Vec<ManaPip>) -> CardDefinition {
+        use crate::types::ability::{
+            CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+        };
+        use crate::types::effect::EffectStep;
+        let cost = vec![CostComponent::Mana(ManaCost { pips: ward_cost })];
         CardDefinition {
             name: "Ward Bear".into(),
             mana_cost: None,
@@ -851,12 +880,19 @@ mod tests {
                 card_types: vec![CardType::Creature],
                 subtypes: vec![],
             },
-            oracle_text: format!("Ward {{{}}}", ward_cost.len()),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
-                vec![crate::types::ability::CostComponent::Mana(ManaCost {
-                    pips: ward_cost,
-                })],
-            )))],
+            oracle_text: "Ward {2}".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::TargetedBy {
+                    controller: TurnOwner::Opponent,
+                },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
+                effect: vec![EffectStep::Payment {
+                    cost,
+                    on_paid: vec![],
+                    on_declined: vec![EffectStep::CounterSpell],
+                }],
+            }))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1001,6 +1037,7 @@ mod tests {
 
         let mut gs = make_state();
         // Opponent has a creature with Ward—Pay 3 life.
+        use crate::types::ability::{TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner};
         let ward_def = CardDefinition {
             name: "Ward Life Bear".into(),
             mana_cost: None,
@@ -1009,10 +1046,19 @@ mod tests {
                 card_types: vec![CardType::Creature],
                 subtypes: vec![],
             },
-            oracle_text: "Ward—Pay 3 life.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
-                vec![CostComponent::PayLife(3)],
-            )))],
+            oracle_text: "Ward\u{2014}Pay 3 life.".into(),
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::TargetedBy {
+                    controller: TurnOwner::Opponent,
+                },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
+                effect: vec![EffectStep::Payment {
+                    cost: vec![CostComponent::PayLife(3)],
+                    on_paid: vec![],
+                    on_declined: vec![EffectStep::CounterSpell],
+                }],
+            }))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),

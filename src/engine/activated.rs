@@ -215,16 +215,36 @@ pub fn activate_ability(
         state.consecutive_passes = 0;
         state.priority_player = activating_player;
 
-        // CR 702.21a: if any declared target is an opponent's permanent with Ward, push a
-        // ward TriggeredAbility (with Payment effect) above the activated ability on the stack.
+        // CR 702.21a: if any declared target is an opponent-controlled battlefield permanent,
+        // fire TargetedBy event to collect Ward triggers (Ward is now a TriggeredAbility).
         let ability_targets = state.stack_objects[&stack_id].targets.clone();
-        let ward_triggers = super::triggered::collect_ward_triggers(
-            &mut state,
-            stack_id,
-            activating_player,
-            &ability_targets,
-        );
-        for wt in ward_triggers {
+        let mut ward_triggers = Vec::new();
+        for target in &ability_targets {
+            if let crate::types::effect::EffectTarget::Object { id: target_id } = target
+                && state
+                    .objects
+                    .get(target_id)
+                    .map(|o| o.controller != activating_player)
+                    .unwrap_or(false)
+                && state.battlefield.contains_key(target_id)
+            {
+                let mut t = super::triggered::collect_triggers_for_event(
+                    &mut state,
+                    &crate::types::GameEvent::TargetedBy {
+                        target_id: *target_id,
+                        acting_player: activating_player,
+                    },
+                );
+                // Ward triggers must target the triggering ability so CounterSpell resolves correctly.
+                for trigger in &mut t {
+                    trigger
+                        .targets
+                        .push(crate::types::effect::EffectTarget::StackObject { id: stack_id });
+                }
+                ward_triggers.append(&mut t);
+            }
+        }
+        for wt in ward_triggers.into_iter().rev() {
             let id = wt.id;
             state.stack.push(id);
             state.stack_objects.insert(id, wt);
@@ -636,7 +656,9 @@ mod tests {
     /// a TriggeredAbility with a Payment effect above the activated ability on the stack.
     #[test]
     fn ward_trigger_pushed_above_activated_ability_when_targeting_opponent_ward_creature() {
-        use crate::types::ability::{CostComponent, StaticAbility};
+        use crate::types::ability::{
+            CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+        };
         use crate::types::effect::{EffectStep, EffectTarget};
         use crate::types::mana::ManaCost;
         use crate::types::stack::StackPayload;
@@ -654,11 +676,20 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Ward {2}".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Ward(
-                vec![CostComponent::Mana(ManaCost {
-                    pips: vec![ManaPip::Generic(2)],
-                })],
-            )))],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::TargetedBy {
+                    controller: TurnOwner::Opponent,
+                },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
+                effect: vec![EffectStep::Payment {
+                    cost: vec![CostComponent::Mana(ManaCost {
+                        pips: vec![ManaPip::Generic(2)],
+                    })],
+                    on_paid: vec![],
+                    on_declined: vec![EffectStep::CounterSpell],
+                }],
+            }))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),

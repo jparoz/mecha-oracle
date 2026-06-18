@@ -36,7 +36,6 @@ pub enum StaticAbility {
     Prowess,
     Shroud,                         // CR 702.18
     Hexproof,                       // CR 702.11
-    Ward(Vec<CostComponent>),       // CR 702.21
     Landwalk(LandwalkKind),         // CR 702.14
     BattleCry,                      // CR 702.91
     Fear,                           // CR 702.36
@@ -257,15 +256,6 @@ impl StaticAbility {
             Self::Prowess => "Prowess".to_string(),
             Self::Shroud => "Shroud".to_string(),
             Self::Hexproof => "Hexproof".to_string(),
-            Self::Ward(components) => {
-                if let [CostComponent::Mana(c)] = components.as_slice() {
-                    format!("Ward {c}")
-                } else if let [CostComponent::PayLife(n)] = components.as_slice() {
-                    format!("Ward\u{2014}Pay {n} life")
-                } else {
-                    "Ward".to_string()
-                }
-            }
             Self::Landwalk(LandwalkKind::LandType(t)) => format!("{t}walk"),
             Self::Landwalk(LandwalkKind::Nonbasic) => "Nonbasic landwalk".to_string(),
             Self::BattleCry => "Battle cry".to_string(),
@@ -535,21 +525,10 @@ mod tests {
 
     #[test]
     fn new_static_ability_display_names() {
-        use crate::types::mana::{ManaColor, ManaCost, ManaPip};
+        use crate::types::mana::ManaColor;
         assert_eq!(StaticAbility::Fear.display_name(), "Fear");
         assert_eq!(StaticAbility::Intimidate.display_name(), "Intimidate");
         assert_eq!(StaticAbility::BattleCry.display_name(), "Battle cry");
-        assert_eq!(
-            StaticAbility::Ward(vec![CostComponent::Mana(ManaCost {
-                pips: vec![ManaPip::Generic(2)]
-            })])
-            .display_name(),
-            "Ward {2}"
-        );
-        assert_eq!(
-            StaticAbility::Ward(vec![CostComponent::PayLife(2)]).display_name(),
-            "Ward\u{2014}Pay 2 life"
-        );
         assert_eq!(
             StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())).display_name(),
             "Islandwalk"
