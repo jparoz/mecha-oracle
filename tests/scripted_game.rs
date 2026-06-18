@@ -292,7 +292,7 @@ fn drawing_from_empty_library_loses_the_game() {
     ]);
     // Alice's library is empty by default
 
-    let gs = draw_card(gs, PlayerId(0));
+    let gs = draw_card(gs, PlayerId(0), true);
 
     assert!(gs.is_game_over());
     assert_eq!(gs.winner(), Some(PlayerId(1)));

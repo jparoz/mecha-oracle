@@ -111,7 +111,7 @@ pub(crate) fn execute_effect_steps(
         match step {
             EffectStep::DrawCard(n) => {
                 for _ in 0..*n {
-                    state = draw_card(state, controller);
+                    state = draw_card(state, controller, true);
                 }
             }
             EffectStep::GainLife(n) => {
