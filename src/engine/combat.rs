@@ -389,6 +389,8 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
     let mut wither_to_objects: HashMap<ObjectId, u32> = HashMap::new();
     // Infect (CR 702.90a) / Toxic N (CR 702.164a): player damage as poison counters.
     let mut poison_to_players: HashMap<PlayerId, u32> = HashMap::new();
+    // CR 603.2: track (attacker_id, DamageTargetKind) for DealsCombatDamage event emission.
+    let mut combat_damage_events: Vec<(ObjectId, crate::types::DamageTargetKind)> = Vec::new();
 
     for &attacker_id in &attackers {
         if !deals_this_round(attacker_id) {
@@ -511,6 +513,14 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             *poison_to_players.entry(pid).or_insert(0) += n;
         }
 
+        // CR 603.2: record DealsCombatDamage events for later emission.
+        if attacked_player.is_some() {
+            combat_damage_events.push((attacker_id, crate::types::DamageTargetKind::Player));
+        }
+        if !blockers.is_empty() && atk_power > 0 {
+            combat_damage_events.push((attacker_id, crate::types::DamageTargetKind::Creature));
+        }
+
         // Blockers deal their damage back to the attacker.
         for &blocker_id in &blockers {
             if !deals_this_round(blocker_id) {
@@ -598,6 +608,31 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
         state.stack.push(id);
         state.stack_objects.insert(id, t);
     }
+
+    // CR 603.2: fire DealsCombatDamage events and collect triggered abilities.
+    // Fired after SBAs so that creatures destroyed by combat damage are already removed,
+    // matching the rule that triggered abilities wait for SBAs before going on the stack.
+    let mut combat_triggers = Vec::new();
+    for (attacker_id, target_kind) in combat_damage_events {
+        let mut t = crate::engine::triggered::collect_triggers_for_event(
+            &mut state,
+            &crate::types::GameEvent::DealsCombatDamage {
+                subject_id: attacker_id,
+                to: target_kind,
+            },
+        );
+        combat_triggers.append(&mut t);
+    }
+    for trigger in combat_triggers {
+        let id = trigger.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, trigger);
+    }
+    if !state.stack.is_empty() {
+        state.consecutive_passes = 0;
+        state.priority_player = state.active_player;
+    }
+
     state
 }
 
@@ -1829,6 +1864,138 @@ mod tests {
                 toughness: -1
             }),
             2
+        );
+    }
+
+    // --- DealsCombatDamage event emission tests ---
+
+    #[test]
+    fn unblocked_attacker_fires_deals_combat_damage_to_player_trigger() {
+        // CR 603.2: a DealsCombatDamage event is fired for each attacker that deals combat
+        // damage to a player. A creature with a DealsCombatDamage trigger should put a stack
+        // object on the stack.
+        use crate::engine::triggered::deals_combat_damage_to_player_triggered_ability;
+        use crate::types::OracleSpan;
+        use crate::types::ability::Ability;
+
+        let mut gs = make_combat_state();
+        // A 2/2 creature with "whenever this deals combat damage to a player, draw a card".
+        let ability_span = OracleSpan::Parsed(Ability::Triggered(
+            deals_combat_damage_to_player_triggered_ability(),
+        ));
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Coastal Piracy Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Whenever this deals combat damage to a player, draw a card.".into(),
+            abilities: vec![ability_span],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let attacker_id = add_creature(&mut gs, PlayerId(0), def);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        // A trigger should have been put on the stack.
+        assert_eq!(
+            gs.stack.len(),
+            1,
+            "DealsCombatDamage trigger should be on the stack"
+        );
+    }
+
+    #[test]
+    fn blocked_attacker_deals_no_player_damage_no_trigger() {
+        // A creature that is fully blocked (no trample) should not fire a
+        // DealsCombatDamage-to-player trigger.
+        use crate::engine::triggered::deals_combat_damage_to_player_triggered_ability;
+        use crate::types::OracleSpan;
+        use crate::types::ability::Ability;
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+
+        let mut gs = make_combat_state();
+        let ability_span = OracleSpan::Parsed(Ability::Triggered(
+            deals_combat_damage_to_player_triggered_ability(),
+        ));
+        let def = CardDefinition {
+            name: "Piracy Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![ability_span],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let attacker_id = add_creature(&mut gs, PlayerId(0), def);
+        let blocker_id = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        // No trigger should fire — attacker dealt no damage to a player.
+        assert_eq!(
+            gs.stack.len(),
+            0,
+            "No DealsCombatDamage trigger should fire when blocked with no trample"
+        );
+    }
+
+    #[test]
+    fn trample_attacker_fires_deals_combat_damage_to_player_trigger() {
+        // Trample attacker: excess goes to player, so trigger fires.
+        use crate::engine::triggered::deals_combat_damage_to_player_triggered_ability;
+        use crate::types::OracleSpan;
+        use crate::types::ability::Ability;
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+
+        let mut gs = make_combat_state();
+        let ability_span = OracleSpan::Parsed(Ability::Triggered(
+            deals_combat_damage_to_player_triggered_ability(),
+        ));
+        let def = CardDefinition {
+            name: "Trample Piracy".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![
+                OracleSpan::Parsed(Ability::Static(StaticAbility::Trample)),
+                ability_span,
+            ],
+            text_annotations: vec![],
+            power: Some(5),
+            toughness: Some(5),
+            colors: vec![],
+        };
+        let attacker_id = add_creature(&mut gs, PlayerId(0), def);
+        let blocker_id = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        assert!(
+            !gs.stack.is_empty(),
+            "Trample attacker should fire DealsCombatDamage trigger (excess to player)"
         );
     }
 }

@@ -2,8 +2,8 @@ use crate::types::ability::{Ability, StaticAbility, TriggerEvent, TriggeredAbili
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
 use crate::types::{
-    CounterKind, GameEvent, GameState, ObjectId, OracleSpan, PTDelta, PlayerId, TriggerCondition,
-    TriggerSubjectFilter, TriggerTargetMode, TurnOwner,
+    CounterKind, DamageTargetKind, GameEvent, GameState, ObjectId, OracleSpan, PTDelta, PlayerId,
+    TriggerCondition, TriggerSubjectFilter, TriggerTargetMode, TurnOwner,
 };
 
 /// Returns true if filter matches the given subject.
@@ -444,6 +444,36 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                     }
                     None
                 }
+                // CR 603.2: DealsCombatDamage event fires for each creature that deals combat
+                // damage. DamageTargetKind::Any on the trigger matches both Player and Creature.
+                (
+                    GameEvent::DealsCombatDamage {
+                        subject_id,
+                        to: event_to,
+                    },
+                    TriggerEvent::DealsCombatDamage {
+                        subject,
+                        to: trigger_to,
+                    },
+                ) => {
+                    // Check whether the target kind matches: trigger's Any matches all;
+                    // otherwise event and trigger to must be equal.
+                    let to_ok =
+                        matches!(trigger_to, DamageTargetKind::Any) || trigger_to == event_to;
+                    if !to_ok {
+                        continue;
+                    }
+                    if !subject_filter_matches(
+                        subject,
+                        Some(*subject_id),
+                        source_id,
+                        controller,
+                        state,
+                    ) {
+                        continue;
+                    }
+                    Some(*subject_id)
+                }
                 _ => continue,
             };
 
@@ -565,6 +595,26 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
     }
 
     result
+}
+
+/// CR 603.2 / CR 702.112a / CR 702.99a: "Whenever this creature deals combat damage to a player"
+/// — the canonical DealsCombatDamage-to-player triggered ability template used for Coastal Piracy,
+/// Renown, Cipher, etc. Fires when this creature (is_self = true) deals combat damage to a player.
+/// Effect: draw a card (placeholder — callers replace with their real effect).
+pub fn deals_combat_damage_to_player_triggered_ability() -> TriggeredAbility {
+    use crate::types::effect::EffectStep;
+    TriggeredAbility {
+        trigger: crate::types::ability::TriggerEvent::DealsCombatDamage {
+            subject: TriggerSubjectFilter {
+                is_self: Some(true),
+                ..Default::default()
+            },
+            to: crate::types::DamageTargetKind::Player,
+        },
+        condition: None,
+        target_mode: TriggerTargetMode::None,
+        effect: vec![EffectStep::DrawCard(1)],
+    }
 }
 
 /// CR 702.25a: Flanking — when a non-Flanking creature blocks this, it gets -1/-1.
