@@ -99,9 +99,9 @@ pub enum TriggerTargetMode {
 pub enum TriggerCondition {
     ExactlyOneAttacker,                         // CR 702.83b Exalted
     AttackingAlongsideGreaterPowerCreature,     // CR 702.149a Training
-    EnteringCreatureHasGreaterPower,            // CR 702.100b Evolve (power)
-    EnteringCreatureHasGreaterToughness,        // CR 702.100b Evolve (toughness)
-    EnteringCreatureHasGreaterPowerOrToughness, // CR 702.100b Evolve (either)
+    EnteringCreatureHasGreaterPower,            // CR 702.100a Evolve (power)
+    EnteringCreatureHasGreaterToughness,        // CR 702.100a Evolve (toughness)
+    EnteringCreatureHasGreaterPowerOrToughness, // CR 702.100a Evolve (either)
     SubjectLacksKeyword(StaticAbility),         // CR 702.25b Flanking
 }
 
