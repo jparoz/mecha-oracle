@@ -66,6 +66,12 @@ pub fn play_land(
         state.stack.push(id);
         state.stack_objects.insert(id, trigger);
     }
+    let evolve_triggers = crate::engine::triggered::collect_evolve_triggers(&mut state, object_id);
+    for t in evolve_triggers {
+        let id = t.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, t);
+    }
 
     Ok(check_and_apply_sbas(state))
 }

@@ -324,7 +324,130 @@ pub fn collect_attack_triggers(state: &mut GameState) -> Vec<StackObject> {
         }
     }
 
+    // Training (CR 702.149a): +1/+1 counter when attacking alongside a creature with greater power.
+    for &attacker_id in &attackers {
+        let has_training = state
+            .battlefield
+            .get(&attacker_id)
+            .map(|p| p.has_keyword(StaticAbility::Training))
+            .unwrap_or(false);
+        if !has_training {
+            continue;
+        }
+        let my_power = state
+            .battlefield
+            .get(&attacker_id)
+            .and_then(|p| p.effective_power())
+            .unwrap_or(0);
+        let has_greater_power_ally = attackers
+            .iter()
+            .filter(|&&id| id != attacker_id)
+            .any(|&id| {
+                state
+                    .battlefield
+                    .get(&id)
+                    .and_then(|p| p.effective_power())
+                    .map(|p| p > my_power)
+                    .unwrap_or(false)
+            });
+        if !has_greater_power_ally {
+            continue;
+        }
+        let sid = state.alloc_stack_id();
+        use crate::types::CounterKind;
+        use crate::types::effect::EffectTarget;
+        result.push(StackObject {
+            id: sid,
+            payload: StackPayload::TriggeredAbility {
+                source_id: attacker_id,
+                effect: vec![EffectStep::AddCounter {
+                    kind: CounterKind::PtModifier {
+                        power: 1,
+                        toughness: 1,
+                    },
+                    count: 1,
+                }],
+                label: "Training".into(),
+            },
+            controller: attacking_player,
+            targets: vec![EffectTarget::Object { id: attacker_id }],
+            x_value: None,
+        });
+    }
+
     result
+}
+
+/// CR 702.100b: Collect Evolve triggers for battlefield permanents when `entering_id` ETBs.
+pub fn collect_evolve_triggers(state: &mut GameState, entering_id: ObjectId) -> Vec<StackObject> {
+    use crate::types::CounterKind;
+    use crate::types::effect::EffectTarget;
+
+    let entering_power = state
+        .battlefield
+        .get(&entering_id)
+        .and_then(|p| p.effective_power());
+    let entering_toughness = state
+        .battlefield
+        .get(&entering_id)
+        .and_then(|p| p.effective_toughness());
+
+    let Some(controller) = state.objects.get(&entering_id).map(|o| o.controller) else {
+        return vec![];
+    };
+
+    let evolve_ids: Vec<ObjectId> = state
+        .battlefield
+        .keys()
+        .filter(|&&id| {
+            id != entering_id
+                && state
+                    .objects
+                    .get(&id)
+                    .map(|o| o.controller == controller)
+                    .unwrap_or(false)
+                && state
+                    .battlefield
+                    .get(&id)
+                    .map(|p| p.has_keyword(StaticAbility::Evolve))
+                    .unwrap_or(false)
+        })
+        .copied()
+        .collect();
+
+    evolve_ids
+        .into_iter()
+        .filter_map(|evolve_id| {
+            let perm = state.battlefield.get(&evolve_id)?;
+            let my_power = perm.effective_power().unwrap_or(0);
+            let my_toughness = perm.effective_toughness().unwrap_or(0);
+            let qualifies = entering_power.map(|ep| ep > my_power).unwrap_or(false)
+                || entering_toughness
+                    .map(|et| et > my_toughness)
+                    .unwrap_or(false);
+            if !qualifies {
+                return None;
+            }
+            let sid = state.alloc_stack_id();
+            Some(StackObject {
+                id: sid,
+                payload: StackPayload::TriggeredAbility {
+                    source_id: evolve_id,
+                    effect: vec![EffectStep::AddCounter {
+                        kind: CounterKind::PtModifier {
+                            power: 1,
+                            toughness: 1,
+                        },
+                        count: 1,
+                    }],
+                    label: "Evolve".into(),
+                },
+                controller,
+                targets: vec![EffectTarget::Object { id: evolve_id }],
+                x_value: None,
+            })
+        })
+        .collect()
 }
 
 /// CR 702.21a: Collect ward triggered abilities for any declared targets that are
@@ -501,6 +624,287 @@ mod tests {
             toughness: Some(7),
             colors: vec![],
         }
+    }
+
+    fn keyword_attacker(
+        state: &mut GameState,
+        owner: PlayerId,
+        power: i32,
+        toughness: i32,
+        keywords: Vec<StaticAbility>,
+    ) -> ObjectId {
+        use crate::types::OracleSpan;
+        use crate::types::ability::Ability;
+        use crate::types::card::{CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Test Attacker".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: keywords
+                .into_iter()
+                .map(|k| OracleSpan::Parsed(Ability::Static(k)))
+                .collect(),
+            text_annotations: vec![],
+            power: Some(power),
+            toughness: Some(toughness),
+            colors: vec![],
+        };
+        place_on_battlefield(state, def, owner)
+    }
+
+    fn enter_creature_on_battlefield(
+        state: &mut GameState,
+        owner: PlayerId,
+        power: i32,
+        toughness: i32,
+        keywords: Vec<StaticAbility>,
+    ) -> ObjectId {
+        use crate::types::OracleSpan;
+        use crate::types::ability::Ability;
+        use crate::types::card::{CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Test".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: keywords
+                .into_iter()
+                .map(|k| OracleSpan::Parsed(Ability::Static(k)))
+                .collect(),
+            text_annotations: vec![],
+            power: Some(power),
+            toughness: Some(toughness),
+            colors: vec![],
+        };
+        let id = state.alloc_id();
+        let obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.controller_since_turn = 0;
+        state.battlefield.insert(id, perm);
+        state.add_object(obj);
+        id
+    }
+
+    #[test]
+    fn training_triggers_when_attacking_with_higher_power_ally() {
+        // CR 702.149a: Training fires when attacking alongside a creature with greater power.
+        use crate::types::ability::StaticAbility;
+        use crate::types::stack::StackPayload;
+        let mut gs = two_player_state();
+        let training_id =
+            keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Training]);
+        let ally_id = keyword_attacker(&mut gs, PlayerId(0), 3, 3, vec![]);
+        gs.combat.attackers = vec![training_id, ally_id];
+
+        let triggers = collect_attack_triggers(&mut gs);
+
+        assert_eq!(
+            triggers.iter().filter(|t| {
+                matches!(&t.payload, StackPayload::TriggeredAbility { label, .. } if label == "Training")
+            }).count(),
+            1,
+            "Should have exactly one Training trigger"
+        );
+    }
+
+    #[test]
+    fn training_does_not_trigger_when_no_ally_with_greater_power() {
+        // CR 702.149a: Training requires the ally to have GREATER power; equal doesn't count.
+        use crate::types::ability::StaticAbility;
+        use crate::types::stack::StackPayload;
+        let mut gs = two_player_state();
+        let training_id =
+            keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Training]);
+        let ally_id = keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![]);
+        gs.combat.attackers = vec![training_id, ally_id];
+
+        let triggers = collect_attack_triggers(&mut gs);
+
+        assert_eq!(
+            triggers.iter().filter(|t| {
+                matches!(&t.payload, StackPayload::TriggeredAbility { label, .. } if label == "Training")
+            }).count(),
+            0,
+            "Training should not trigger when ally power equals training creature's power"
+        );
+    }
+
+    #[test]
+    fn training_does_not_trigger_when_attacking_alone() {
+        // CR 702.149a: No trigger if attacking alone (no other creatures attacking).
+        use crate::types::ability::StaticAbility;
+        use crate::types::stack::StackPayload;
+        let mut gs = two_player_state();
+        let training_id =
+            keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Training]);
+        gs.combat.attackers = vec![training_id];
+
+        let triggers = collect_attack_triggers(&mut gs);
+
+        let training_count = triggers.iter().filter(|t| {
+            matches!(&t.payload, StackPayload::TriggeredAbility { label, .. } if label == "Training")
+        }).count();
+        assert_eq!(
+            training_count, 0,
+            "Training should not trigger when attacking alone"
+        );
+    }
+
+    #[test]
+    fn training_trigger_targets_training_creature_itself() {
+        // The +1/+1 counter should go on the Training creature, not the ally.
+        use crate::types::CounterKind;
+        use crate::types::ability::StaticAbility;
+        use crate::types::effect::EffectTarget;
+        use crate::types::stack::StackPayload;
+        let mut gs = two_player_state();
+        let training_id =
+            keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Training]);
+        let ally_id = keyword_attacker(&mut gs, PlayerId(0), 3, 3, vec![]);
+        gs.combat.attackers = vec![training_id, ally_id];
+
+        let triggers = collect_attack_triggers(&mut gs);
+
+        let training_trigger = triggers.iter().find(|t| {
+            matches!(&t.payload, StackPayload::TriggeredAbility { label, .. } if label == "Training")
+        }).expect("should have a Training trigger");
+
+        // Check the trigger targets the Training creature itself.
+        assert!(
+            training_trigger
+                .targets
+                .iter()
+                .any(|t| matches!(t, EffectTarget::Object { id } if *id == training_id)),
+            "Training trigger should target the Training creature"
+        );
+
+        // Check the effect is AddCounter +1/+1 count 1.
+        if let StackPayload::TriggeredAbility { effect, .. } = &training_trigger.payload {
+            assert!(effect.iter().any(|step| matches!(
+                step,
+                EffectStep::AddCounter {
+                    kind: CounterKind::PtModifier {
+                        power: 1,
+                        toughness: 1
+                    },
+                    count: 1
+                }
+            )));
+        }
+    }
+
+    #[test]
+    fn evolve_triggers_when_creature_with_greater_power_enters() {
+        // CR 702.100b: Evolve fires if entering creature has greater power.
+        use crate::types::CounterKind;
+        use crate::types::ability::StaticAbility;
+        use crate::types::effect::EffectTarget;
+        use crate::types::stack::StackPayload;
+        let mut gs = two_player_state();
+        let evolve_id =
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+        let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 3, 2, vec![]);
+
+        let triggers = collect_evolve_triggers(&mut gs, entering_id);
+
+        assert_eq!(triggers.len(), 1);
+        let t = &triggers[0];
+        assert!(
+            t.targets
+                .iter()
+                .any(|tgt| matches!(tgt, EffectTarget::Object { id } if *id == evolve_id))
+        );
+        if let StackPayload::TriggeredAbility { effect, .. } = &t.payload {
+            assert!(effect.iter().any(|step| matches!(
+                step,
+                EffectStep::AddCounter {
+                    kind: CounterKind::PtModifier {
+                        power: 1,
+                        toughness: 1
+                    },
+                    count: 1
+                }
+            )));
+        }
+    }
+
+    #[test]
+    fn evolve_triggers_when_creature_with_greater_toughness_enters() {
+        // CR 702.100b: Also triggers on greater toughness.
+        use crate::types::ability::StaticAbility;
+        use crate::types::effect::EffectTarget;
+        let mut gs = two_player_state();
+        let evolve_id =
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+        let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 3, vec![]);
+
+        let triggers = collect_evolve_triggers(&mut gs, entering_id);
+
+        assert_eq!(triggers.len(), 1);
+        assert!(
+            triggers[0]
+                .targets
+                .iter()
+                .any(|tgt| matches!(tgt, EffectTarget::Object { id } if *id == evolve_id))
+        );
+    }
+
+    #[test]
+    fn evolve_does_not_trigger_when_equal_power_and_toughness_enters() {
+        // CR 702.100b: "greater power or greater toughness" — equal doesn't qualify.
+        use crate::types::ability::StaticAbility;
+        let mut gs = two_player_state();
+        let _evolve_id =
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+        let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![]);
+
+        let triggers = collect_evolve_triggers(&mut gs, entering_id);
+
+        assert_eq!(triggers.len(), 0);
+    }
+
+    #[test]
+    fn evolve_does_not_trigger_for_opponent_creature_etb() {
+        // CR 702.100b: Only triggers on creatures entering under YOUR control.
+        use crate::types::ability::StaticAbility;
+        let mut gs = two_player_state();
+        let _evolve_id =
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+        let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(1), 5, 5, vec![]);
+
+        let triggers = collect_evolve_triggers(&mut gs, entering_id);
+
+        assert_eq!(
+            triggers.len(),
+            0,
+            "Opponent's creature entering should not trigger your Evolve"
+        );
+    }
+
+    #[test]
+    fn evolve_does_not_trigger_on_itself() {
+        // An Evolve creature ETBing should not trigger its own Evolve.
+        use crate::types::ability::StaticAbility;
+        let mut gs = two_player_state();
+        let evolve_id =
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 5, 5, vec![StaticAbility::Evolve]);
+
+        let triggers = collect_evolve_triggers(&mut gs, evolve_id);
+
+        assert_eq!(
+            triggers.len(),
+            0,
+            "Evolve creature should not trigger on its own ETB"
+        );
     }
 
     #[test]

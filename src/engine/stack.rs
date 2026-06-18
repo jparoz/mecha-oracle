@@ -252,6 +252,15 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     state.stack.push(id);
                     state.stack_objects.insert(id, trigger);
                 }
+                // CR 702.100b: collect Evolve triggers from other creatures under the same
+                // controller when the new permanent enters the battlefield.
+                let evolve_triggers =
+                    crate::engine::triggered::collect_evolve_triggers(&mut state, card_id);
+                for t in evolve_triggers {
+                    let id = t.id;
+                    state.stack.push(id);
+                    state.stack_objects.insert(id, t);
+                }
             } else {
                 // CR 608.2b: instant/sorcery — execute effects, then move to graveyard.
                 let steps: Vec<EffectStep> = state
