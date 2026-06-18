@@ -68,15 +68,22 @@ impl PermanentState {
         })
     }
 
-    /// Returns the Toxic parameter N if this permanent has Toxic N, otherwise None.
+    /// Returns the total Toxic value if this permanent has any Toxic N abilities, otherwise None.
+    // CR 702.164b: total toxic value is the sum of all N values of toxic abilities.
     pub fn toxic_n(&self) -> Option<u32> {
-        self.definition.abilities.iter().find_map(|span| {
-            if let OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(n))) = span {
-                Some(*n)
-            } else {
-                None
-            }
-        })
+        let total: u32 = self
+            .definition
+            .abilities
+            .iter()
+            .filter_map(|span| {
+                if let OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(n))) = span {
+                    Some(*n)
+                } else {
+                    None
+                }
+            })
+            .sum();
+        if total > 0 { Some(total) } else { None }
     }
 
     pub fn is_creature(&self) -> bool {
@@ -390,5 +397,18 @@ mod tests {
     fn toxic_n_returns_none_for_vanilla_creature() {
         let perm = grizzly_bears_perm();
         assert_eq!(perm.toxic_n(), None);
+    }
+
+    #[test]
+    fn toxic_n_sums_multiple_toxic_abilities() {
+        // CR 702.164b: total toxic value is the sum of all N values.
+        use crate::types::{Ability, OracleSpan, ability::StaticAbility};
+        let mut def = test_db().get("Grizzly Bears").unwrap().clone();
+        def.abilities = vec![
+            OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(2))),
+            OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(1))),
+        ];
+        let perm = PermanentState::new(&def);
+        assert_eq!(perm.toxic_n(), Some(3));
     }
 }
