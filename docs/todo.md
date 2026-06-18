@@ -33,17 +33,10 @@ Keywords below are parsed and shown cyan+underlined in the UI but have no rules 
 
 ## 🔢 Counter system block
 
-Add `counters: HashMap<CounterKind, u32>` to `PermanentState` and `Player`
-(`CounterKind` = `PlusOnePlusOne`, `MinusOneMinusOne`, `Poison`, …). Unblocks:
+*(Counter infrastructure and Wither/Infect/Toxic N/Evolve/Training implemented June 2026.)*
 
-- **Wither** (702.80): damage dealt as -1/-1 counters instead of marked damage.
-- **Infect** (702.90): damage to creatures as -1/-1 counters; damage to players as poison
-  counters.
-- **Toxic N** (702.164): deals N additional poison counters on combat damage to players.
-- **Evolve** (702.100): put +1/+1 counter when a creature with greater power or toughness
-  ETBs under your control. (ETB trigger framework already exists.)
-- **Training** (702.149): put +1/+1 counter when attacking alongside a creature with
-  greater power. (Attack trigger framework already exists.)
+Still blocked on graveyard zone-change hook:
+
 - **Persist** (702.79): return from graveyard with -1/-1 counter if no -1/-1 counter.
   (Also needs graveyard zone-change hook — see next section.)
 - **Undying** (702.93): return from graveyard with +1/+1 counter if no +1/+1 counter.
