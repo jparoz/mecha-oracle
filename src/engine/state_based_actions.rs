@@ -97,7 +97,7 @@ fn apply_sbas(
                 state.game_over = true;
             }
             Sba::MoveToGraveyard(id) => {
-                // CR 603.2: collect Dies triggers before the zone change so that
+                // CR 603.10a: collect Dies triggers before the zone change so that
                 // sources on the battlefield (including the dying creature itself,
                 // per LKI) are still visible to the trigger collector.
                 let mut t = crate::engine::triggered::collect_triggers_for_event(
@@ -579,5 +579,62 @@ mod tests {
             "creature should be dead"
         );
         assert_eq!(triggers.len(), 1, "should have one Dies trigger");
+    }
+
+    #[test]
+    fn check_and_apply_sbas_no_dies_trigger_when_creature_survives() {
+        use crate::types::OracleSpan;
+        use crate::types::ability::{
+            Ability, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+        };
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::EffectStep;
+
+        let mut state = make_state();
+
+        // A permanent with "when this dies, draw a card"
+        let survivor_def = CardDefinition {
+            name: "Survivor".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::Dies {
+                    subject: TriggerSubjectFilter {
+                        is_self: Some(true),
+                        ..Default::default()
+                    },
+                },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
+                effect: vec![EffectStep::DrawCard(1)],
+            }))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let survivor_id = add_creature_to_battlefield(&mut state, PlayerId(0), survivor_def);
+        // Mark it as having 1 damage (below lethal for a 2/2, so it survives)
+        state
+            .battlefield
+            .get_mut(&survivor_id)
+            .unwrap()
+            .damage_marked = 1;
+
+        let (new_state, triggers) = check_and_apply_sbas(state);
+
+        assert!(
+            new_state.battlefield.contains_key(&survivor_id),
+            "creature should survive"
+        );
+        assert!(
+            triggers.is_empty(),
+            "no Dies trigger should fire when creature survives"
+        );
     }
 }
