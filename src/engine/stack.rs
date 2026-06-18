@@ -125,21 +125,52 @@ pub(crate) fn execute_effect_steps(
                 }
                 _ => {}
             },
-            // TODO CR 702.2b/702.15b/702.80a/702.90b/c: keyword flags checked at resolution.
-            // Flags are injected by inject_source_flags at stack-push time.
-            EffectStep::DealDamage(s) => match targets.first() {
-                Some(EffectTarget::Object { id }) => {
-                    if let Some(perm) = state.battlefield.get_mut(id) {
-                        perm.damage_marked += s.amount;
+            // CR 702.15b, 702.2b, 702.80a/b, 702.90b/c
+            EffectStep::DealDamage(s) => {
+                let amount = s.amount;
+                match targets.first() {
+                    Some(EffectTarget::Object { id }) => {
+                        if let Some(perm) = state.battlefield.get_mut(id) {
+                            if s.wither || s.infect {
+                                // CR 702.80a / 702.90c: damage to a creature from a wither/infect
+                                // source becomes -1/-1 counters instead of marked damage.
+                                perm.add_counters(
+                                    crate::types::CounterKind::PtModifier {
+                                        power: -1,
+                                        toughness: -1,
+                                    },
+                                    amount,
+                                );
+                            } else {
+                                perm.damage_marked += amount;
+                            }
+                            if s.deathtouch && amount > 0 {
+                                // CR 702.2b: any nonzero damage from a deathtouch source is lethal.
+                                perm.damaged_by_deathtouch = true;
+                            }
+                        }
+                    }
+                    Some(EffectTarget::Player { id }) => {
+                        if let Some(player) = state.get_player_mut(*id) {
+                            if s.infect {
+                                // CR 702.90b: infect damage to a player is poison counters, not life loss.
+                                player.add_counters(crate::types::CounterKind::Poison, amount);
+                            } else {
+                                // CR 702.80a: wither only converts damage to -1/-1 counters on creatures;
+                                // wither damage to a player is still regular life loss.
+                                player.life -= amount as i32;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if s.lifelink && amount > 0 {
+                    // CR 702.15b: source's controller gains life equal to damage dealt.
+                    if let Some(player) = state.get_player_mut(controller) {
+                        player.life += amount as i32;
                     }
                 }
-                Some(EffectTarget::Player { id }) => {
-                    if let Some(player) = state.get_player_mut(*id) {
-                        player.life -= s.amount as i32;
-                    }
-                }
-                _ => {}
-            },
+            }
             // CR 701.5: move the targeted stack object to the graveyard (if a spell)
             // or simply remove it (if an ability). counter_spell_on_stack handles both.
             EffectStep::CounterSpell => {
@@ -1323,6 +1354,324 @@ mod tests {
             3
         );
         assert!(gs.stack.is_empty());
+    }
+
+    // ── DamageStep keyword resolution tests ─────────────────────────────────────
+
+    fn make_creature_on_battlefield(
+        gs: &mut GameState,
+        owner: PlayerId,
+        power: i32,
+        toughness: i32,
+    ) -> ObjectId {
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Test Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![],
+            text_annotations: vec![],
+            power: Some(power),
+            toughness: Some(toughness),
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        gs.battlefield
+            .insert(id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+        id
+    }
+
+    fn push_damage_trigger(
+        gs: &mut GameState,
+        target: crate::types::effect::EffectTarget,
+        step: crate::types::effect::DamageStep,
+    ) {
+        use crate::types::effect::EffectStep;
+        let stack_id = gs.alloc_stack_id();
+        let obj = StackObject {
+            id: stack_id,
+            payload: StackPayload::TriggeredAbility {
+                source_id: ObjectId(99),
+                effect: vec![EffectStep::DealDamage(step)],
+                label: "test damage".into(),
+            },
+            controller: PlayerId(0),
+            targets: vec![target],
+            x_value: None,
+        };
+        gs.stack.push(stack_id);
+        gs.stack_objects.insert(stack_id, obj);
+    }
+
+    #[test]
+    fn lifelink_damage_to_creature_gains_life_for_controller() {
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let creature_id = make_creature_on_battlefield(&mut gs, PlayerId(1), 2, 4);
+        let before_life = gs.get_player(PlayerId(0)).unwrap().life;
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Object { id: creature_id },
+            DamageStep {
+                amount: 3,
+                lifelink: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, before_life + 3);
+        assert_eq!(gs.battlefield[&creature_id].damage_marked, 3);
+    }
+
+    #[test]
+    fn lifelink_damage_to_player_gains_life_for_controller() {
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let before_controller_life = gs.get_player(PlayerId(0)).unwrap().life;
+        let before_target_life = gs.get_player(PlayerId(1)).unwrap().life;
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Player { id: PlayerId(1) },
+            DamageStep {
+                amount: 3,
+                lifelink: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        assert_eq!(
+            gs.get_player(PlayerId(0)).unwrap().life,
+            before_controller_life + 3
+        );
+        assert_eq!(
+            gs.get_player(PlayerId(1)).unwrap().life,
+            before_target_life - 3
+        );
+    }
+
+    #[test]
+    fn lifelink_zero_damage_gains_no_life() {
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let before_life = gs.get_player(PlayerId(0)).unwrap().life;
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Player { id: PlayerId(1) },
+            DamageStep {
+                amount: 0,
+                lifelink: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        assert_eq!(gs.get_player(PlayerId(0)).unwrap().life, before_life);
+    }
+
+    #[test]
+    fn deathtouch_nonzero_sets_damaged_by_deathtouch_and_sba_destroys() {
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        // 1/1 creature: 1 deathtouch damage → SBA destroys it.
+        let creature_id = make_creature_on_battlefield(&mut gs, PlayerId(1), 1, 1);
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Object { id: creature_id },
+            DamageStep {
+                amount: 1,
+                deathtouch: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        // SBA ran inside resolve_top — creature removed from battlefield.
+        assert!(!gs.battlefield.contains_key(&creature_id));
+    }
+
+    #[test]
+    fn deathtouch_zero_damage_does_not_set_flag() {
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let creature_id = make_creature_on_battlefield(&mut gs, PlayerId(1), 2, 2);
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Object { id: creature_id },
+            DamageStep {
+                amount: 0,
+                deathtouch: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        assert!(!gs.battlefield[&creature_id].damaged_by_deathtouch);
+        assert!(gs.battlefield.contains_key(&creature_id));
+    }
+
+    #[test]
+    fn wither_damage_to_creature_places_minus_one_counters() {
+        use crate::types::CounterKind;
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let creature_id = make_creature_on_battlefield(&mut gs, PlayerId(1), 3, 3);
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Object { id: creature_id },
+            DamageStep {
+                amount: 2,
+                wither: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        let key = CounterKind::PtModifier {
+            power: -1,
+            toughness: -1,
+        };
+        assert_eq!(gs.battlefield[&creature_id].counter_count(&key), 2);
+        assert_eq!(gs.battlefield[&creature_id].damage_marked, 0);
+    }
+
+    #[test]
+    fn wither_damage_to_player_is_regular_life_loss() {
+        // CR 702.80a: wither only converts damage to -1/-1 counters on creatures.
+        // Wither damage to a player is still regular life loss.
+        use crate::types::CounterKind;
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let before_life = gs.get_player(PlayerId(1)).unwrap().life;
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Player { id: PlayerId(1) },
+            DamageStep {
+                amount: 2,
+                wither: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life - 2);
+        assert_eq!(
+            gs.get_player(PlayerId(1))
+                .unwrap()
+                .counter_count(&CounterKind::Poison),
+            0
+        );
+    }
+
+    #[test]
+    fn infect_damage_to_creature_places_minus_one_counters() {
+        use crate::types::CounterKind;
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        // 4/4 creature: 3 infect damage → 3 × -1/-1 counters → effective toughness 1.
+        // Creature survives SBAs so we can assert on its counter state.
+        let creature_id = make_creature_on_battlefield(&mut gs, PlayerId(1), 4, 4);
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Object { id: creature_id },
+            DamageStep {
+                amount: 3,
+                infect: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        let key = CounterKind::PtModifier {
+            power: -1,
+            toughness: -1,
+        };
+        assert_eq!(gs.battlefield[&creature_id].counter_count(&key), 3);
+        assert_eq!(gs.battlefield[&creature_id].damage_marked, 0);
+    }
+
+    #[test]
+    fn infect_damage_to_player_gives_poison_counters_not_life_loss() {
+        use crate::types::CounterKind;
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let before_life = gs.get_player(PlayerId(1)).unwrap().life;
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Player { id: PlayerId(1) },
+            DamageStep {
+                amount: 3,
+                infect: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life); // no life loss
+        assert_eq!(
+            gs.get_player(PlayerId(1))
+                .unwrap()
+                .counter_count(&CounterKind::Poison),
+            3
+        );
+    }
+
+    #[test]
+    fn wither_and_deathtouch_combined_on_creature() {
+        // CR 702.80a + 702.2b: wither gives -1/-1 counters; deathtouch flag still set.
+        // The counter reduces toughness to 1 and deathtouch triggers SBA destruction.
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let creature_id = make_creature_on_battlefield(&mut gs, PlayerId(1), 2, 2);
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Object { id: creature_id },
+            DamageStep {
+                amount: 1,
+                wither: true,
+                deathtouch: true,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        // SBA runs — creature toughness is now 2-1=1, damage_marked=0, but
+        // damaged_by_deathtouch was set. SBA then destroys the creature.
+        assert!(!gs.battlefield.contains_key(&creature_id));
+    }
+
+    #[test]
+    fn vanilla_deal_damage_to_creature_unchanged() {
+        // Regression: all-false flags behave exactly as before.
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let creature_id = make_creature_on_battlefield(&mut gs, PlayerId(1), 2, 4);
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Object { id: creature_id },
+            DamageStep {
+                amount: 3,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        assert_eq!(gs.battlefield[&creature_id].damage_marked, 3);
+    }
+
+    #[test]
+    fn vanilla_deal_damage_to_player_unchanged() {
+        // Regression: all-false flags behave exactly as before.
+        use crate::types::effect::{DamageStep, EffectTarget};
+        let mut gs = make_state();
+        let before_life = gs.get_player(PlayerId(1)).unwrap().life;
+        push_damage_trigger(
+            &mut gs,
+            EffectTarget::Player { id: PlayerId(1) },
+            DamageStep {
+                amount: 3,
+                ..Default::default()
+            },
+        );
+        let gs = resolve_top(gs);
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life - 3);
     }
 
     #[test]
