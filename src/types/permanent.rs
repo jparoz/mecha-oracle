@@ -68,6 +68,17 @@ impl PermanentState {
         })
     }
 
+    /// Returns the Toxic parameter N if this permanent has Toxic N, otherwise None.
+    pub fn toxic_n(&self) -> Option<u32> {
+        self.definition.abilities.iter().find_map(|span| {
+            if let OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(n))) = span {
+                Some(*n)
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn is_creature(&self) -> bool {
         self.definition.type_line.is_creature()
     }
@@ -362,5 +373,22 @@ mod tests {
         );
         assert_eq!(perm.effective_power(), Some(0));
         assert_eq!(perm.effective_toughness(), Some(0));
+    }
+
+    #[test]
+    fn toxic_n_returns_some_for_toxic_creature() {
+        use crate::types::{Ability, OracleSpan, ability::StaticAbility};
+        let mut def = test_db().get("Grizzly Bears").unwrap().clone();
+        def.abilities = vec![OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(
+            3,
+        )))];
+        let perm = PermanentState::new(&def);
+        assert_eq!(perm.toxic_n(), Some(3));
+    }
+
+    #[test]
+    fn toxic_n_returns_none_for_vanilla_creature() {
+        let perm = grizzly_bears_perm();
+        assert_eq!(perm.toxic_n(), None);
     }
 }

@@ -41,6 +41,11 @@ pub enum StaticAbility {
     Fear,                           // CR 702.36
     Intimidate,                     // CR 702.13
     ProtectionFromColor(ManaColor), // CR 702.16 (partial — blocking + targeting only)
+    Wither,                         // CR 702.80
+    Infect,                         // CR 702.90
+    ToxicN(u32),                    // CR 702.164
+    Evolve,                         // CR 702.100
+    Training,                       // CR 702.149
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,6 +143,11 @@ impl StaticAbility {
                 };
                 format!("Protection from {color_name}")
             }
+            Self::Wither => "Wither".to_string(),
+            Self::Infect => "Infect".to_string(),
+            Self::ToxicN(n) => format!("Toxic {n}"),
+            Self::Evolve => "Evolve".to_string(),
+            Self::Training => "Training".to_string(),
         }
     }
 }
@@ -497,5 +507,14 @@ mod tests {
     fn cost_type_alias_is_vec_cost_component() {
         let c: Cost = vec![CostComponent::Tap];
         assert_eq!(c.len(), 1);
+    }
+
+    #[test]
+    fn display_name_counter_keywords() {
+        assert_eq!(StaticAbility::Wither.display_name(), "Wither");
+        assert_eq!(StaticAbility::Infect.display_name(), "Infect");
+        assert_eq!(StaticAbility::ToxicN(2).display_name(), "Toxic 2");
+        assert_eq!(StaticAbility::Evolve.display_name(), "Evolve");
+        assert_eq!(StaticAbility::Training.display_name(), "Training");
     }
 }
