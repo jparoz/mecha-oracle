@@ -1,5 +1,4 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
-use crate::engine::triggered::collect_block_triggers;
 use crate::types::ability::StaticAbility;
 use crate::types::{GameEvent, GameState, ObjectId, PlayerId, Step};
 use std::collections::HashMap;
@@ -149,12 +148,46 @@ pub fn declare_blockers(
     state.mana_checkpoint = None;
     state.combat.blockers_declared = true;
 
-    // Collect block-triggered abilities (Flanking, Bushido N) and push onto stack.
-    let triggers = collect_block_triggers(&mut state);
-    for t in triggers {
-        let id = t.id;
+    // CR 603.2: fire Blocks and BecomesBlocked events; collect triggered abilities.
+    let blocking_map_snapshot: Vec<(ObjectId, Vec<ObjectId>)> = state
+        .combat
+        .blocking_map
+        .iter()
+        .map(|(&a, bs)| (a, bs.clone()))
+        .collect();
+
+    let mut block_triggers = Vec::new();
+
+    // Fire Blocks event for each blocker.
+    for (_, blockers) in &blocking_map_snapshot {
+        for &blocker_id in blockers {
+            let mut t = crate::engine::triggered::collect_triggers_for_event(
+                &mut state,
+                &crate::types::GameEvent::Blocks {
+                    subject_id: blocker_id,
+                },
+            );
+            block_triggers.append(&mut t);
+        }
+    }
+
+    // Fire BecomesBlocked event for each attacker that has at least one blocker.
+    for (attacker_id, blockers) in &blocking_map_snapshot {
+        if !blockers.is_empty() {
+            let mut t = crate::engine::triggered::collect_triggers_for_event(
+                &mut state,
+                &crate::types::GameEvent::BecomesBlocked {
+                    subject_id: *attacker_id,
+                },
+            );
+            block_triggers.append(&mut t);
+        }
+    }
+
+    for trigger in block_triggers {
+        let id = trigger.id;
         state.stack.push(id);
-        state.stack_objects.insert(id, t);
+        state.stack_objects.insert(id, trigger);
     }
     if !state.stack.is_empty() {
         state.consecutive_passes = 0;
@@ -1127,8 +1160,10 @@ mod tests {
 
     #[test]
     fn declare_blockers_flanking_attacker_puts_trigger_on_stack() {
+        // CR 702.25a: Flanking trigger fires when a non-Flanking creature blocks this.
+        use crate::engine::triggered::flanking_triggered_ability;
         use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::ability::Ability;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = make_combat_state();
@@ -1141,7 +1176,9 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking))],
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+                flanking_triggered_ability(),
+            ))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),

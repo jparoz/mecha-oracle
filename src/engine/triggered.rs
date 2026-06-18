@@ -574,107 +574,60 @@ pub fn collect_cast_triggers(
         .collect()
 }
 
-/// Collect triggered abilities that fire when blockers are declared.
-/// Handles: Flanking (CR 702.25b), Bushido N (CR 702.45b).
-pub fn collect_block_triggers(state: &mut GameState) -> Vec<StackObject> {
-    let attacking_player = state.active_player;
-    let defending_player = state.opponent_of(attacking_player);
-    let blocking_map: Vec<(ObjectId, Vec<ObjectId>)> = state
-        .combat
-        .blocking_map
-        .iter()
-        .map(|(&a, bs)| (a, bs.clone()))
-        .collect();
-    let mut result = Vec::new();
-
-    for (attacker_id, blockers) in &blocking_map {
-        // Flanking (CR 702.25b): each non-Flanking blocker gets -1/-1.
-        if state
-            .battlefield
-            .get(attacker_id)
-            .map(|p| p.has_keyword(StaticAbility::Flanking))
-            .unwrap_or(false)
-        {
-            for &blocker_id in blockers {
-                let blocker_has_flanking = state
-                    .battlefield
-                    .get(&blocker_id)
-                    .map(|p| p.has_keyword(StaticAbility::Flanking))
-                    .unwrap_or(false);
-                if !blocker_has_flanking {
-                    let sid = state.alloc_stack_id();
-                    use crate::types::effect::EffectTarget;
-                    result.push(StackObject {
-                        id: sid,
-                        payload: StackPayload::TriggeredAbility {
-                            source_id: *attacker_id,
-                            effect: vec![EffectStep::BoostPermanentPT(PTDelta {
-                                power: -1,
-                                toughness: -1,
-                            })],
-                            label: "Flanking".into(),
-                        },
-                        controller: attacking_player,
-                        targets: vec![EffectTarget::Object { id: blocker_id }],
-                        x_value: None,
-                    });
-                }
-            }
-        }
-
-        // Bushido N on attacker: fires if attacker has at least one blocker.
-        if let Some(n) = state
-            .battlefield
-            .get(attacker_id)
-            .and_then(|p| p.bushido_n())
-            && !blockers.is_empty()
-        {
-            let sid = state.alloc_stack_id();
-            use crate::types::effect::EffectTarget;
-            result.push(StackObject {
-                id: sid,
-                payload: StackPayload::TriggeredAbility {
-                    source_id: *attacker_id,
-                    effect: vec![EffectStep::BoostPermanentPT(PTDelta {
-                        power: n as i32,
-                        toughness: n as i32,
-                    })],
-                    label: format!("Bushido {n}"),
-                },
-                controller: attacking_player,
-                targets: vec![EffectTarget::Object { id: *attacker_id }],
-                x_value: None,
-            });
-        }
-
-        // Bushido N on each blocker: fires for every blocker with Bushido.
-        for &blocker_id in blockers {
-            if let Some(n) = state
-                .battlefield
-                .get(&blocker_id)
-                .and_then(|p| p.bushido_n())
-            {
-                let sid = state.alloc_stack_id();
-                use crate::types::effect::EffectTarget;
-                result.push(StackObject {
-                    id: sid,
-                    payload: StackPayload::TriggeredAbility {
-                        source_id: blocker_id,
-                        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
-                            power: n as i32,
-                            toughness: n as i32,
-                        })],
-                        label: format!("Bushido {n}"),
-                    },
-                    controller: defending_player,
-                    targets: vec![EffectTarget::Object { id: blocker_id }],
-                    x_value: None,
-                });
-            }
-        }
+/// CR 702.25a: Flanking — when a non-Flanking creature blocks this, it gets -1/-1.
+pub fn flanking_triggered_ability() -> TriggeredAbility {
+    TriggeredAbility {
+        trigger: TriggerEvent::Blocks {
+            subject: TriggerSubjectFilter {
+                controller: Some(TurnOwner::Opponent),
+                ..Default::default()
+            },
+        },
+        condition: Some(TriggerCondition::SubjectLacksKeyword(
+            StaticAbility::Flanking,
+        )),
+        target_mode: TriggerTargetMode::Subject,
+        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+            power: -1,
+            toughness: -1,
+        })],
     }
+}
 
-    result
+/// CR 702.45a: Bushido N (attacker) — fires when this becomes blocked.
+pub fn bushido_attacker_triggered_ability(n: u32) -> TriggeredAbility {
+    TriggeredAbility {
+        trigger: TriggerEvent::BecomesBlocked {
+            subject: TriggerSubjectFilter {
+                is_self: Some(true),
+                ..Default::default()
+            },
+        },
+        condition: None,
+        target_mode: TriggerTargetMode::Source,
+        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+            power: n as i32,
+            toughness: n as i32,
+        })],
+    }
+}
+
+/// CR 702.45a: Bushido N (blocker) — fires when this blocks.
+pub fn bushido_blocker_triggered_ability(n: u32) -> TriggeredAbility {
+    TriggeredAbility {
+        trigger: TriggerEvent::Blocks {
+            subject: TriggerSubjectFilter {
+                is_self: Some(true),
+                ..Default::default()
+            },
+        },
+        condition: None,
+        target_mode: TriggerTargetMode::Source,
+        effect: vec![EffectStep::BoostPermanentPT(PTDelta {
+            power: n as i32,
+            toughness: n as i32,
+        })],
+    }
 }
 
 /// CR 702.21a: Collect ward triggered abilities for any declared targets that are
@@ -1578,58 +1531,58 @@ mod tests {
         );
     }
 
+    /// Place a creature on the battlefield carrying the given TriggeredAbility oracle spans.
+    fn triggered_blocker(
+        state: &mut GameState,
+        owner: PlayerId,
+        power: i32,
+        toughness: i32,
+        abilities: Vec<OracleSpan>,
+    ) -> ObjectId {
+        use crate::types::card::{CardType, TypeLine};
+        let def = CardDefinition {
+            name: "Test Blocker".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities,
+            text_annotations: vec![],
+            power: Some(power),
+            toughness: Some(toughness),
+            colors: vec![],
+        };
+        place_on_battlefield(state, def, owner)
+    }
+
     #[test]
     fn collect_block_triggers_flanking_gives_minus_one_to_non_flanking_blocker() {
-        use crate::engine::triggered::collect_block_triggers;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        // CR 702.25a: Flanking fires when a non-Flanking blocker blocks the Flanking creature.
+        use crate::types::GameEvent;
+        use crate::types::effect::EffectTarget;
+        use crate::types::stack::StackPayload;
 
         let mut gs = two_player_state();
-        let flanking_def = CardDefinition {
-            name: "Flanking Attacker".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking))],
-            text_annotations: vec![],
-            power: Some(2),
-            toughness: Some(2),
-            colors: vec![],
-        };
-        let attacker_id = place_on_battlefield(&mut gs, flanking_def, PlayerId(0));
-        let plain_def = CardDefinition {
-            name: "Plain Blocker".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![],
-            text_annotations: vec![],
-            power: Some(2),
-            toughness: Some(2),
-            colors: vec![],
-        };
-        let blocker_id = place_on_battlefield(&mut gs, plain_def, PlayerId(1));
+        let flanking_span = OracleSpan::Parsed(Ability::Triggered(flanking_triggered_ability()));
+        let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![flanking_span]);
+        let blocker_id = triggered_blocker(&mut gs, PlayerId(1), 2, 2, vec![]);
 
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
 
-        let triggers = collect_block_triggers(&mut gs);
+        // Fire Blocks event for the blocker (subject = blocker).
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Blocks {
+                subject_id: blocker_id,
+            },
+        );
 
         assert_eq!(triggers.len(), 1);
-        use crate::types::stack::StackPayload;
-        use crate::types::{
-            PTDelta,
-            effect::{EffectStep, EffectTarget},
-        };
+        use crate::types::{PTDelta, effect::EffectStep};
         let StackPayload::TriggeredAbility { effect, .. } = &triggers[0].payload else {
             panic!();
         };
@@ -1648,91 +1601,82 @@ mod tests {
 
     #[test]
     fn collect_block_triggers_flanking_no_trigger_for_flanking_blocker() {
-        use crate::engine::triggered::collect_block_triggers;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        // CR 702.25a: Flanking blocker also has Flanking — SubjectLacksKeyword condition fails.
+        use crate::types::GameEvent;
 
         let mut gs = two_player_state();
-        let flanking_def = |name: &str| CardDefinition {
-            name: name.into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking))],
-            text_annotations: vec![],
-            power: Some(2),
-            toughness: Some(2),
-            colors: vec![],
-        };
-        let attacker_id = place_on_battlefield(&mut gs, flanking_def("Attacker"), PlayerId(0));
-        let blocker_id = place_on_battlefield(&mut gs, flanking_def("Blocker"), PlayerId(1));
+        let flanking_span_a = OracleSpan::Parsed(Ability::Triggered(flanking_triggered_ability()));
+        let flanking_span_b = OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking));
+        let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![flanking_span_a]);
+        // Blocker also has Flanking (as StaticAbility so has_keyword check fires).
+        let blocker_id = triggered_blocker(&mut gs, PlayerId(1), 2, 2, vec![flanking_span_b]);
+
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
 
-        let triggers = collect_block_triggers(&mut gs);
-        assert!(triggers.is_empty()); // blocker also has Flanking → no trigger
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Blocks {
+                subject_id: blocker_id,
+            },
+        );
+        assert!(triggers.is_empty()); // blocker also has Flanking → condition fails → no trigger
     }
 
     #[test]
     fn collect_block_triggers_bushido_boosts_attacker_and_blocker() {
-        use crate::engine::triggered::collect_block_triggers;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        // CR 702.45a: Bushido fires on both blocks and becomes-blocked.
+        use crate::types::GameEvent;
+        use crate::types::effect::EffectTarget;
+        use crate::types::stack::StackPayload;
 
         let mut gs = two_player_state();
-        let bushido_def = CardDefinition {
-            name: "Bushido Attacker".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::BushidoN(2),
-            ))],
-            text_annotations: vec![],
-            power: Some(3),
-            toughness: Some(3),
-            colors: vec![],
-        };
-        let attacker_id = place_on_battlefield(&mut gs, bushido_def, PlayerId(0));
-        let bushido_blocker_def = CardDefinition {
-            name: "Bushido Blocker".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::BushidoN(1),
-            ))],
-            text_annotations: vec![],
-            power: Some(2),
-            toughness: Some(2),
-            colors: vec![],
-        };
-        let blocker_id = place_on_battlefield(&mut gs, bushido_blocker_def, PlayerId(1));
+
+        // Attacker: Bushido 2 — fires on BecomesBlocked.
+        let attacker_id = triggered_attacker(
+            &mut gs,
+            PlayerId(0),
+            3,
+            3,
+            vec![
+                OracleSpan::Parsed(Ability::Triggered(bushido_attacker_triggered_ability(2))),
+                OracleSpan::Parsed(Ability::Triggered(bushido_blocker_triggered_ability(2))),
+            ],
+        );
+
+        // Blocker: Bushido 1 — fires on Blocks.
+        let blocker_id = triggered_blocker(
+            &mut gs,
+            PlayerId(1),
+            2,
+            2,
+            vec![
+                OracleSpan::Parsed(Ability::Triggered(bushido_attacker_triggered_ability(1))),
+                OracleSpan::Parsed(Ability::Triggered(bushido_blocker_triggered_ability(1))),
+            ],
+        );
+
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
 
-        let triggers = collect_block_triggers(&mut gs);
+        // Fire Blocks event for blocker → blocker's bushido_blocker fires (is_self = true).
+        let mut triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Blocks {
+                subject_id: blocker_id,
+            },
+        );
+        // Fire BecomesBlocked for attacker → attacker's bushido_attacker fires (is_self = true).
+        triggers.extend(collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::BecomesBlocked {
+                subject_id: attacker_id,
+            },
+        ));
+
         assert_eq!(triggers.len(), 2); // one for attacker (Bushido 2), one for blocker (Bushido 1)
 
-        use crate::types::stack::StackPayload;
-        use crate::types::{
-            PTDelta,
-            effect::{EffectStep, EffectTarget},
-        };
+        use crate::types::{PTDelta, effect::EffectStep};
         let effects: Vec<_> = triggers
             .iter()
             .map(|t| {
@@ -1761,34 +1705,30 @@ mod tests {
 
     #[test]
     fn collect_block_triggers_bushido_no_trigger_when_unblocked() {
-        use crate::engine::triggered::collect_block_triggers;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
-        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        // CR 702.45a: Bushido on attacker fires on BecomesBlocked — no event fired if unblocked.
+        use crate::types::GameEvent;
 
         let mut gs = two_player_state();
-        let bushido_def = CardDefinition {
-            name: "Bushido".into(),
-            mana_cost: None,
-            type_line: TypeLine {
-                supertypes: vec![],
-                card_types: vec![CardType::Creature],
-                subtypes: vec![],
-            },
-            oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(
-                StaticAbility::BushidoN(2),
-            ))],
-            text_annotations: vec![],
-            power: Some(3),
-            toughness: Some(3),
-            colors: vec![],
-        };
-        let attacker_id = place_on_battlefield(&mut gs, bushido_def, PlayerId(0));
+        let attacker_id = triggered_attacker(
+            &mut gs,
+            PlayerId(0),
+            3,
+            3,
+            vec![
+                OracleSpan::Parsed(Ability::Triggered(bushido_attacker_triggered_ability(2))),
+                OracleSpan::Parsed(Ability::Triggered(bushido_blocker_triggered_ability(2))),
+            ],
+        );
         gs.combat.attackers = vec![attacker_id];
-        gs.combat.blocking_map = [(attacker_id, vec![])].into(); // unblocked
+        gs.combat.blocking_map = [(attacker_id, vec![])].into(); // unblocked — no BecomesBlocked event
 
-        let triggers = collect_block_triggers(&mut gs);
+        // No BecomesBlocked event is fired; an Attacks-but-no-blocks scenario.
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::Attacks {
+                subject_id: attacker_id,
+            },
+        );
         assert!(triggers.is_empty());
     }
 
