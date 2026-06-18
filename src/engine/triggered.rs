@@ -408,6 +408,42 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                     }
                     None
                 }
+                // CR 603.2: DrawsCard event fires once per card drawn.
+                (GameEvent::DrawsCard { player }, TriggerEvent::DrawsCard { who }) => {
+                    let ok = match who {
+                        TurnOwner::You => *player == controller,
+                        TurnOwner::Opponent => *player != controller,
+                        TurnOwner::Any => true,
+                    };
+                    if !ok {
+                        continue;
+                    }
+                    None
+                }
+                // CR 603.2b: PhaseStep event fires at the beginning of each step/phase.
+                (
+                    GameEvent::PhaseStep {
+                        step: event_step,
+                        active_player,
+                    },
+                    TriggerEvent::PhaseStep {
+                        step: trigger_step,
+                        whose_turn,
+                    },
+                ) => {
+                    if event_step != trigger_step {
+                        continue;
+                    }
+                    let ok = match whose_turn {
+                        TurnOwner::You => *active_player == controller,
+                        TurnOwner::Opponent => *active_player != controller,
+                        TurnOwner::Any => true,
+                    };
+                    if !ok {
+                        continue;
+                    }
+                    None
+                }
                 _ => continue,
             };
 

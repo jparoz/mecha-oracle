@@ -2,6 +2,7 @@ use super::card::CardType;
 use super::effect::Effect;
 use super::ids::{ObjectId, PlayerId};
 use super::mana::{ManaColor, ManaCost};
+use super::step::Step;
 
 // CR 702.14
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,8 +135,12 @@ pub enum GameEvent {
         caster: PlayerId,
         spell_id: ObjectId,
     },
-    // TODO: add PhaseStep { step: Step, active_player: PlayerId } once Step is accessible
-    // without creating a circular import (game_state imports ability::Cost).
+    // CR 603.2b: fired at the beginning of each phase/step so that "at the beginning of upkeep"
+    // triggers can be collected.
+    PhaseStep {
+        step: Step,
+        active_player: PlayerId,
+    },
     DrawsCard {
         player: PlayerId,
     },
@@ -180,8 +185,11 @@ pub enum TriggerEvent {
     },
 
     // Phase/step
-    // TODO: add PhaseStep { step: Step, whose_turn: TurnOwner } once Step is accessible
-    // without creating a circular import (game_state imports ability::Cost).
+    // CR 603.2b: "at the beginning of [step]" triggers.
+    PhaseStep {
+        step: Step,
+        whose_turn: TurnOwner,
+    },
 
     // Draw
     DrawsCard {

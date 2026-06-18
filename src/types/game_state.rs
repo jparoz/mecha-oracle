@@ -8,52 +8,8 @@ use super::player::Player;
 use super::stack::{StackId, StackObject};
 use std::collections::{HashMap, VecDeque};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Phase {
-    Beginning,
-    PreCombatMain,
-    Combat,
-    PostCombatMain,
-    Ending,
-}
-
-/// A single position in the turn sequence. Each variant maps to exactly one valid
-/// (phase, step) combination, so invalid combinations are unrepresentable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Step {
-    // Beginning phase
-    Untap,
-    Upkeep,
-    Draw,
-    // Main phases — two separate steps instead of a shared `Main`
-    PreCombatMain,
-    PostCombatMain,
-    // Combat phase
-    BeginningOfCombat,
-    DeclareAttackers,
-    DeclareBlockers,
-    CombatDamage,
-    EndOfCombat,
-    // Ending phase
-    End,
-    Cleanup,
-}
-
-impl Step {
-    pub fn phase(self) -> Phase {
-        match self {
-            Step::Untap | Step::Upkeep | Step::Draw => Phase::Beginning,
-            Step::PreCombatMain => Phase::PreCombatMain,
-            Step::BeginningOfCombat
-            | Step::DeclareAttackers
-            | Step::DeclareBlockers
-            | Step::CombatDamage
-            | Step::EndOfCombat => Phase::Combat,
-            Step::PostCombatMain => Phase::PostCombatMain,
-            Step::End | Step::Cleanup => Phase::Ending,
-        }
-    }
-}
+// Re-export so callers that imported Phase/Step from game_state continue to work.
+pub use super::step::{Phase, Step};
 
 #[derive(Debug, Clone)]
 pub struct ManaCheckpoint {

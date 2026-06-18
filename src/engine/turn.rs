@@ -4,7 +4,30 @@ use crate::types::ability::StaticAbility;
 use crate::types::{CombatState, GameState, ObjectId, PTDelta, PlayerId, Step, Zone};
 
 /// Apply the automatic rules for the start of the current step/phase.
-pub fn apply_step_start(state: GameState) -> GameState {
+///
+/// CR 603.2b: At the beginning of each step, fire a PhaseStep event so that
+/// "at the beginning of [step]" triggered abilities are collected onto the stack.
+pub fn apply_step_start(mut state: GameState) -> GameState {
+    // CR 603.2b: collect PhaseStep triggers before step-specific logic runs.
+    // Untap and Cleanup have no priority window (CR 502.4, CR 514.3), so triggers
+    // accumulated there are technically held, but we fire the event anyway so the
+    // dispatch system has a place to hook them in future.
+    // Capture fields before the &mut borrow.
+    let current_step = state.step;
+    let current_active = state.active_player;
+    let step_triggers = crate::engine::triggered::collect_triggers_for_event(
+        &mut state,
+        &crate::types::GameEvent::PhaseStep {
+            step: current_step,
+            active_player: current_active,
+        },
+    );
+    for t in step_triggers {
+        let id = t.id;
+        state.stack.push(id);
+        state.stack_objects.insert(id, t);
+    }
+
     match state.step {
         Step::Untap => untap_step(state),
         Step::Draw => draw_step(state),
@@ -113,6 +136,8 @@ fn draw_step(state: GameState) -> GameState {
 }
 
 /// Draw the top card of a player's library. If the library is empty, that player loses (CR 704.5b).
+/// CR 603.2: fires DrawsCard event after a successful draw so that "whenever you draw a card"
+/// triggered abilities (e.g. Rhystic Study, future Cumulative Upkeep draw effects) are collected.
 pub fn draw_card(mut state: GameState, player_id: PlayerId) -> GameState {
     let top = state.libraries.get_mut(&player_id).and_then(|lib| {
         if lib.is_empty() {
@@ -133,6 +158,16 @@ pub fn draw_card(mut state: GameState, player_id: PlayerId) -> GameState {
             state.hands.get_mut(&player_id).unwrap().push(card_id);
             if let Some(obj) = state.objects.get_mut(&card_id) {
                 obj.zone = Zone::Hand;
+            }
+            // CR 603.2: fire DrawsCard event now that the card has moved to hand.
+            let draw_triggers = crate::engine::triggered::collect_triggers_for_event(
+                &mut state,
+                &crate::types::GameEvent::DrawsCard { player: player_id },
+            );
+            for t in draw_triggers {
+                let id = t.id;
+                state.stack.push(id);
+                state.stack_objects.insert(id, t);
             }
         }
     }
@@ -565,5 +600,249 @@ mod tests {
 
         assert_eq!(gs.battlefield[&id].pt_boost_until_eot, PTDelta::default());
         assert_eq!(gs.battlefield[&id].effective_power(), Some(2)); // back to 2/2 base
+    }
+
+    // --- Task 8 tests: PhaseStep and DrawsCard event emission ---
+
+    /// CR 603.2b: PhaseStep event should be fired at the start of each step and pushed to
+    /// the stack when a matching triggered ability exists.
+    #[test]
+    fn phase_step_event_collects_upkeep_trigger() {
+        use crate::types::ability::{
+            Ability, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+        };
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::EffectStep;
+        use crate::types::{OracleSpan, PermanentState};
+
+        let mut gs = make_state();
+        gs.step = Step::Upkeep;
+
+        // A permanent with "at the beginning of your upkeep" trigger owned by active player (P0).
+        let upkeep_trigger = TriggeredAbility {
+            trigger: TriggerEvent::PhaseStep {
+                step: Step::Upkeep,
+                whose_turn: TurnOwner::You,
+            },
+            condition: None,
+            target_mode: TriggerTargetMode::None,
+            effect: vec![EffectStep::GainLife(1)],
+        };
+        let def = CardDefinition {
+            name: "Upkeep Trigger Permanent".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(upkeep_trigger))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = crate::types::CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
+        gs.battlefield
+            .insert(id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let stack_before = gs.stack.len();
+        let gs = apply_step_start(gs);
+
+        assert_eq!(
+            gs.stack.len(),
+            stack_before + 1,
+            "Upkeep trigger should be pushed to stack during Upkeep step start"
+        );
+    }
+
+    /// CR 603.2b: PhaseStep event for a step whose_turn=You does not fire for the non-active player.
+    #[test]
+    fn phase_step_event_does_not_fire_for_non_active_player() {
+        use crate::types::ability::{
+            Ability, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+        };
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::EffectStep;
+        use crate::types::{OracleSpan, PermanentState};
+
+        let mut gs = make_state();
+        gs.step = Step::Upkeep;
+        // Active player is P0; this permanent is controlled by P1.
+        let upkeep_trigger = TriggeredAbility {
+            trigger: TriggerEvent::PhaseStep {
+                step: Step::Upkeep,
+                whose_turn: TurnOwner::You, // "your upkeep" — P1's perspective; active turn is P0's
+            },
+            condition: None,
+            target_mode: TriggerTargetMode::None,
+            effect: vec![EffectStep::GainLife(1)],
+        };
+        let def = CardDefinition {
+            name: "Opponent Upkeep Permanent".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(upkeep_trigger))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = crate::types::CardObject::new(id, def, PlayerId(1), Zone::Battlefield);
+        gs.battlefield
+            .insert(id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let stack_before = gs.stack.len();
+        let gs = apply_step_start(gs);
+
+        assert_eq!(
+            gs.stack.len(),
+            stack_before,
+            "Upkeep trigger should NOT fire when it's not the controller's upkeep"
+        );
+    }
+
+    /// CR 603.2: DrawsCard event fires once per card drawn; a matching trigger should be collected.
+    #[test]
+    fn draw_card_fires_draws_card_event_and_collects_trigger() {
+        use crate::types::ability::{
+            Ability, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+        };
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::EffectStep;
+        use crate::types::{OracleSpan, PermanentState};
+
+        let db = crate::cards::test_helpers::test_db();
+        let mut gs = make_state();
+        // Put a card in P0's library so the draw succeeds.
+        let card_id = {
+            let id = gs.alloc_id();
+            let obj = crate::types::CardObject::new(
+                id,
+                db.get("Grizzly Bears").unwrap().clone(),
+                PlayerId(0),
+                Zone::Library,
+            );
+            gs.libraries.get_mut(&PlayerId(0)).unwrap().push(id);
+            gs.add_object(obj);
+            id
+        };
+        let _ = card_id;
+
+        // A permanent with "whenever you draw a card" trigger owned by P0.
+        let draw_trigger = TriggeredAbility {
+            trigger: TriggerEvent::DrawsCard {
+                who: TurnOwner::You,
+            },
+            condition: None,
+            target_mode: TriggerTargetMode::None,
+            effect: vec![EffectStep::GainLife(1)],
+        };
+        let def = CardDefinition {
+            name: "Rhystic Study".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(draw_trigger))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        let perm_id = gs.alloc_id();
+        let obj = crate::types::CardObject::new(perm_id, def, PlayerId(0), Zone::Battlefield);
+        gs.battlefield
+            .insert(perm_id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let stack_before = gs.stack.len();
+        let gs = draw_card(gs, PlayerId(0));
+
+        assert_eq!(
+            gs.stack.len(),
+            stack_before + 1,
+            "DrawsCard trigger should be pushed to stack when player draws a card"
+        );
+    }
+
+    /// Smoke test: drawing a card when no DrawsCard triggers exist does not crash.
+    #[test]
+    fn draw_event_does_not_fire_non_draw_triggers() {
+        use crate::types::ability::{
+            Ability, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+        };
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::EffectStep;
+        use crate::types::{OracleSpan, PermanentState};
+
+        let db = crate::cards::test_helpers::test_db();
+        let mut gs = make_state();
+        // Library needs a card to draw from.
+        let id = gs.alloc_id();
+        let obj = crate::types::CardObject::new(
+            id,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+            Zone::Library,
+        );
+        gs.libraries.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+
+        // A permanent with an ETB trigger (not a DrawsCard trigger).
+        let etb_trigger = TriggeredAbility {
+            trigger: TriggerEvent::EntersTheBattlefield {
+                subject: TriggerSubjectFilter {
+                    is_self: Some(true),
+                    ..Default::default()
+                },
+            },
+            condition: None,
+            target_mode: TriggerTargetMode::None,
+            effect: vec![EffectStep::GainLife(2)],
+        };
+        let def = CardDefinition {
+            name: "ETB Permanent".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            abilities: vec![OracleSpan::Parsed(Ability::Triggered(etb_trigger))],
+            text_annotations: vec![],
+            power: Some(1),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let perm_id = gs.alloc_id();
+        let obj = crate::types::CardObject::new(perm_id, def, PlayerId(0), Zone::Battlefield);
+        gs.battlefield
+            .insert(perm_id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let stack_before = gs.stack.len();
+        let gs = draw_card(gs, PlayerId(0));
+
+        // ETB trigger must not fire on DrawsCard event.
+        assert_eq!(
+            gs.stack.len(),
+            stack_before,
+            "ETB trigger should not fire when a card is drawn"
+        );
     }
 }

@@ -9,6 +9,7 @@ pub mod mana;
 pub mod permanent;
 pub mod player;
 pub mod stack;
+pub mod step;
 pub mod zone;
 
 pub use ability::{
@@ -21,10 +22,11 @@ pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;
 pub use counter::CounterKind;
 pub use effect::{Effect, EffectStep, EffectTarget};
-pub use game_state::{CombatState, GameState, ManaCheckpoint, PendingPayment, Phase, Step};
+pub use game_state::{CombatState, GameState, ManaCheckpoint, PendingPayment};
 pub use ids::{ObjectId, PlayerId};
 pub use mana::{ManaColor, ManaCost, ManaPip, ManaPool, PaymentPlan};
 pub use permanent::{PTDelta, PermanentState};
 pub use player::Player;
 pub use stack::{StackId, StackObject, StackPayload};
+pub use step::{Phase, Step};
 pub use zone::Zone;
