@@ -95,7 +95,7 @@ fn build_game_state(
     for _ in 0..7 {
         for pid in [PlayerId(0), PlayerId(1)] {
             if !gs.libraries[&pid].is_empty() {
-                gs = draw_card(gs, pid);
+                gs = draw_card(gs, pid, false);
             }
         }
     }

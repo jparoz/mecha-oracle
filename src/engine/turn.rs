@@ -132,13 +132,14 @@ fn untap_step(mut state: GameState) -> GameState {
 
 fn draw_step(state: GameState) -> GameState {
     let active = state.active_player;
-    draw_card(state, active)
+    draw_card(state, active, true)
 }
 
 /// Draw the top card of a player's library. If the library is empty, that player loses (CR 704.5b).
 /// CR 603.2: fires DrawsCard event after a successful draw so that "whenever you draw a card"
-/// triggered abilities (e.g. Rhystic Study, future Cumulative Upkeep draw effects) are collected.
-pub fn draw_card(mut state: GameState, player_id: PlayerId) -> GameState {
+/// triggered abilities (e.g. Rhystic Study, future Cumulative Upkeep draw effects) are collected,
+/// unless fire_events is false (e.g. during opening hand setup per CR 103.5, which is not gameplay).
+pub fn draw_card(mut state: GameState, player_id: PlayerId, fire_events: bool) -> GameState {
     let top = state.libraries.get_mut(&player_id).and_then(|lib| {
         if lib.is_empty() {
             None
@@ -159,15 +160,18 @@ pub fn draw_card(mut state: GameState, player_id: PlayerId) -> GameState {
             if let Some(obj) = state.objects.get_mut(&card_id) {
                 obj.zone = Zone::Hand;
             }
-            // CR 603.2: fire DrawsCard event now that the card has moved to hand.
-            let draw_triggers = crate::engine::triggered::collect_triggers_for_event(
-                &mut state,
-                &crate::types::GameEvent::DrawsCard { player: player_id },
-            );
-            for t in draw_triggers {
-                let id = t.id;
-                state.stack.push(id);
-                state.stack_objects.insert(id, t);
+            // CR 603.2: fire DrawsCard event now that the card has moved to hand, but only
+            // during gameplay (not setup per CR 103.5).
+            if fire_events {
+                let draw_triggers = crate::engine::triggered::collect_triggers_for_event(
+                    &mut state,
+                    &crate::types::GameEvent::DrawsCard { player: player_id },
+                );
+                for t in draw_triggers {
+                    let id = t.id;
+                    state.stack.push(id);
+                    state.stack_objects.insert(id, t);
+                }
             }
         }
     }
@@ -385,7 +389,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = draw_card(gs, PlayerId(0));
+        let gs = draw_card(gs, PlayerId(0), true);
 
         assert!(gs.hands[&PlayerId(0)].contains(&card_id));
         assert!(gs.libraries[&PlayerId(0)].is_empty());
@@ -770,7 +774,7 @@ mod tests {
         gs.add_object(obj);
 
         let stack_before = gs.stack.len();
-        let gs = draw_card(gs, PlayerId(0));
+        let gs = draw_card(gs, PlayerId(0), true);
 
         assert_eq!(
             gs.stack.len(),
@@ -836,7 +840,7 @@ mod tests {
         gs.add_object(obj);
 
         let stack_before = gs.stack.len();
-        let gs = draw_card(gs, PlayerId(0));
+        let gs = draw_card(gs, PlayerId(0), true);
 
         // ETB trigger must not fire on DrawsCard event.
         assert_eq!(
