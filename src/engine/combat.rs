@@ -292,9 +292,11 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
 /// only those creatures deal damage and a second CombatDamage step is queued.
 /// In the second round, double strikers and vanilla creatures deal damage (not first-strike-only).
 /// If no first/double strikers are present, all creatures deal damage in a single round.
-/// Also handles Trample (CR 702.19), Deathtouch (CR 702.2c), and Lifelink (CR 702.15).
+/// Also handles Trample (CR 702.19), Deathtouch (CR 702.2c), Lifelink (CR 702.15),
+/// Wither (CR 702.80), Infect (CR 702.90), and Toxic N (CR 702.164).
 pub fn deal_combat_damage(mut state: GameState) -> GameState {
     state.mana_checkpoint = None;
+    use crate::types::CounterKind;
     use std::collections::HashSet;
 
     let defending_player = state.opponent_of(state.active_player);
@@ -341,13 +343,25 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
     let mut damage_to_objects: HashMap<ObjectId, u32> = HashMap::new();
     let mut lifelink_gain: HashMap<PlayerId, i32> = HashMap::new();
     let mut deathtouch_targets: HashSet<ObjectId> = HashSet::new();
+    // Wither (CR 702.80a) / Infect (CR 702.90a): creature damage as -1/-1 counters.
+    let mut wither_to_objects: HashMap<ObjectId, u32> = HashMap::new();
+    // Infect (CR 702.90a) / Toxic N (CR 702.164a): player damage as poison counters.
+    let mut poison_to_players: HashMap<PlayerId, u32> = HashMap::new();
 
     for &attacker_id in &attackers {
         if !deals_this_round(attacker_id) {
             continue;
         }
 
-        let (atk_power, has_trample, has_deathtouch, has_lifelink, atk_controller) = {
+        let (
+            atk_power,
+            has_trample,
+            has_deathtouch,
+            has_lifelink,
+            has_wither,
+            has_infect,
+            atk_controller,
+        ) = {
             let obj = match state.objects.get(&attacker_id) {
                 Some(o) => o,
                 None => continue,
@@ -363,16 +377,30 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                 obj.has_keyword(StaticAbility::Trample),
                 obj.has_keyword(StaticAbility::Deathtouch),
                 obj.has_keyword(StaticAbility::Lifelink),
+                obj.has_keyword(StaticAbility::Wither),
+                obj.has_keyword(StaticAbility::Infect),
                 obj.controller,
             )
         };
+        let toxic_n = state
+            .battlefield
+            .get(&attacker_id)
+            .and_then(|p| p.toxic_n());
 
         let blockers = blocking_map.get(&attacker_id).cloned().unwrap_or_default();
         let mut total_damage_dealt = 0u32;
+        let mut attacked_player: Option<PlayerId> = None;
 
         if blockers.is_empty() {
-            *damage_to_players.entry(defending_player).or_insert(0) += atk_power as i32;
+            if has_infect {
+                *poison_to_players.entry(defending_player).or_insert(0) += atk_power;
+            } else {
+                *damage_to_players.entry(defending_player).or_insert(0) += atk_power as i32;
+            }
             total_damage_dealt = atk_power;
+            if atk_power > 0 {
+                attacked_player = Some(defending_player);
+            }
         } else {
             let mut remaining = atk_power;
             for &blocker_id in &blockers {
@@ -397,7 +425,11 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                         .max(1)
                 };
                 let assign = remaining.min(lethal);
-                *damage_to_objects.entry(blocker_id).or_insert(0) += assign;
+                if has_wither || has_infect {
+                    *wither_to_objects.entry(blocker_id).or_insert(0) += assign;
+                } else {
+                    *damage_to_objects.entry(blocker_id).or_insert(0) += assign;
+                }
                 remaining -= assign;
                 total_damage_dealt += assign;
                 if has_deathtouch && assign > 0 {
@@ -407,10 +439,19 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             // Remaining damage: to player if trample, otherwise pile on last blocker.
             if remaining > 0 {
                 if has_trample {
-                    *damage_to_players.entry(defending_player).or_insert(0) += remaining as i32;
+                    if has_infect {
+                        *poison_to_players.entry(defending_player).or_insert(0) += remaining;
+                    } else {
+                        *damage_to_players.entry(defending_player).or_insert(0) += remaining as i32;
+                    }
                     total_damage_dealt += remaining;
+                    attacked_player = Some(defending_player);
                 } else if let Some(&last) = blockers.last() {
-                    *damage_to_objects.entry(last).or_insert(0) += remaining;
+                    if has_wither || has_infect {
+                        *wither_to_objects.entry(last).or_insert(0) += remaining;
+                    } else {
+                        *damage_to_objects.entry(last).or_insert(0) += remaining;
+                    }
                     if has_deathtouch {
                         deathtouch_targets.insert(last);
                     }
@@ -423,12 +464,17 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             *lifelink_gain.entry(atk_controller).or_insert(0) += total_damage_dealt as i32;
         }
 
+        // CR 702.164a: Toxic N — additional poison counters when this deals combat damage to a player.
+        if let (Some(n), Some(pid)) = (toxic_n, attacked_player) {
+            *poison_to_players.entry(pid).or_insert(0) += n;
+        }
+
         // Blockers deal their damage back to the attacker.
         for &blocker_id in &blockers {
             if !deals_this_round(blocker_id) {
                 continue;
             }
-            let (blk_power, blk_deathtouch, blk_lifelink, blk_controller) = {
+            let (blk_power, blk_wither, blk_infect, blk_deathtouch, blk_lifelink, blk_controller) = {
                 let obj = match state.objects.get(&blocker_id) {
                     Some(o) => o,
                     None => continue,
@@ -441,13 +487,19 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                     .unwrap_or(0);
                 (
                     power,
+                    obj.has_keyword(StaticAbility::Wither),
+                    obj.has_keyword(StaticAbility::Infect),
                     obj.has_keyword(StaticAbility::Deathtouch),
                     obj.has_keyword(StaticAbility::Lifelink),
                     obj.controller,
                 )
             };
             if blk_power > 0 {
-                *damage_to_objects.entry(attacker_id).or_insert(0) += blk_power;
+                if blk_wither || blk_infect {
+                    *wither_to_objects.entry(attacker_id).or_insert(0) += blk_power;
+                } else {
+                    *damage_to_objects.entry(attacker_id).or_insert(0) += blk_power;
+                }
                 if blk_deathtouch {
                     deathtouch_targets.insert(attacker_id);
                 }
@@ -477,6 +529,24 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
     for (pid, gain) in lifelink_gain {
         if let Some(p) = state.get_player_mut(pid) {
             p.life += gain;
+        }
+    }
+    // Apply wither/infect counter damage to creatures.
+    for (oid, n) in wither_to_objects {
+        if let Some(perm) = state.battlefield.get_mut(&oid) {
+            perm.add_counters(
+                CounterKind::PtModifier {
+                    power: -1,
+                    toughness: -1,
+                },
+                n,
+            );
+        }
+    }
+    // Apply infect/toxic poison counters to players.
+    for (pid, n) in poison_to_players {
+        if let Some(p) = state.get_player_mut(pid) {
+            p.add_counters(CounterKind::Poison, n);
         }
     }
 
@@ -1523,5 +1593,187 @@ mod tests {
         let blocker =
             place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![ManaColor::Blue]);
         assert!(can_block_attacker(&gs, blocker, attacker));
+    }
+
+    #[test]
+    fn wither_deals_minus_counters_to_blocker_not_marked_damage() {
+        // CR 702.80a: Wither routes creature damage as -1/-1 counters.
+        use crate::types::CounterKind;
+        let mut gs = make_combat_state();
+        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Wither]);
+        let blocker_id = keyword_creature(&mut gs, PlayerId(1), 3, 3, vec![]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        let perm = &gs.battlefield[&blocker_id];
+        assert_eq!(
+            perm.damage_marked, 0,
+            "Wither damage must not be marked damage"
+        );
+        assert_eq!(
+            perm.counter_count(&CounterKind::PtModifier {
+                power: -1,
+                toughness: -1
+            }),
+            2,
+            "Wither attacker (power 2) should give 2 × -1/-1 counters to blocker"
+        );
+    }
+
+    #[test]
+    fn wither_unblocked_still_deals_life_damage_to_player() {
+        // CR 702.80a: Wither only changes creature damage; player damage is still life loss.
+        use crate::types::CounterKind;
+        let mut gs = make_combat_state();
+        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Wither]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        let defender = gs.players.iter().find(|p| p.id == PlayerId(1)).unwrap();
+        assert_eq!(
+            defender.life, 18,
+            "Wither unblocked attacker deals normal life damage to player"
+        );
+        assert_eq!(defender.counter_count(&CounterKind::Poison), 0);
+    }
+
+    #[test]
+    fn infect_deals_minus_counters_to_blocker_and_poison_to_player() {
+        // CR 702.90a: Infect → -1/-1 to creatures, poison to players.
+        use crate::types::CounterKind;
+        let mut gs = make_combat_state();
+        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 3, 3, vec![StaticAbility::Infect]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![])].into(); // unblocked → hits player
+
+        let gs = deal_combat_damage(gs);
+
+        let defender = gs.players.iter().find(|p| p.id == PlayerId(1)).unwrap();
+        assert_eq!(defender.life, 20, "Infect does not reduce player life");
+        assert_eq!(
+            defender.counter_count(&CounterKind::Poison),
+            3,
+            "Infect gives poison counters equal to damage"
+        );
+    }
+
+    #[test]
+    fn infect_blocked_deals_minus_counters_not_marked_damage() {
+        use crate::types::CounterKind;
+        let mut gs = make_combat_state();
+        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Infect]);
+        let blocker_id = keyword_creature(&mut gs, PlayerId(1), 3, 3, vec![]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        let perm = &gs.battlefield[&blocker_id];
+        assert_eq!(perm.damage_marked, 0);
+        assert_eq!(
+            perm.counter_count(&CounterKind::PtModifier {
+                power: -1,
+                toughness: -1
+            }),
+            2
+        );
+    }
+
+    #[test]
+    fn toxic_adds_poison_counters_in_addition_to_life_damage() {
+        // CR 702.164a: Toxic N gives N additional poison counters when dealing combat damage to a player.
+        use crate::types::CounterKind;
+        let mut gs = make_combat_state();
+        let attacker_id =
+            keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::ToxicN(2)]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        let defender = gs.players.iter().find(|p| p.id == PlayerId(1)).unwrap();
+        assert_eq!(defender.life, 18, "Toxic does not suppress life damage");
+        assert_eq!(
+            defender.counter_count(&CounterKind::Poison),
+            2,
+            "Toxic 2 gives 2 poison counters"
+        );
+    }
+
+    #[test]
+    fn infect_and_toxic_together_stack_poison() {
+        // A creature with both Infect and Toxic 2 that deals 3 combat damage to a player:
+        // 3 poison from Infect + 2 poison from Toxic 2 = 5 poison total, 0 life loss.
+        use crate::types::CounterKind;
+        let mut gs = make_combat_state();
+        let attacker_id = keyword_creature(
+            &mut gs,
+            PlayerId(0),
+            3,
+            3,
+            vec![StaticAbility::Infect, StaticAbility::ToxicN(2)],
+        );
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        let defender = gs.players.iter().find(|p| p.id == PlayerId(1)).unwrap();
+        assert_eq!(defender.life, 20);
+        assert_eq!(defender.counter_count(&CounterKind::Poison), 5);
+    }
+
+    #[test]
+    fn lifelink_still_triggers_with_wither() {
+        // CR 702.15a: Lifelink counts total damage dealt regardless of form.
+        let mut gs = make_combat_state();
+        let attacker_id = keyword_creature(
+            &mut gs,
+            PlayerId(0),
+            2,
+            2,
+            vec![StaticAbility::Wither, StaticAbility::Lifelink],
+        );
+        let blocker_id = keyword_creature(&mut gs, PlayerId(1), 3, 3, vec![]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        let attacker_controller = gs.players.iter().find(|p| p.id == PlayerId(0)).unwrap();
+        assert_eq!(
+            attacker_controller.life, 22,
+            "Lifelink should gain 2 life (2 wither damage dealt)"
+        );
+    }
+
+    #[test]
+    fn wither_blocker_deals_minus_counters_to_attacker() {
+        // CR 702.80a: Wither applies to damage from any source with the keyword.
+        use crate::types::CounterKind;
+        let mut gs = make_combat_state();
+        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 3, 3, vec![]);
+        let blocker_id = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Wither]);
+        gs.combat.attackers = vec![attacker_id];
+        gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
+
+        let gs = deal_combat_damage(gs);
+
+        let perm = &gs.battlefield[&attacker_id];
+        assert_eq!(
+            perm.damage_marked, 0,
+            "Blocker with Wither should not leave marked damage"
+        );
+        assert_eq!(
+            perm.counter_count(&CounterKind::PtModifier {
+                power: -1,
+                toughness: -1
+            }),
+            2
+        );
     }
 }
