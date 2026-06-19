@@ -397,7 +397,7 @@ pub struct SpellEffect {
 pub enum IgnoredKind {
     /// Parenthetical reminder text, e.g. "(This creature can't block.)".
     ReminderText,
-    /// Rule words (CR 207.2c) and flavour words (CR 207.2d) that precede an em-dash,
+    /// Ability words (CR 207.2c) and flavour words (CR 207.2d) that precede an em-dash,
     /// e.g. "Landfall — " or "Cumulative upkeep— ".
     AbilityWord,
 }
