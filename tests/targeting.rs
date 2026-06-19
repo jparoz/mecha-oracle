@@ -262,7 +262,7 @@ fn giant_growth_fizzles_when_target_leaves() {
 fn cant_cast_giant_growth_targeting_shroud_creature() {
     use mecha_oracle::types::ability::StaticAbility;
     use mecha_oracle::types::card::{CardType, TypeLine};
-    use mecha_oracle::types::{Ability, CardDefinition, OracleSpan};
+    use mecha_oracle::types::{CardDefinition, Rule, RulesText};
 
     let db = card_db();
     let mut gs = make_state();
@@ -285,7 +285,7 @@ fn cant_cast_giant_growth_targeting_shroud_creature() {
             subtypes: vec![],
         },
         oracle_text: "Shroud".into(),
-        abilities: vec![OracleSpan::Active(Ability::Static(StaticAbility::Shroud))],
+        abilities: vec![RulesText::Active(Rule::Static(StaticAbility::Shroud))],
         text_annotations: vec![],
         power: Some(1),
         toughness: Some(1),

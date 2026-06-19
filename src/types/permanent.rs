@@ -1,4 +1,4 @@
-use super::ability::{Ability, OracleSpan, StaticAbility};
+use super::ability::{Rule, RulesText, StaticAbility};
 use super::card::CardDefinition;
 use super::counter::CounterKind;
 use std::collections::HashMap;
@@ -54,13 +54,13 @@ impl PermanentState {
         self.definition
             .abilities
             .iter()
-            .any(|span| matches!(span, OracleSpan::Active(Ability::Static(k)) if *k == kw))
+            .any(|span| matches!(span, RulesText::Active(Rule::Static(k)) if *k == kw))
     }
 
     /// Returns the Bushido parameter N if this permanent has Bushido N, otherwise None.
     pub fn bushido_n(&self) -> Option<u32> {
         self.definition.abilities.iter().find_map(|span| {
-            if let OracleSpan::Active(Ability::Static(StaticAbility::BushidoN(n))) = span {
+            if let RulesText::Active(Rule::Static(StaticAbility::BushidoN(n))) = span {
                 Some(*n)
             } else {
                 None
@@ -76,7 +76,7 @@ impl PermanentState {
             .abilities
             .iter()
             .filter_map(|span| {
-                if let OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(n))) = span {
+                if let RulesText::Active(Rule::Static(StaticAbility::ToxicN(n))) = span {
                     Some(*n)
                 } else {
                     None
@@ -199,9 +199,9 @@ mod tests {
 
     #[test]
     fn summoning_sick_creature_with_haste_can_attack() {
-        use crate::types::{Ability, OracleSpan, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![OracleSpan::Active(Ability::Static(StaticAbility::Haste))];
+        def.abilities = vec![RulesText::Active(Rule::Static(StaticAbility::Haste))];
         let perm = PermanentState::new(&def); // controller_since_turn = u32::MAX → sick
         assert!(perm.can_attack(1)); // sick but has Haste
     }
@@ -272,11 +272,9 @@ mod tests {
 
     #[test]
     fn bushido_n_returns_some_for_bushido_creature() {
-        use crate::types::{Ability, OracleSpan, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![OracleSpan::Active(Ability::Static(
-            StaticAbility::BushidoN(3),
-        ))];
+        def.abilities = vec![RulesText::Active(Rule::Static(StaticAbility::BushidoN(3)))];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.bushido_n(), Some(3));
     }
@@ -290,12 +288,12 @@ mod tests {
     #[test]
     fn ability_cycling_roundtrips() {
         use crate::types::mana::{ManaCost, ManaPip};
-        use crate::types::{Ability, OracleSpan};
+        use crate::types::{Rule, RulesText};
         let cost = ManaCost {
             pips: vec![ManaPip::Generic(2)],
         };
-        let span = OracleSpan::Active(Ability::Cycling(cost.clone()));
-        assert_eq!(span, OracleSpan::Active(Ability::Cycling(cost)));
+        let span = RulesText::Active(Rule::Cycling(cost.clone()));
+        assert_eq!(span, RulesText::Active(Rule::Cycling(cost)));
     }
 
     #[test]
@@ -384,11 +382,9 @@ mod tests {
 
     #[test]
     fn toxic_n_returns_some_for_toxic_creature() {
-        use crate::types::{Ability, OracleSpan, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(
-            3,
-        )))];
+        def.abilities = vec![RulesText::Active(Rule::Static(StaticAbility::ToxicN(3)))];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.toxic_n(), Some(3));
     }
@@ -402,11 +398,11 @@ mod tests {
     #[test]
     fn toxic_n_sums_multiple_toxic_abilities() {
         // CR 702.164b: total toxic value is the sum of all N values.
-        use crate::types::{Ability, OracleSpan, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
         def.abilities = vec![
-            OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(2))),
-            OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(1))),
+            RulesText::Active(Rule::Static(StaticAbility::ToxicN(2))),
+            RulesText::Active(Rule::Static(StaticAbility::ToxicN(1))),
         ];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.toxic_n(), Some(3));

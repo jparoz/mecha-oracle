@@ -498,7 +498,7 @@ mod tests {
     #[test]
     fn decayed_attacker_sacrificed_at_end_of_combat() {
         use crate::types::card::{CardType, TypeLine};
-        use crate::types::{Ability, CardDefinition, OracleSpan, ability::StaticAbility};
+        use crate::types::{CardDefinition, Rule, RulesText, ability::StaticAbility};
         let mut gs = make_state();
         gs.step = Step::EndOfCombat;
         let id = gs.alloc_id();
@@ -511,7 +511,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Static(StaticAbility::Decayed))],
+            abilities: vec![RulesText::Active(Rule::Static(StaticAbility::Decayed))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -617,11 +617,11 @@ mod tests {
     #[test]
     fn phase_step_event_collects_upkeep_trigger() {
         use crate::types::ability::{
-            Ability, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+            Rule, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
         };
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::effect::EffectStep;
-        use crate::types::{OracleSpan, PermanentState};
+        use crate::types::{PermanentState, RulesText};
 
         let mut gs = make_state();
         gs.step = Step::Upkeep;
@@ -645,7 +645,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(upkeep_trigger))],
+            abilities: vec![RulesText::Active(Rule::Triggered(upkeep_trigger))],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -671,11 +671,11 @@ mod tests {
     #[test]
     fn phase_step_event_does_not_fire_for_non_active_player() {
         use crate::types::ability::{
-            Ability, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+            Rule, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
         };
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::effect::EffectStep;
-        use crate::types::{OracleSpan, PermanentState};
+        use crate::types::{PermanentState, RulesText};
 
         let mut gs = make_state();
         gs.step = Step::Upkeep;
@@ -698,7 +698,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(upkeep_trigger))],
+            abilities: vec![RulesText::Active(Rule::Triggered(upkeep_trigger))],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -724,11 +724,11 @@ mod tests {
     #[test]
     fn draw_card_fires_draws_card_event_and_collects_trigger() {
         use crate::types::ability::{
-            Ability, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
+            Rule, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
         };
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::effect::EffectStep;
-        use crate::types::{OracleSpan, PermanentState};
+        use crate::types::{PermanentState, RulesText};
 
         let db = crate::cards::test_helpers::test_db();
         let mut gs = make_state();
@@ -765,7 +765,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(draw_trigger))],
+            abilities: vec![RulesText::Active(Rule::Triggered(draw_trigger))],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -791,11 +791,11 @@ mod tests {
     #[test]
     fn draw_event_does_not_fire_non_draw_triggers() {
         use crate::types::ability::{
-            Ability, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+            Rule, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
         };
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::effect::EffectStep;
-        use crate::types::{OracleSpan, PermanentState};
+        use crate::types::{PermanentState, RulesText};
 
         let db = crate::cards::test_helpers::test_db();
         let mut gs = make_state();
@@ -831,7 +831,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(etb_trigger))],
+            abilities: vec![RulesText::Active(Rule::Triggered(etb_trigger))],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),

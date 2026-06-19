@@ -80,7 +80,7 @@ impl CardDatabase {
         Ok(Self { inner, tokens })
     }
 
-    /// Number of loaded cards that contain at least one `OracleSpan::Unparsed` span.
+    /// Number of loaded cards that contain at least one `RulesText::Unparsed` span.
     pub fn unparsed_count(&self) -> usize {
         self.inner.values().filter(|def| def.has_unparsed()).count()
     }
@@ -124,27 +124,27 @@ mod tests {
 
     #[test]
     fn landfall_card_span_structure() {
-        use crate::types::{IgnoredKind, OracleSpan};
+        use crate::types::{IgnoredKind, RulesText};
         let db = test_db();
         let card = db.get("Grazing Gladehart").unwrap();
         assert_eq!(card.abilities.len(), 2);
         assert!(matches!(
             &card.abilities[0],
-            OracleSpan::Ignored(IgnoredKind::AbilityWord, _)
+            RulesText::Ignored(IgnoredKind::AbilityWord, _)
         ));
-        assert!(matches!(&card.abilities[1], OracleSpan::Unparsed(_)));
+        assert!(matches!(&card.abilities[1], RulesText::Unparsed(_)));
     }
 
     #[test]
     fn keyword_only_card_has_no_unparsed_spans() {
-        use crate::types::OracleSpan;
+        use crate::types::RulesText;
         let db = test_db();
         let card = db.get("Serra Angel").unwrap();
         assert!(!card.has_unparsed());
         assert!(
             card.abilities
                 .iter()
-                .all(|s| matches!(s, OracleSpan::Active(_)))
+                .all(|s| matches!(s, RulesText::Active(_)))
         );
     }
 
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn llanowar_elves_loads_with_activated_ability() {
-        use crate::types::{Ability, OracleSpan};
+        use crate::types::{Rule, RulesText};
         let db = test_db();
         let card = db
             .get("Llanowar Elves")
@@ -166,7 +166,7 @@ mod tests {
         assert!(
             card.abilities
                 .iter()
-                .any(|s| { matches!(s, OracleSpan::Active(Ability::Activated(_))) })
+                .any(|s| { matches!(s, RulesText::Active(Rule::Activated(_))) })
         );
     }
 

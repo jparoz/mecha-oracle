@@ -281,10 +281,10 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     }
     // CR 702.14c: Landwalk — can't be blocked if defending player controls matching land
     {
-        use crate::types::ability::{Ability, LandwalkKind, StaticAbility as SA};
+        use crate::types::ability::{LandwalkKind, Rule, StaticAbility as SA};
         let defending_player = state.opponent_of(state.active_player);
         for span in &attacker_obj.definition.abilities {
-            if let crate::types::OracleSpan::Active(Ability::Static(SA::Landwalk(kind))) = span {
+            if let crate::types::RulesText::Active(Rule::Static(SA::Landwalk(kind))) = span {
                 let defender_has_land = state.battlefield.iter().any(|(land_id, _)| {
                     let land_obj = match state.objects.get(land_id) {
                         Some(o) => o,
@@ -315,11 +315,10 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     }
     // CR 702.16f: Protection — can't be blocked by creatures with the protected quality
     {
-        use crate::types::ability::{Ability, StaticAbility as SA};
+        use crate::types::ability::{Rule, StaticAbility as SA};
         let blocker_colors = &blocker_obj.definition.colors;
         for span in &attacker_obj.definition.abilities {
-            if let crate::types::OracleSpan::Active(Ability::Static(SA::ProtectionFromColor(c))) =
-                span
+            if let crate::types::RulesText::Active(Rule::Static(SA::ProtectionFromColor(c))) = span
                 && blocker_colors.contains(c)
             {
                 return false;
@@ -673,7 +672,7 @@ mod tests {
         keywords: Vec<crate::types::ability::StaticAbility>,
     ) -> ObjectId {
         use crate::types::{
-            Ability, CardDefinition, OracleSpan,
+            CardDefinition, Rule, RulesText,
             card::{CardType, TypeLine},
         };
         let id = state.alloc_id();
@@ -688,7 +687,7 @@ mod tests {
             oracle_text: String::new(),
             abilities: keywords
                 .into_iter()
-                .map(|k| OracleSpan::Active(Ability::Static(k)))
+                .map(|k| RulesText::Active(Rule::Static(k)))
                 .collect(),
             text_annotations: vec![],
             power: Some(power),
@@ -706,8 +705,8 @@ mod tests {
     #[test]
     fn declare_attackers_exalted_puts_trigger_on_stack() {
         use crate::engine::triggered::exalted_triggered_ability;
-        use crate::types::OracleSpan;
-        use crate::types::ability::Ability;
+        use crate::types::RulesText;
+        use crate::types::ability::Rule;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = make_combat_state();
@@ -736,7 +735,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(
+            abilities: vec![RulesText::Active(Rule::Triggered(
                 exalted_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1203,8 +1202,8 @@ mod tests {
     fn declare_blockers_flanking_attacker_puts_trigger_on_stack() {
         // CR 702.25a: Flanking trigger fires when a non-Flanking creature blocks this.
         use crate::engine::triggered::flanking_triggered_ability;
-        use crate::types::OracleSpan;
-        use crate::types::ability::Ability;
+        use crate::types::RulesText;
+        use crate::types::ability::Rule;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = make_combat_state();
@@ -1217,7 +1216,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(
+            abilities: vec![RulesText::Active(Rule::Triggered(
                 flanking_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1469,7 +1468,7 @@ mod tests {
     fn place_creature_with_colors(
         state: &mut GameState,
         owner: PlayerId,
-        abilities: Vec<crate::types::OracleSpan>,
+        abilities: Vec<crate::types::RulesText>,
         colors: Vec<crate::types::mana::ManaColor>,
     ) -> ObjectId {
         use crate::types::card::{CardDefinition, CardType, TypeLine};
@@ -1499,14 +1498,14 @@ mod tests {
 
     #[test]
     fn fear_blocks_non_artifact_non_black_creature() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{Rule, StaticAbility};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Active(Ability::Static(StaticAbility::Fear))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Fear))],
             vec![ManaColor::Black],
         );
         gs.combat.attackers = vec![attacker];
@@ -1519,14 +1518,14 @@ mod tests {
 
     #[test]
     fn fear_allows_black_creature_to_block() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{Rule, StaticAbility};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Active(Ability::Static(StaticAbility::Fear))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Fear))],
             vec![],
         );
         gs.combat.attackers = vec![attacker];
@@ -1538,16 +1537,14 @@ mod tests {
 
     #[test]
     fn intimidate_blocks_different_color_non_artifact() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{Rule, StaticAbility};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Active(Ability::Static(
-                StaticAbility::Intimidate,
-            ))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Intimidate))],
             vec![ManaColor::Red],
         );
         gs.combat.attackers = vec![attacker];
@@ -1560,16 +1557,14 @@ mod tests {
 
     #[test]
     fn intimidate_allows_same_color_blocker() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{Rule, StaticAbility};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Active(Ability::Static(
-                StaticAbility::Intimidate,
-            ))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Intimidate))],
             vec![ManaColor::Red],
         );
         gs.combat.attackers = vec![attacker];
@@ -1585,16 +1580,16 @@ mod tests {
 
     #[test]
     fn islandwalk_unblockable_when_defender_controls_island() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, LandwalkKind, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{LandwalkKind, Rule, StaticAbility};
         use crate::types::card::{CardDefinition, CardType, Supertype, TypeLine};
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Active(Ability::Static(
-                StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())),
-            ))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Landwalk(
+                LandwalkKind::LandType("Island".to_string()),
+            )))],
             vec![],
         );
         gs.combat.attackers = vec![attacker];
@@ -1626,15 +1621,15 @@ mod tests {
 
     #[test]
     fn islandwalk_blockable_when_no_island_on_battlefield() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, LandwalkKind, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{LandwalkKind, Rule, StaticAbility};
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Active(Ability::Static(
-                StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())),
-            ))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Landwalk(
+                LandwalkKind::LandType("Island".to_string()),
+            )))],
             vec![],
         );
         gs.combat.attackers = vec![attacker];
@@ -1645,14 +1640,14 @@ mod tests {
 
     #[test]
     fn protection_from_red_blocks_red_blocker() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{Rule, StaticAbility};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Active(Ability::Static(
+            vec![RulesText::Active(Rule::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Red),
             ))],
             vec![],
@@ -1666,14 +1661,14 @@ mod tests {
 
     #[test]
     fn protection_from_red_allows_blue_blocker() {
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{Rule, StaticAbility};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Active(Ability::Static(
+            vec![RulesText::Active(Rule::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Red),
             ))],
             vec![],
@@ -1875,12 +1870,12 @@ mod tests {
         // damage to a player. A creature with a DealsCombatDamage trigger should put a stack
         // object on the stack.
         use crate::engine::triggered::deals_combat_damage_to_player_triggered_ability;
-        use crate::types::OracleSpan;
-        use crate::types::ability::Ability;
+        use crate::types::RulesText;
+        use crate::types::ability::Rule;
 
         let mut gs = make_combat_state();
         // A 2/2 creature with "whenever this deals combat damage to a player, draw a card".
-        let ability_span = OracleSpan::Active(Ability::Triggered(
+        let ability_span = RulesText::Active(Rule::Triggered(
             deals_combat_damage_to_player_triggered_ability(),
         ));
         use crate::types::card::{CardDefinition, CardType, TypeLine};
@@ -1918,12 +1913,12 @@ mod tests {
         // A creature that is fully blocked (no trample) should not fire a
         // DealsCombatDamage-to-player trigger.
         use crate::engine::triggered::deals_combat_damage_to_player_triggered_ability;
-        use crate::types::OracleSpan;
-        use crate::types::ability::Ability;
+        use crate::types::RulesText;
+        use crate::types::ability::Rule;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = make_combat_state();
-        let ability_span = OracleSpan::Active(Ability::Triggered(
+        let ability_span = RulesText::Active(Rule::Triggered(
             deals_combat_damage_to_player_triggered_ability(),
         ));
         let def = CardDefinition {
@@ -1960,12 +1955,12 @@ mod tests {
     fn trample_attacker_fires_deals_combat_damage_to_player_trigger() {
         // Trample attacker: excess goes to player, so trigger fires.
         use crate::engine::triggered::deals_combat_damage_to_player_triggered_ability;
-        use crate::types::OracleSpan;
-        use crate::types::ability::Ability;
+        use crate::types::RulesText;
+        use crate::types::ability::Rule;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = make_combat_state();
-        let ability_span = OracleSpan::Active(Ability::Triggered(
+        let ability_span = RulesText::Active(Rule::Triggered(
             deals_combat_damage_to_player_triggered_ability(),
         ));
         let def = CardDefinition {
@@ -1978,7 +1973,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![
-                OracleSpan::Active(Ability::Static(StaticAbility::Trample)),
+                RulesText::Active(Rule::Static(StaticAbility::Trample)),
                 ability_span,
             ],
             text_annotations: vec![],

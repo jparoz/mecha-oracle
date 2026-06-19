@@ -66,7 +66,7 @@ fn resolve_x_in_cost(
 /// source later leaves the battlefield.
 pub(crate) fn inject_source_flags(
     effect: crate::types::effect::Effect,
-    source_abilities: &[crate::types::OracleSpan],
+    source_abilities: &[crate::types::RulesText],
 ) -> crate::types::effect::Effect {
     use crate::types::ability::StaticAbility;
     use crate::types::effect::{DamageStep, EffectStep};
@@ -87,14 +87,14 @@ pub(crate) fn inject_source_flags(
 }
 
 fn has_damage_kw(
-    abilities: &[crate::types::OracleSpan],
+    abilities: &[crate::types::RulesText],
     kw: &crate::types::ability::StaticAbility,
 ) -> bool {
-    use crate::types::OracleSpan;
-    use crate::types::ability::Ability;
+    use crate::types::RulesText;
+    use crate::types::ability::Rule;
     abilities
         .iter()
-        .any(|span| matches!(span, OracleSpan::Active(Ability::Static(k)) if k == kw))
+        .any(|span| matches!(span, RulesText::Active(Rule::Static(k)) if k == kw))
 }
 
 // CR 608.2b: execute each effect step for the given controller.
@@ -344,8 +344,8 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                             .abilities
                             .iter()
                             .filter_map(|span| match span {
-                                crate::types::OracleSpan::Active(
-                                    crate::types::Ability::SpellEffect(spell_ability),
+                                crate::types::RulesText::Active(
+                                    crate::types::Rule::SpellEffect(spell_ability),
                                 ) => Some(spell_ability.steps.clone()),
                                 _ => None,
                             })
@@ -354,7 +354,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     })
                     .unwrap_or_default();
 
-                let spell_abilities: Vec<crate::types::OracleSpan> = state
+                let spell_abilities: Vec<crate::types::RulesText> = state
                     .objects
                     .get(&card_id)
                     .map(|o| o.definition.abilities.clone())
@@ -452,7 +452,7 @@ mod tests {
     use crate::types::effect::EffectStep;
     use crate::types::mana::{ManaCost, ManaPip};
     use crate::types::stack::{StackObject, StackPayload};
-    use crate::types::{Ability, CardObject, ObjectId, OracleSpan, Player, Step};
+    use crate::types::{CardObject, ObjectId, Player, Rule, RulesText, Step};
 
     fn make_state() -> GameState {
         let mut gs = GameState::new(vec![
@@ -694,7 +694,7 @@ mod tests {
         owner: PlayerId,
         steps: Vec<EffectStep>,
     ) -> ObjectId {
-        use crate::types::ability::SpellAbility;
+        use crate::types::ability::SpellEffect;
         let def = CardDefinition {
             name: "Test Instant".into(),
             mana_cost: Some(ManaCost {
@@ -706,7 +706,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
+            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![],
                 steps,
             }))],
@@ -726,7 +726,7 @@ mod tests {
         owner: PlayerId,
         steps: Vec<EffectStep>,
     ) -> ObjectId {
-        use crate::types::ability::SpellAbility;
+        use crate::types::ability::SpellEffect;
         let def = CardDefinition {
             name: "Test Sorcery".into(),
             mana_cost: Some(ManaCost {
@@ -738,7 +738,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
+            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![],
                 steps,
             }))],
@@ -876,7 +876,7 @@ mod tests {
                 subtypes: vec!["Elf".into()],
             },
             oracle_text: "When this enters, draw a card.".into(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
+            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -1080,7 +1080,7 @@ mod tests {
     #[test]
     fn targeted_spell_fizzles_when_target_leaves_before_resolution() {
         use crate::types::PTDelta;
-        use crate::types::ability::{SpellAbility, TargetFilter};
+        use crate::types::ability::{SpellEffect, TargetFilter};
         use crate::types::effect::EffectTarget;
 
         let mut gs = make_state();
@@ -1119,7 +1119,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
+            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![EffectStep::BoostPermanentPT(PTDelta {
                     power: 3,
@@ -1747,11 +1747,11 @@ mod tests {
     #[test]
     fn inject_source_flags_sets_lifelink_from_abilities() {
         use crate::engine::stack::inject_source_flags;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{Rule, StaticAbility};
         use crate::types::effect::{DamageStep, EffectStep};
 
-        let abilities = vec![OracleSpan::Active(Ability::Static(StaticAbility::Lifelink))];
+        let abilities = vec![RulesText::Active(Rule::Static(StaticAbility::Lifelink))];
         let effect = vec![EffectStep::DealDamage(DamageStep {
             amount: 2,
             ..Default::default()
@@ -1772,13 +1772,13 @@ mod tests {
     #[test]
     fn inject_source_flags_sets_wither_and_infect() {
         use crate::engine::stack::inject_source_flags;
-        use crate::types::OracleSpan;
-        use crate::types::ability::{Ability, StaticAbility};
+        use crate::types::RulesText;
+        use crate::types::ability::{Rule, StaticAbility};
         use crate::types::effect::{DamageStep, EffectStep};
 
         let abilities = vec![
-            OracleSpan::Active(Ability::Static(StaticAbility::Wither)),
-            OracleSpan::Active(Ability::Static(StaticAbility::Infect)),
+            RulesText::Active(Rule::Static(StaticAbility::Wither)),
+            RulesText::Active(Rule::Static(StaticAbility::Infect)),
         ];
         let effect = vec![EffectStep::DealDamage(DamageStep {
             amount: 1,
@@ -1825,7 +1825,7 @@ mod tests {
 
     #[test]
     fn counter_spell_step_counters_targeted_stack_spell() {
-        use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
+        use crate::types::ability::{SpellEffect, SpellFilter, TargetFilter};
         use crate::types::effect::EffectTarget;
         use crate::types::mana::ManaColor;
 
@@ -1877,7 +1877,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Counter target spell.".into(),
-            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
+            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![TargetFilter::Spell(SpellFilter::any())],
                 steps: vec![EffectStep::CounterSpell],
             }))],

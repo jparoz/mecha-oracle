@@ -1,6 +1,6 @@
 use super::EngineError;
 use crate::engine::costs::{can_pay_cost_components, pay_cost_components};
-use crate::types::ability::{Ability, ActivatedAbility, CostComponent, OracleSpan};
+use crate::types::ability::{ActivatedAbility, CostComponent, Rule, RulesText};
 use crate::types::effect::EffectStep;
 use crate::types::{GameState, ManaCheckpoint, ObjectId, PlayerId, Zone};
 
@@ -35,7 +35,7 @@ pub fn activate_ability(
         .abilities
         .iter()
         .filter_map(|span| match span {
-            OracleSpan::Active(Ability::Activated(a)) => Some(a.clone()),
+            RulesText::Active(Rule::Activated(a)) => Some(a.clone()),
             _ => None,
         })
         .nth(ability_index)
@@ -183,7 +183,7 @@ pub fn activate_ability(
             .unwrap_or_else(|| "activated ability".into());
         // Guard: only inject keyword flags from permanents currently on the battlefield.
         // The outer battlefield.get ensures we do not inject from any lingering object ID.
-        let source_abilities: Vec<crate::types::OracleSpan> = state
+        let source_abilities: Vec<crate::types::RulesText> = state
             .battlefield
             .get(&object_id)
             .map(|_| {
@@ -258,7 +258,7 @@ pub fn activate_ability(
 mod tests {
     use super::*;
     use crate::engine::costs::can_pay_cost_components;
-    use crate::types::ability::{Ability, ActivatedAbility, CostComponent};
+    use crate::types::ability::{ActivatedAbility, CostComponent, Rule};
     use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::effect::EffectStep;
     use crate::types::mana::{ManaCost, ManaPip, ManaPool};
@@ -283,7 +283,7 @@ mod tests {
                 subtypes: vec!["Elf".into(), "Druid".into()],
             },
             oracle_text: "{T}: Add {G}.".into(),
-            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
+            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(ManaPool {
@@ -308,7 +308,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{T}: Mill 2.".into(),
-            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
+            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
@@ -330,7 +330,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{1}: Draw a card.".into(),
-            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
+            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Mana(ManaCost {
                     pips: vec![ManaPip::Generic(1)],
                 })],
@@ -526,7 +526,7 @@ mod tests {
     #[test]
     fn unimplemented_cost_puts_effect_on_stack() {
         use crate::engine::stack::resolve_top;
-        use crate::types::ability::{Ability, ActivatedAbility, CostComponent};
+        use crate::types::ability::{ActivatedAbility, CostComponent, Rule};
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::effect::EffectStep;
 
@@ -539,7 +539,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Sacrifice a creature: Mill 2.".into(),
-            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
+            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Unimplemented("Sacrifice a creature".into())],
                 target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
@@ -603,7 +603,7 @@ mod tests {
                 subtypes: vec!["Elf".into()],
             },
             oracle_text: "{T}: Add {G}.".into(),
-            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
+            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(ManaPool {
@@ -637,7 +637,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{T}: Deal 1 damage to target creature.".into(),
-            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
+            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![TargetFilter::Creature],
                 effect: vec![EffectStep::DealDamage(crate::types::effect::DamageStep {
@@ -676,7 +676,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Ward {2}".into(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
+            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },

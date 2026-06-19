@@ -17,8 +17,7 @@ use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
-    Ability, ActivatedAbility, AnnotationKind, CostComponent, OracleSpan, StaticAbility,
-    TextAnnotation,
+    ActivatedAbility, AnnotationKind, CostComponent, Rule, RulesText, StaticAbility, TextAnnotation,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
 use mecha_oracle::types::stack::StackPayload;
@@ -514,9 +513,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Active(Ability::SpellEffect(sa))
-                    if !sa.target_requirements.is_empty() =>
-                {
+                RulesText::Active(Rule::SpellEffect(sa)) if !sa.target_requirements.is_empty() => {
                     Some(sa.target_requirements.as_slice())
                 }
                 _ => None,
@@ -579,7 +576,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
 
     // Cycling
     for span in &obj.definition.abilities {
-        if let OracleSpan::Active(Ability::Cycling(cost)) = span
+        if let RulesText::Active(Rule::Cycling(cost)) = span
             && state.priority_player == pid
         {
             actions.push(ActionItemView {
@@ -652,7 +649,7 @@ fn compute_battlefield_actions(
         .abilities
         .iter()
         .filter_map(|span| match span {
-            OracleSpan::Active(Ability::Activated(a)) => Some(a),
+            RulesText::Active(Rule::Activated(a)) => Some(a),
             _ => None,
         })
         .enumerate()
@@ -1803,8 +1800,8 @@ mod tests {
         use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
         use mecha_oracle::types::effect::EffectStep;
         use mecha_oracle::types::mana::{ManaCost, ManaPip};
-        use mecha_oracle::types::{Ability, OracleSpan};
         use mecha_oracle::types::{CardObject, Zone};
+        use mecha_oracle::types::{Rule, RulesText};
 
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
@@ -1812,7 +1809,7 @@ mod tests {
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        use mecha_oracle::types::ability::SpellAbility;
+        use mecha_oracle::types::ability::SpellEffect;
         let def = CardDefinition {
             name: "Cheap Instant".into(),
             mana_cost: Some(ManaCost {
@@ -1824,7 +1821,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
+            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],
@@ -2051,7 +2048,7 @@ mod tests {
         // P0 has a flying attacker; P1 has only a ground creature — no valid blockers.
         use mecha_oracle::types::ability::StaticAbility;
         use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
-        use mecha_oracle::types::{Ability, CardObject, OracleSpan, Zone};
+        use mecha_oracle::types::{CardObject, Rule, RulesText, Zone};
         let db = test_db();
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
@@ -2070,7 +2067,7 @@ mod tests {
                     subtypes: vec![],
                 },
                 oracle_text: String::new(),
-                abilities: vec![OracleSpan::Active(Ability::Static(StaticAbility::Flying))],
+                abilities: vec![RulesText::Active(Rule::Static(StaticAbility::Flying))],
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
@@ -2193,7 +2190,7 @@ mod tests {
     fn blocker_ui_only_shows_valid_pairings() {
         use mecha_oracle::types::ability::StaticAbility;
         use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
-        use mecha_oracle::types::{Ability, CardObject, OracleSpan, Zone};
+        use mecha_oracle::types::{CardObject, Rule, RulesText, Zone};
 
         let db = test_db();
         let config = vec![
@@ -2214,7 +2211,7 @@ mod tests {
                     subtypes: vec![],
                 },
                 oracle_text: String::new(),
-                abilities: vec![OracleSpan::Active(Ability::Static(StaticAbility::Flying))],
+                abilities: vec![RulesText::Active(Rule::Static(StaticAbility::Flying))],
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
@@ -2750,7 +2747,7 @@ mod tests {
     fn cycle_action_label_is_braced() {
         use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
         use mecha_oracle::types::mana::{ManaColor, ManaCost, ManaPip};
-        use mecha_oracle::types::{Ability, CardObject, OracleSpan, Zone};
+        use mecha_oracle::types::{CardObject, Rule, RulesText, Zone};
 
         let config = vec![
             (0..10).map(|_| "Forest".to_string()).collect(),
@@ -2769,7 +2766,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Cycling {2}".into(),
-            abilities: vec![OracleSpan::Active(Ability::Cycling(ManaCost {
+            abilities: vec![RulesText::Active(Rule::Cycling(ManaCost {
                 pips: vec![ManaPip::Generic(2)],
             }))],
             text_annotations: vec![],

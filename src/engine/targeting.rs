@@ -1,4 +1,4 @@
-use crate::types::ability::{Ability, StaticAbility, TargetFilter};
+use crate::types::ability::{Rule, StaticAbility, TargetFilter};
 
 // CR 202.3: mana value is the sum of pip values; delegates to ManaCost::mana_value().
 fn mana_value_of(cost: &crate::types::mana::ManaCost) -> u32 {
@@ -7,7 +7,7 @@ fn mana_value_of(cost: &crate::types::mana::ManaCost) -> u32 {
 use crate::types::effect::EffectTarget;
 use crate::types::mana::ManaColor;
 use crate::types::stack::StackPayload;
-use crate::types::{GameState, OracleSpan, PlayerId, Zone};
+use crate::types::{GameState, PlayerId, RulesText, Zone};
 
 // CR 115.4: a target is legal if it exists in the targeted zone, satisfies the
 // filter, and is not protected by Shroud (CR 702.18) or Hexproof (CR 702.11).
@@ -47,8 +47,7 @@ pub fn is_legal_target(
             }
             // CR 702.16c: protection prevents targeting by sources of protected quality
             for span in &obj.definition.abilities {
-                if let OracleSpan::Active(Ability::Static(StaticAbility::ProtectionFromColor(c))) =
-                    span
+                if let RulesText::Active(Rule::Static(StaticAbility::ProtectionFromColor(c))) = span
                     && source_colors.contains(c)
                 {
                     return false;
@@ -157,9 +156,9 @@ pub fn targets_still_legal(state: &GameState, targets: &[EffectTarget]) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ability::Ability;
+    use crate::types::ability::Rule;
     use crate::types::card::{CardDefinition, CardType, TypeLine};
-    use crate::types::{CardObject, OracleSpan, PermanentState, Player};
+    use crate::types::{CardObject, PermanentState, Player, RulesText};
 
     fn two_player_state() -> GameState {
         GameState::new(vec![
@@ -171,7 +170,7 @@ mod tests {
     fn place_creature(
         state: &mut GameState,
         owner: PlayerId,
-        abilities: Vec<OracleSpan>,
+        abilities: Vec<RulesText>,
     ) -> crate::types::ObjectId {
         let def = CardDefinition {
             name: "Test Creature".into(),
@@ -262,7 +261,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Active(Ability::Static(StaticAbility::Shroud))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Shroud))],
         );
         let target = EffectTarget::Object { id };
         assert!(!is_legal_target(
@@ -287,7 +286,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Active(Ability::Static(StaticAbility::Hexproof))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Hexproof))],
         );
         let target = EffectTarget::Object { id };
         assert!(!is_legal_target(
@@ -305,7 +304,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Active(Ability::Static(StaticAbility::Hexproof))],
+            vec![RulesText::Active(Rule::Static(StaticAbility::Hexproof))],
         );
         let target = EffectTarget::Object { id };
         assert!(is_legal_target(
@@ -403,7 +402,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Active(Ability::Static(
+            vec![RulesText::Active(Rule::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Blue),
             ))],
         );
@@ -425,7 +424,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Active(Ability::Static(
+            vec![RulesText::Active(Rule::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Blue),
             ))],
         );

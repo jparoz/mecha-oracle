@@ -1,9 +1,9 @@
 use super::EngineError;
 use crate::engine::costs::pay_cost_components;
-use crate::types::ability::Ability;
+use crate::types::ability::Rule;
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
-use crate::types::{GameState, ObjectId, OracleSpan, PlayerId, Zone};
+use crate::types::{GameState, ObjectId, PlayerId, RulesText, Zone};
 
 /// CR 702.29: Cycling — pay the cycling cost and discard this card (cost), then draw a card (effect).
 /// The draw effect is placed on the stack. The card is discarded immediately as part of the cost.
@@ -33,7 +33,7 @@ pub fn cycle_card(
         .get(&card_id)
         .and_then(|obj| {
             obj.definition.abilities.iter().find_map(|span| {
-                if let OracleSpan::Active(Ability::Cycling(cost)) = span {
+                if let RulesText::Active(Rule::Cycling(cost)) = span {
                     Some(cost.clone())
                 } else {
                     None
@@ -85,7 +85,7 @@ pub fn cycle_card(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ability::{Ability, OracleSpan};
+    use crate::types::ability::{Rule, RulesText};
     use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::mana::{ManaCost, ManaPip};
     use crate::types::{CardObject, Player, Step};
@@ -140,7 +140,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Cycling".into(),
-            abilities: vec![OracleSpan::Active(Ability::Cycling(cost))],
+            abilities: vec![RulesText::Active(Rule::Cycling(cost))],
             text_annotations: vec![],
             power: None,
             toughness: None,

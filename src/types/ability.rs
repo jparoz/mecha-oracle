@@ -397,7 +397,7 @@ pub struct SpellEffect {
 pub enum IgnoredKind {
     /// Parenthetical reminder text, e.g. "(This creature can't block.)".
     ReminderText,
-    /// Ability words (CR 207.2c) and flavour words (CR 207.2d) that precede an em-dash,
+    /// Rule words (CR 207.2c) and flavour words (CR 207.2d) that precede an em-dash,
     /// e.g. "Landfall — " or "Cumulative upkeep— ".
     AbilityWord,
 }
@@ -446,26 +446,21 @@ pub enum RulesText {
     ParsedUnimplemented(String),
 }
 
-// Backward-compat aliases — removed in the type-renames cleanup (Task 4).
-pub type Ability = Rule;
-pub type SpellAbility = SpellEffect;
-pub type OracleSpan = RulesText;
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn oracle_span_variants_are_comparable() {
-        let a = OracleSpan::Active(Ability::Static(StaticAbility::Flying));
-        let b = OracleSpan::Active(Ability::Static(StaticAbility::Flying));
+        let a = RulesText::Active(Rule::Static(StaticAbility::Flying));
+        let b = RulesText::Active(Rule::Static(StaticAbility::Flying));
         assert_eq!(a, b);
 
-        let c = OracleSpan::Ignored(IgnoredKind::ReminderText, "(reminder)".into());
-        let d = OracleSpan::Ignored(IgnoredKind::ReminderText, "(reminder)".into());
+        let c = RulesText::Ignored(IgnoredKind::ReminderText, "(reminder)".into());
+        let d = RulesText::Ignored(IgnoredKind::ReminderText, "(reminder)".into());
         assert_eq!(c, d);
 
-        let e = OracleSpan::Unparsed("When this enters".into());
+        let e = RulesText::Unparsed("When this enters".into());
         assert_ne!(a, e);
     }
 

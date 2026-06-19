@@ -1,4 +1,4 @@
-use super::ability::{OracleSpan, TextAnnotation};
+use super::ability::{RulesText, TextAnnotation};
 use super::mana::{ManaColor, ManaCost};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +57,7 @@ pub struct CardDefinition {
     pub mana_cost: Option<ManaCost>,
     pub type_line: TypeLine,
     pub oracle_text: String,
-    pub abilities: Vec<OracleSpan>,
+    pub abilities: Vec<RulesText>,
     pub text_annotations: Vec<TextAnnotation>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
@@ -68,6 +68,6 @@ impl CardDefinition {
     pub fn has_unparsed(&self) -> bool {
         self.abilities
             .iter()
-            .any(|s| matches!(s, OracleSpan::Unparsed(_)))
+            .any(|s| matches!(s, RulesText::Unparsed(_)))
     }
 }

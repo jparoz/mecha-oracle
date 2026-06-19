@@ -231,7 +231,7 @@ mod tests {
         toughness: i32,
         keywords: Vec<crate::types::ability::StaticAbility>,
     ) -> ObjectId {
-        use crate::types::{Ability, CardDefinition, CardType, OracleSpan, TypeLine};
+        use crate::types::{CardDefinition, CardType, Rule, RulesText, TypeLine};
         let id = state.alloc_id();
         let def = CardDefinition {
             name: "Test".into(),
@@ -244,7 +244,7 @@ mod tests {
             oracle_text: String::new(),
             abilities: keywords
                 .into_iter()
-                .map(|k| OracleSpan::Active(Ability::Static(k)))
+                .map(|k| RulesText::Active(Rule::Static(k)))
                 .collect(),
             text_annotations: vec![],
             power: Some(power),
@@ -529,9 +529,9 @@ mod tests {
 
     #[test]
     fn check_and_apply_sbas_returns_dies_trigger_when_creature_dies() {
-        use crate::types::OracleSpan;
+        use crate::types::RulesText;
         use crate::types::ability::{
-            Ability, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+            Rule, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
         };
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::effect::EffectStep;
@@ -548,7 +548,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
+            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::Dies {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -583,9 +583,9 @@ mod tests {
 
     #[test]
     fn check_and_apply_sbas_no_dies_trigger_when_creature_survives() {
-        use crate::types::OracleSpan;
+        use crate::types::RulesText;
         use crate::types::ability::{
-            Ability, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+            Rule, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
         };
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::effect::EffectStep;
@@ -602,7 +602,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
+            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::Dies {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),

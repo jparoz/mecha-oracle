@@ -1,4 +1,4 @@
-use super::ability::{Ability, OracleSpan, StaticAbility};
+use super::ability::{Rule, RulesText, StaticAbility};
 use super::card::CardDefinition;
 use super::ids::{ObjectId, PlayerId};
 use super::zone::Zone;
@@ -37,7 +37,7 @@ fn inject_intrinsic_abilities(definition: &mut CardDefinition) {
         };
         definition
             .abilities
-            .push(OracleSpan::Active(Ability::Activated(ActivatedAbility {
+            .push(RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(pool)],
@@ -82,7 +82,7 @@ impl CardObject {
         self.definition
             .abilities
             .iter()
-            .any(|span| matches!(span, OracleSpan::Active(Ability::Static(k)) if *k == kw))
+            .any(|span| matches!(span, RulesText::Active(Rule::Static(k)) if *k == kw))
     }
 }
 
@@ -97,9 +97,9 @@ mod tests {
 
     #[test]
     fn has_keyword_returns_true_for_matching_ability() {
-        use crate::types::{Ability, OracleSpan, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = grizzly_bears();
-        def.abilities = vec![OracleSpan::Active(Ability::Static(StaticAbility::Flying))];
+        def.abilities = vec![RulesText::Active(Rule::Static(StaticAbility::Flying))];
         let obj = CardObject::new(ObjectId(1), def, PlayerId(0), Zone::Battlefield);
         assert!(obj.has_keyword(StaticAbility::Flying));
         assert!(!obj.has_keyword(StaticAbility::Trample));
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn basic_land_gets_intrinsic_mana_ability() {
         use crate::cards::test_helpers::test_db;
-        use crate::types::ability::{Ability, CostComponent, OracleSpan};
+        use crate::types::ability::{CostComponent, Rule, RulesText};
         use crate::types::effect::EffectStep;
 
         let db = test_db();
@@ -127,7 +127,7 @@ mod tests {
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Active(Ability::Activated(a)) => Some(a),
+                RulesText::Active(Rule::Activated(a)) => Some(a),
                 _ => None,
             })
             .collect();
@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn mountain_gets_intrinsic_tap_for_red_mana() {
         use crate::cards::test_helpers::test_db;
-        use crate::types::ability::{Ability, OracleSpan};
+        use crate::types::ability::{Rule, RulesText};
         use crate::types::effect::EffectStep;
 
         let db = test_db();
@@ -162,7 +162,7 @@ mod tests {
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Active(Ability::Activated(a)) => Some(a),
+                RulesText::Active(Rule::Activated(a)) => Some(a),
                 _ => None,
             })
             .collect();
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn non_land_gets_no_intrinsic_ability() {
         use crate::cards::test_helpers::test_db;
-        use crate::types::ability::{Ability, OracleSpan};
+        use crate::types::ability::{Rule, RulesText};
 
         let db = test_db();
         let obj = CardObject::new(
@@ -188,7 +188,7 @@ mod tests {
             .definition
             .abilities
             .iter()
-            .filter(|span| matches!(span, OracleSpan::Active(Ability::Activated(_))))
+            .filter(|span| matches!(span, RulesText::Active(Rule::Activated(_))))
             .count();
 
         assert_eq!(mana_abilities, 0);
