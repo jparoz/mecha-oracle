@@ -154,19 +154,25 @@ pub(crate) fn execute_effect_steps(
                     }
                 }
             }
-            EffectStep::AddCounter { kind, count } => match targets.first() {
-                Some(EffectTarget::Object { id }) => {
-                    if let Some(perm) = state.battlefield.get_mut(id) {
-                        perm.add_counters(kind.clone(), *count);
+            EffectStep::AddCounter { kind, count } => {
+                // Iterate all targets so multi-target counter effects apply to every target,
+                // not just the first.
+                for target in targets.iter() {
+                    match target {
+                        EffectTarget::Object { id } => {
+                            if let Some(perm) = state.battlefield.get_mut(id) {
+                                perm.add_counters(kind.clone(), *count);
+                            }
+                        }
+                        EffectTarget::Player { id } => {
+                            if let Some(player) = state.get_player_mut(*id) {
+                                player.add_counters(kind.clone(), *count);
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                Some(EffectTarget::Player { id }) => {
-                    if let Some(player) = state.get_player_mut(*id) {
-                        player.add_counters(kind.clone(), *count);
-                    }
-                }
-                _ => {}
-            },
+            }
             // CR 702.15b, 702.2b, 702.80a/b, 702.90b/c
             EffectStep::DealDamage(s) => {
                 let amount = s.amount;

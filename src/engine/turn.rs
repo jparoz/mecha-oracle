@@ -12,6 +12,10 @@ pub fn apply_step_start(mut state: GameState) -> GameState {
     // Untap and Cleanup have no priority window (CR 502.4, CR 514.3), so triggers
     // accumulated there are technically held, but we fire the event anyway so the
     // dispatch system has a place to hook them in future.
+    // TODO(CR 603.3b): Triggers generated during Untap and Cleanup have no priority window;
+    // they should be held and placed on the stack at the next opportunity (start of Upkeep).
+    // Currently these triggers are pushed directly — a trigger-holding mechanism is needed
+    // before Untap/Cleanup-step abilities are implemented.
     // Capture fields before the &mut borrow.
     let current_step = state.step;
     let current_active = state.active_player;

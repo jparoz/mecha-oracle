@@ -525,19 +525,16 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
             });
         }
 
-        // Handle StaticAbility::Evolve — fires when an ETB event has a subject under the
-        // same controller with greater power or toughness (CR 702.100b).
+        // TRANSITIONAL SHIM — StaticAbility::Evolve until parser emits TriggeredAbility spans.
+        // When StaticAbility::Evolve is removed from the parser, remove this entire block.
+        // IMPORTANT: If a card carries both StaticAbility::Evolve AND a TriggeredAbility Evolve span,
+        // it will double-fire. Remove this shim before that migration begins.
         if let GameEvent::EntersTheBattlefield {
             subject_id: entering_id,
         } = event
         {
             let entering_id = *entering_id;
             if source_id != entering_id
-                && state
-                    .objects
-                    .get(&source_id)
-                    .map(|o| o.controller == controller)
-                    .unwrap_or(false)
                 && state
                     .battlefield
                     .get(&source_id)
@@ -1220,7 +1217,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_cast_triggers_prowess_fires_on_noncreature() {
+    fn prowess_trigger_fires_on_noncreature_spell() {
         use crate::types::ability::Ability;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::mana::ManaCost;
@@ -1302,7 +1299,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_cast_triggers_prowess_silent_on_creature_spell() {
+    fn prowess_trigger_silent_on_creature_spell() {
         use crate::types::ability::Ability;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
         use crate::types::{CardObject, GameEvent, OracleSpan, Zone};
@@ -1359,7 +1356,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_attack_triggers_exalted_single_attacker() {
+    fn exalted_trigger_fires_for_single_attacker() {
         use crate::types::GameEvent;
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
@@ -1416,7 +1413,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_attack_triggers_exalted_multiple_attackers_no_trigger() {
+    fn exalted_trigger_silent_for_multiple_attackers() {
         use crate::types::GameEvent;
 
         let mut gs = two_player_state();
@@ -1474,7 +1471,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_attack_triggers_melee_in_two_player_gives_one_boost() {
+    fn melee_trigger_fires_on_attack() {
         use crate::types::GameEvent;
 
         let mut gs = two_player_state();
@@ -1539,7 +1536,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_block_triggers_flanking_gives_minus_one_to_non_flanking_blocker() {
+    fn flanking_trigger_fires_when_blocker_lacks_flanking() {
         // CR 702.25a: Flanking fires when a non-Flanking blocker blocks the Flanking creature.
         use crate::types::GameEvent;
         use crate::types::effect::EffectTarget;
@@ -1580,7 +1577,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_block_triggers_flanking_no_trigger_for_flanking_blocker() {
+    fn flanking_trigger_suppressed_when_blocker_has_flanking() {
         // CR 702.25a: Flanking blocker also has Flanking — SubjectLacksKeyword condition fails.
         use crate::types::GameEvent;
 
@@ -1604,7 +1601,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_block_triggers_bushido_boosts_attacker_and_blocker() {
+    fn bushido_trigger_fires_on_block() {
         // CR 702.45a: Bushido fires on both blocks and becomes-blocked.
         use crate::types::GameEvent;
         use crate::types::effect::EffectTarget;
@@ -1684,7 +1681,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_block_triggers_bushido_no_trigger_when_unblocked() {
+    fn bushido_trigger_silent_when_attacker_unblocked() {
         // CR 702.45a: Bushido on attacker fires on BecomesBlocked — no event fired if unblocked.
         use crate::types::GameEvent;
 
@@ -1769,7 +1766,7 @@ mod tests {
     }
 
     #[test]
-    fn collect_ward_triggers_emits_triggered_ability_with_payment() {
+    fn ward_trigger_fires_for_opponent_targeting() {
         // CR 702.21a: Ward is now a TriggeredAbility dispatched via collect_triggers_for_event
         // with GameEvent::TargetedBy { target_id, acting_player }.
         use crate::types::GameEvent;
