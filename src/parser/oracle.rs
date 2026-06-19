@@ -1,4 +1,4 @@
-use crate::types::OracleSpan::ParsedUnimplemented;
+use crate::types::RulesText::ParsedUnimplemented;
 use crate::types::ability::{AnnotationKind, Cost, CostComponent, TextAnnotation};
 use crate::types::effect::{Effect, EffectStep};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
@@ -421,7 +421,7 @@ fn match_keyword(kw: &str) -> OracleSpan {
     // ── Fully-implemented keywords ────────────────────────────────────────────
     macro_rules! parsed {
         ($variant:ident) => {
-            OracleSpan::Parsed(Ability::Static(StaticAbility::$variant))
+            OracleSpan::Active(Ability::Static(StaticAbility::$variant))
         };
     }
     match s {
@@ -463,14 +463,14 @@ fn match_keyword(kw: &str) -> OracleSpan {
     if let Some(rest) = s.strip_prefix("bushido ")
         && let Some(n) = parse_number_word(rest.trim())
     {
-        return OracleSpan::Parsed(Ability::Static(StaticAbility::BushidoN(n)));
+        return OracleSpan::Active(Ability::Static(StaticAbility::BushidoN(n)));
     }
 
     // CR 702.164 Toxic N
     if let Some(rest) = s.strip_prefix("toxic ")
         && let Ok(n) = rest.trim().parse::<u32>()
     {
-        return OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(n)));
+        return OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(n)));
     }
 
     // Plain cycling (not type-cycling variants like mountaincycling).
@@ -478,22 +478,22 @@ fn match_keyword(kw: &str) -> OracleSpan {
     if s.starts_with("cycling ")
         && let Some(cost) = try_parse_mana_cost(kw["cycling ".len()..].trim())
     {
-        return OracleSpan::Parsed(Ability::Cycling(cost));
+        return OracleSpan::Active(Ability::Cycling(cost));
     }
 
     // Fear (CR 702.36)
     if s == "fear" {
-        return OracleSpan::Parsed(Ability::Static(StaticAbility::Fear));
+        return OracleSpan::Active(Ability::Static(StaticAbility::Fear));
     }
 
     // Intimidate (CR 702.13)
     if s == "intimidate" {
-        return OracleSpan::Parsed(Ability::Static(StaticAbility::Intimidate));
+        return OracleSpan::Active(Ability::Static(StaticAbility::Intimidate));
     }
 
     // Battle Cry (CR 702.91)
     if s == "battle cry" {
-        return OracleSpan::Parsed(Ability::Static(StaticAbility::BattleCry));
+        return OracleSpan::Active(Ability::Static(StaticAbility::BattleCry));
     }
 
     // Ward {cost} (CR 702.21a) — mana cost form e.g. "Ward {2}"
@@ -505,7 +505,7 @@ fn match_keyword(kw: &str) -> OracleSpan {
             CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
         };
         let components = vec![CostComponent::Mana(cost)];
-        return OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+        return OracleSpan::Active(Ability::Triggered(TriggeredAbility {
             trigger: TriggerEvent::TargetedBy {
                 controller: TurnOwner::Opponent,
             },
@@ -530,7 +530,7 @@ fn match_keyword(kw: &str) -> OracleSpan {
             _ => None,
         };
         if let Some(c) = color {
-            return OracleSpan::Parsed(Ability::Static(StaticAbility::ProtectionFromColor(c)));
+            return OracleSpan::Active(Ability::Static(StaticAbility::ProtectionFromColor(c)));
         }
         // Non-color protections remain ParsedUnimplemented
         return ParsedUnimplemented(kw.to_string());
@@ -551,7 +551,7 @@ fn match_keyword(kw: &str) -> OracleSpan {
                 "plains" => "Plains",
                 other => {
                     let mut chars = other.chars();
-                    return OracleSpan::Parsed(Ability::Static(StaticAbility::Landwalk(
+                    return OracleSpan::Active(Ability::Static(StaticAbility::Landwalk(
                         LandwalkKind::LandType(
                             chars
                                 .next()
@@ -564,7 +564,7 @@ fn match_keyword(kw: &str) -> OracleSpan {
             };
             LandwalkKind::LandType(type_name.to_string())
         };
-        return OracleSpan::Parsed(Ability::Static(StaticAbility::Landwalk(kind)));
+        return OracleSpan::Active(Ability::Static(StaticAbility::Landwalk(kind)));
     }
 
     // ── CR 702 recognised-but-unimplemented keywords ──────────────────────────
@@ -992,7 +992,7 @@ fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<OracleSpan>
     let effect_str = after_enters[comma_pos + 1..].trim();
 
     match parse_ability_effect(effect_str) {
-        Some(effect) => Some(OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+        Some(effect) => Some(OracleSpan::Active(Ability::Triggered(TriggeredAbility {
             trigger: TriggerEvent::EntersTheBattlefield {
                 subject: TriggerSubjectFilter {
                     is_self: Some(true),
@@ -1042,7 +1042,7 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
                         CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
                     };
                     let components = vec![CostComponent::PayLife(n)];
-                    spans.push(OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                    spans.push(OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                         trigger: TriggerEvent::TargetedBy {
                             controller: TurnOwner::Opponent,
                         },
@@ -1072,7 +1072,7 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
                     spans.push(ParsedUnimplemented(paragraph.to_string()));
                     continue;
                 }
-                OracleSpan::Parsed(_) => {
+                OracleSpan::Active(_) => {
                     // Fully-implemented keyword with em-dash — fall through to comma splitting.
                 }
                 _ => {
@@ -1109,7 +1109,7 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<OracleSpan>, Vec<Tex
             let cost = parse_activation_cost(cost_str);
             if !cost.is_empty() {
                 if let Some(effect) = parse_ability_effect(effect_str) {
-                    spans.push(OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+                    spans.push(OracleSpan::Active(Ability::Activated(ActivatedAbility {
                         cost,
                         target_requirements: vec![],
                         effect,
@@ -1582,7 +1582,7 @@ pub fn parse_instant_or_sorcery(
             continue;
         }
         let spell_ability = parse_spell_paragraph(paragraph, card_name);
-        spans.push(OracleSpan::Parsed(Ability::SpellEffect(spell_ability)));
+        spans.push(OracleSpan::Active(Ability::SpellEffect(spell_ability)));
         annotate_spell_paragraph(paragraph, text, &mut annotations);
     }
     (spans, annotations)
@@ -1601,7 +1601,7 @@ mod tests {
     }
 
     fn parsed(kw: StaticAbility) -> OracleSpan {
-        OracleSpan::Parsed(Ability::Static(kw))
+        OracleSpan::Active(Ability::Static(kw))
     }
     fn reminder(text: &str) -> OracleSpan {
         OracleSpan::Ignored(IgnoredKind::ReminderText, text.to_string())
@@ -1725,7 +1725,7 @@ mod tests {
         let text = "Flying\nReach\nTrample\nFirst strike\nDouble strike\nVigilance\nHaste\nLifelink\nDeathtouch\nMenace\nIndestructible\nDefender\nShadow\nHorsemanship\nSkulk\nDecayed\nFlash";
         let result = parse_perm(text, "");
         assert_eq!(result.len(), 17);
-        assert!(result.iter().all(|s| matches!(s, OracleSpan::Parsed(_))));
+        assert!(result.iter().all(|s| matches!(s, OracleSpan::Active(_))));
     }
 
     #[test]
@@ -2051,7 +2051,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+            OracleSpan::Active(Ability::Activated(ActivatedAbility {
                 cost,
                 effect,
                 ..
@@ -2067,7 +2067,7 @@ mod tests {
         use crate::types::mana::{ManaCost, ManaPip, ManaPool};
         let result = parse_perm("{2}, {T}: Add {G}{G}.", "");
         assert_eq!(result.len(), 1);
-        if let OracleSpan::Parsed(Ability::Activated(ability)) = &result[0] {
+        if let OracleSpan::Active(Ability::Activated(ability)) = &result[0] {
             assert_eq!(
                 ability.cost,
                 vec![
@@ -2096,7 +2096,7 @@ mod tests {
         use crate::types::mana::{ManaCost, ManaPip};
         let result = parse_perm("{1}: Draw a card.", "");
         assert_eq!(result.len(), 1);
-        if let OracleSpan::Parsed(Ability::Activated(ability)) = &result[0] {
+        if let OracleSpan::Active(Ability::Activated(ability)) = &result[0] {
             assert_eq!(
                 ability.cost,
                 vec![CostComponent::Mana(ManaCost {
@@ -2117,7 +2117,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Activated(ActivatedAbility { cost, effect, .. }))
+            OracleSpan::Active(Ability::Activated(ActivatedAbility { cost, effect, .. }))
             if cost == &vec![CostComponent::Tap]
             && effect == &vec![EffectStep::Mill(2)]
         ));
@@ -2143,7 +2143,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Activated(ActivatedAbility { cost, effect, .. }))
+            OracleSpan::Active(Ability::Activated(ActivatedAbility { cost, effect, .. }))
             if cost == &vec![CostComponent::Unimplemented("Sacrifice a creature".to_string())]
             && effect == &vec![EffectStep::AddMana(ManaPool { green: 2, ..Default::default() })]
         ));
@@ -2181,7 +2181,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield { subject },
                 effect,
                 ..
@@ -2198,7 +2198,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield { subject },
                 effect,
                 ..
@@ -2214,7 +2214,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield { subject },
                 effect,
                 ..
@@ -2233,7 +2233,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield { subject },
                 effect,
                 ..
@@ -2249,7 +2249,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(matches!(
             &result[0],
-            OracleSpan::Parsed(Ability::Triggered(TriggeredAbility { effect, .. }))
+            OracleSpan::Active(Ability::Triggered(TriggeredAbility { effect, .. }))
             if effect == &vec![EffectStep::DrawCard(1), EffectStep::GainLife(2)]
         ));
     }
@@ -2265,7 +2265,7 @@ mod tests {
 
     fn spell_effect(steps: Vec<EffectStep>) -> OracleSpan {
         use crate::types::ability::SpellAbility;
-        OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+        OracleSpan::Active(Ability::SpellEffect(SpellAbility {
             target_requirements: vec![],
             steps,
         }))
@@ -2328,7 +2328,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target spell.", "");
         assert_eq!(result.len(), 1);
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect, got {:?}", result[0]);
         };
         assert_eq!(
@@ -2343,7 +2343,7 @@ mod tests {
         use crate::types::ability::{SpellFilter, TargetFilter};
         use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target noncreature spell.", "");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect");
         };
         assert_eq!(
@@ -2358,7 +2358,7 @@ mod tests {
         use crate::types::ability::{SpellFilter, TargetFilter};
         use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target creature spell.", "");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect");
         };
         assert_eq!(
@@ -2373,7 +2373,7 @@ mod tests {
         use crate::types::ability::{SpellFilter, TargetFilter};
         use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target instant or sorcery spell.", "");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect");
         };
         assert_eq!(
@@ -2419,7 +2419,7 @@ mod tests {
             "Giant Growth",
         );
         assert_eq!(result.len(), 1);
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
@@ -2441,7 +2441,7 @@ mod tests {
             "Lightning Bolt",
         );
         assert_eq!(result.len(), 1);
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Any]);
@@ -2458,7 +2458,7 @@ mod tests {
     fn parse_draw_a_card_spell_is_untargeted() {
         let result = parse_spell("Draw a card.", "Opt");
         assert_eq!(result.len(), 1);
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect");
         };
         assert!(sa.target_requirements.is_empty());
@@ -2471,7 +2471,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let result = parse_spell("Put a +1/+1 counter on target creature.", "Battlegrowth");
         assert_eq!(result.len(), 1);
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
@@ -2494,7 +2494,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let result = parse_spell("Put two +1/+1 counters on target creature.", "");
         assert_eq!(result.len(), 1);
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
@@ -2517,7 +2517,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let result = parse_spell("Put a -1/-1 counter on target creature.", "");
         assert_eq!(result.len(), 1);
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &result[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &result[0] else {
             panic!("expected SpellEffect, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
@@ -2538,7 +2538,7 @@ mod tests {
         let result = parse_perm("Flash", "");
         assert_eq!(
             result,
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flash))]
+            vec![OracleSpan::Active(Ability::Static(StaticAbility::Flash))]
         );
     }
 
@@ -2560,7 +2560,7 @@ mod tests {
         let spans = parse_perm("Bushido 2", "");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::BushidoN(2)
             ))]
         );
@@ -2595,7 +2595,7 @@ mod tests {
         let spans = parse_perm("Toxic 3", "");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(
+            vec![OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(
                 3
             )))]
         );
@@ -2619,7 +2619,7 @@ mod tests {
         let spans = parse_perm("Cycling {2}", "");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
+            vec![OracleSpan::Active(Ability::Cycling(ManaCost {
                 pips: vec![ManaPip::Generic(2)],
             }))]
         );
@@ -2633,7 +2633,7 @@ mod tests {
         assert_eq!(spans.len(), 2);
         assert_eq!(
             spans[0],
-            OracleSpan::Parsed(Ability::Cycling(ManaCost {
+            OracleSpan::Active(Ability::Cycling(ManaCost {
                 pips: vec![ManaPip::Generic(2)],
             }))
         );
@@ -2650,14 +2650,14 @@ mod tests {
         let spans = parse_perm("Cycling {U}", "");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
+            vec![OracleSpan::Active(Ability::Cycling(ManaCost {
                 pips: vec![ManaPip::Blue],
             }))]
         );
         let spans = parse_perm("Cycling {1}{W}", "");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
+            vec![OracleSpan::Active(Ability::Cycling(ManaCost {
                 pips: vec![ManaPip::Generic(1), ManaPip::White],
             }))]
         );
@@ -2790,7 +2790,7 @@ mod tests {
         let (spans, _) = parse_permanent("Fear", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Fear))]
+            vec![OracleSpan::Active(Ability::Static(StaticAbility::Fear))]
         );
     }
 
@@ -2799,7 +2799,7 @@ mod tests {
         let (spans, _) = parse_permanent("Intimidate", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::Intimidate
             ))]
         );
@@ -2810,7 +2810,7 @@ mod tests {
         let (spans, _) = parse_permanent("Battle cry", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::BattleCry
             ))]
         );
@@ -2827,7 +2827,7 @@ mod tests {
         let (spans, _) = parse_permanent("Ward {2}", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },
@@ -2854,7 +2854,7 @@ mod tests {
         let (spans, _) = parse_permanent("Ward\u{2014}Pay 2 life.", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },
@@ -2875,7 +2875,7 @@ mod tests {
         let (spans, _) = parse_permanent("Islandwalk", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string()))
             ))]
         );
@@ -2887,7 +2887,7 @@ mod tests {
         let (spans, _) = parse_permanent("Swampwalk", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::Landwalk(LandwalkKind::LandType("Swamp".to_string()))
             ))]
         );
@@ -2899,7 +2899,7 @@ mod tests {
         let (spans, _) = parse_permanent("Nonbasic landwalk", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::Landwalk(LandwalkKind::Nonbasic)
             ))]
         );
@@ -2911,7 +2911,7 @@ mod tests {
         let (spans, _) = parse_permanent("Protection from blue", "Test");
         assert_eq!(
             spans,
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Blue)
             ))]
         );
@@ -2931,7 +2931,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let text = "Counter target spell with mana value 4 or greater.";
         let (spans, _) = parse_instant_or_sorcery(text, "Disdainful Stroke");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
@@ -2949,7 +2949,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let text = "Counter target spell with mana value 3 or less.";
         let (spans, _) = parse_instant_or_sorcery(text, "Test");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
@@ -2967,7 +2967,7 @@ mod tests {
         use crate::types::mana::ManaColor;
         let text = "Counter target red or green spell.";
         let (spans, _) = parse_instant_or_sorcery(text, "Flashfreeze");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
@@ -2984,7 +2984,7 @@ mod tests {
         use crate::types::mana::ManaColor;
         let text = "Counter target blue spell.";
         let (spans, _) = parse_instant_or_sorcery(text, "Test");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &spans[0] else {
             panic!()
         };
         let TargetFilter::Spell(f) = &sa.target_requirements[0] else {
@@ -3002,7 +3002,7 @@ mod tests {
         use crate::types::mana::{ManaCost, ManaPip};
         let text = "Counter target spell unless its controller pays {3}.";
         let (spans, _) = parse_instant_or_sorcery(text, "Mana Leak");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps.len(), 1);
@@ -3031,7 +3031,7 @@ mod tests {
         use crate::types::mana::{ManaCost, ManaPip};
         let text = "Counter target spell unless its controller pays {2}.";
         let (spans, _) = parse_instant_or_sorcery(text, "Quench");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &spans[0] else {
             panic!()
         };
         let EffectStep::Payment { cost, .. } = &sa.steps[0] else {
@@ -3051,7 +3051,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let text = "Counter target spell unless its controller pays 3 life.";
         let (spans, _) = parse_instant_or_sorcery(text, "Test");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &spans[0] else {
             panic!()
         };
         let EffectStep::Payment { cost, .. } = &sa.steps[0] else {
@@ -3069,7 +3069,7 @@ mod tests {
             (Look at the top two cards of your library, then put any number of them \
             on the bottom and the rest on top in any order.)";
         let (spans, annotations) = parse_instant_or_sorcery(text, "Condescend");
-        let OracleSpan::Parsed(Ability::SpellEffect(sa)) = &spans[0] else {
+        let OracleSpan::Active(Ability::SpellEffect(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps.len(), 2);

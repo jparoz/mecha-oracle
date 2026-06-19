@@ -14,9 +14,10 @@ pub mod zone;
 
 pub use ability::{
     Ability, ActivatedAbility, AnnotationKind, CardFilter, CastFilter, Cost, CostComponent,
-    DamageTargetKind, GameEvent, IgnoredKind, LandwalkKind, OracleSpan, PermanentFilter,
-    SpellAbility, SpellFilter, StaticAbility, TargetFilter, TextAnnotation, TriggerCondition,
-    TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility, TurnOwner,
+    DamageTargetKind, GameEvent, IgnoredKind, LandwalkKind, OracleSpan, PermanentFilter, Rule,
+    RulesText, SpellAbility, SpellEffect, SpellFilter, StaticAbility, TargetFilter, TextAnnotation,
+    TriggerCondition, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+    TurnOwner,
 };
 pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;

@@ -514,7 +514,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Parsed(Ability::SpellEffect(sa))
+                OracleSpan::Active(Ability::SpellEffect(sa))
                     if !sa.target_requirements.is_empty() =>
                 {
                     Some(sa.target_requirements.as_slice())
@@ -579,7 +579,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
 
     // Cycling
     for span in &obj.definition.abilities {
-        if let OracleSpan::Parsed(Ability::Cycling(cost)) = span
+        if let OracleSpan::Active(Ability::Cycling(cost)) = span
             && state.priority_player == pid
         {
             actions.push(ActionItemView {
@@ -652,7 +652,7 @@ fn compute_battlefield_actions(
         .abilities
         .iter()
         .filter_map(|span| match span {
-            OracleSpan::Parsed(Ability::Activated(a)) => Some(a),
+            OracleSpan::Active(Ability::Activated(a)) => Some(a),
             _ => None,
         })
         .enumerate()
@@ -1824,7 +1824,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],
@@ -2070,7 +2070,7 @@ mod tests {
                     subtypes: vec![],
                 },
                 oracle_text: String::new(),
-                abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flying))],
+                abilities: vec![OracleSpan::Active(Ability::Static(StaticAbility::Flying))],
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
@@ -2214,7 +2214,7 @@ mod tests {
                     subtypes: vec![],
                 },
                 oracle_text: String::new(),
-                abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flying))],
+                abilities: vec![OracleSpan::Active(Ability::Static(StaticAbility::Flying))],
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
@@ -2769,7 +2769,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Cycling {2}".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Cycling(ManaCost {
+            abilities: vec![OracleSpan::Active(Ability::Cycling(ManaCost {
                 pips: vec![ManaPip::Generic(2)],
             }))],
             text_annotations: vec![],

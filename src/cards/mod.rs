@@ -144,7 +144,7 @@ mod tests {
         assert!(
             card.abilities
                 .iter()
-                .all(|s| matches!(s, OracleSpan::Parsed(_)))
+                .all(|s| matches!(s, OracleSpan::Active(_)))
         );
     }
 
@@ -166,7 +166,7 @@ mod tests {
         assert!(
             card.abilities
                 .iter()
-                .any(|s| { matches!(s, OracleSpan::Parsed(Ability::Activated(_))) })
+                .any(|s| { matches!(s, OracleSpan::Active(Ability::Activated(_))) })
         );
     }
 

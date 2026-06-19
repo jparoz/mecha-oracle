@@ -94,7 +94,7 @@ fn has_damage_kw(
     use crate::types::ability::Ability;
     abilities
         .iter()
-        .any(|span| matches!(span, OracleSpan::Parsed(Ability::Static(k)) if k == kw))
+        .any(|span| matches!(span, OracleSpan::Active(Ability::Static(k)) if k == kw))
 }
 
 // CR 608.2b: execute each effect step for the given controller.
@@ -344,7 +344,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                             .abilities
                             .iter()
                             .filter_map(|span| match span {
-                                crate::types::OracleSpan::Parsed(
+                                crate::types::OracleSpan::Active(
                                     crate::types::Ability::SpellEffect(spell_ability),
                                 ) => Some(spell_ability.steps.clone()),
                                 _ => None,
@@ -706,7 +706,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![],
                 steps,
             }))],
@@ -738,7 +738,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![],
                 steps,
             }))],
@@ -876,7 +876,7 @@ mod tests {
                 subtypes: vec!["Elf".into()],
             },
             oracle_text: "When this enters, draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -1119,7 +1119,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![EffectStep::BoostPermanentPT(PTDelta {
                     power: 3,
@@ -1751,7 +1751,7 @@ mod tests {
         use crate::types::ability::{Ability, StaticAbility};
         use crate::types::effect::{DamageStep, EffectStep};
 
-        let abilities = vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Lifelink))];
+        let abilities = vec![OracleSpan::Active(Ability::Static(StaticAbility::Lifelink))];
         let effect = vec![EffectStep::DealDamage(DamageStep {
             amount: 2,
             ..Default::default()
@@ -1777,8 +1777,8 @@ mod tests {
         use crate::types::effect::{DamageStep, EffectStep};
 
         let abilities = vec![
-            OracleSpan::Parsed(Ability::Static(StaticAbility::Wither)),
-            OracleSpan::Parsed(Ability::Static(StaticAbility::Infect)),
+            OracleSpan::Active(Ability::Static(StaticAbility::Wither)),
+            OracleSpan::Active(Ability::Static(StaticAbility::Infect)),
         ];
         let effect = vec![EffectStep::DealDamage(DamageStep {
             amount: 1,
@@ -1877,7 +1877,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Counter target spell.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![TargetFilter::Spell(SpellFilter::any())],
                 steps: vec![EffectStep::CounterSpell],
             }))],

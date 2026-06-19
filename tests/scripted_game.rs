@@ -424,7 +424,7 @@ fn trample_excess_kills_player() {
             subtypes: vec![],
         },
         oracle_text: String::new(),
-        abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Trample))],
+        abilities: vec![OracleSpan::Active(Ability::Static(StaticAbility::Trample))],
         text_annotations: vec![],
         power: Some(5),
         toughness: Some(5),

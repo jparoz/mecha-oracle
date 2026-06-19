@@ -383,10 +383,10 @@ pub enum TargetFilter {
     Spell(SpellFilter), // CR 115.4: a spell on the stack
 }
 
-/// A spell ability — the text of an instant or sorcery that takes effect when it resolves.
+/// The resolving text of an instant or sorcery (CR 113.3a).
 /// Wraps effect steps and any targeting requirements.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SpellAbility {
+pub struct SpellEffect {
     pub target_requirements: Vec<TargetFilter>, // empty for untargeted spells
     pub steps: Effect,
 }
@@ -423,20 +423,20 @@ pub struct TextAnnotation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Ability {
+pub enum Rule {
     Static(StaticAbility),
     Triggered(TriggeredAbility),
     Activated(ActivatedAbility),
-    SpellEffect(SpellAbility),
+    SpellEffect(SpellEffect),
     Cycling(ManaCost),
 }
 
-/// A typed span of oracle text.
-/// The ordered sequence of spans represents the full oracle text.
+/// A classified entry in a card's rules text (CR 207.1).
+/// The ordered sequence of entries represents the full oracle text.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OracleSpan {
-    /// A recognised ability the engine can act on.
-    Parsed(Ability),
+pub enum RulesText {
+    /// A rule the engine actively enforces.
+    Active(Rule),
     /// Non-rules text — displayed in italics in the UI.
     Ignored(IgnoredKind, String),
     /// Text the parser could not interpret — displayed red+underline in the UI.
@@ -446,14 +446,19 @@ pub enum OracleSpan {
     ParsedUnimplemented(String),
 }
 
+// Backward-compat aliases — removed in the type-renames cleanup (Task 4).
+pub type Ability = Rule;
+pub type SpellAbility = SpellEffect;
+pub type OracleSpan = RulesText;
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn oracle_span_variants_are_comparable() {
-        let a = OracleSpan::Parsed(Ability::Static(StaticAbility::Flying));
-        let b = OracleSpan::Parsed(Ability::Static(StaticAbility::Flying));
+        let a = OracleSpan::Active(Ability::Static(StaticAbility::Flying));
+        let b = OracleSpan::Active(Ability::Static(StaticAbility::Flying));
         assert_eq!(a, b);
 
         let c = OracleSpan::Ignored(IgnoredKind::ReminderText, "(reminder)".into());

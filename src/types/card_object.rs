@@ -37,7 +37,7 @@ fn inject_intrinsic_abilities(definition: &mut CardDefinition) {
         };
         definition
             .abilities
-            .push(OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+            .push(OracleSpan::Active(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(pool)],
@@ -82,7 +82,7 @@ impl CardObject {
         self.definition
             .abilities
             .iter()
-            .any(|span| matches!(span, OracleSpan::Parsed(Ability::Static(k)) if *k == kw))
+            .any(|span| matches!(span, OracleSpan::Active(Ability::Static(k)) if *k == kw))
     }
 }
 
@@ -99,7 +99,7 @@ mod tests {
     fn has_keyword_returns_true_for_matching_ability() {
         use crate::types::{Ability, OracleSpan, ability::StaticAbility};
         let mut def = grizzly_bears();
-        def.abilities = vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flying))];
+        def.abilities = vec![OracleSpan::Active(Ability::Static(StaticAbility::Flying))];
         let obj = CardObject::new(ObjectId(1), def, PlayerId(0), Zone::Battlefield);
         assert!(obj.has_keyword(StaticAbility::Flying));
         assert!(!obj.has_keyword(StaticAbility::Trample));
@@ -127,7 +127,7 @@ mod tests {
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Parsed(Ability::Activated(a)) => Some(a),
+                OracleSpan::Active(Ability::Activated(a)) => Some(a),
                 _ => None,
             })
             .collect();
@@ -162,7 +162,7 @@ mod tests {
             .abilities
             .iter()
             .filter_map(|span| match span {
-                OracleSpan::Parsed(Ability::Activated(a)) => Some(a),
+                OracleSpan::Active(Ability::Activated(a)) => Some(a),
                 _ => None,
             })
             .collect();
@@ -188,7 +188,7 @@ mod tests {
             .definition
             .abilities
             .iter()
-            .filter(|span| matches!(span, OracleSpan::Parsed(Ability::Activated(_))))
+            .filter(|span| matches!(span, OracleSpan::Active(Ability::Activated(_))))
             .count();
 
         assert_eq!(mana_abilities, 0);

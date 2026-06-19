@@ -33,7 +33,7 @@ pub fn cycle_card(
         .get(&card_id)
         .and_then(|obj| {
             obj.definition.abilities.iter().find_map(|span| {
-                if let OracleSpan::Parsed(Ability::Cycling(cost)) = span {
+                if let OracleSpan::Active(Ability::Cycling(cost)) = span {
                     Some(cost.clone())
                 } else {
                     None
@@ -140,7 +140,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Cycling".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Cycling(cost))],
+            abilities: vec![OracleSpan::Active(Ability::Cycling(cost))],
             text_annotations: vec![],
             power: None,
             toughness: None,

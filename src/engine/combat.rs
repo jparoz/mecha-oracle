@@ -284,7 +284,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
         use crate::types::ability::{Ability, LandwalkKind, StaticAbility as SA};
         let defending_player = state.opponent_of(state.active_player);
         for span in &attacker_obj.definition.abilities {
-            if let crate::types::OracleSpan::Parsed(Ability::Static(SA::Landwalk(kind))) = span {
+            if let crate::types::OracleSpan::Active(Ability::Static(SA::Landwalk(kind))) = span {
                 let defender_has_land = state.battlefield.iter().any(|(land_id, _)| {
                     let land_obj = match state.objects.get(land_id) {
                         Some(o) => o,
@@ -318,7 +318,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
         use crate::types::ability::{Ability, StaticAbility as SA};
         let blocker_colors = &blocker_obj.definition.colors;
         for span in &attacker_obj.definition.abilities {
-            if let crate::types::OracleSpan::Parsed(Ability::Static(SA::ProtectionFromColor(c))) =
+            if let crate::types::OracleSpan::Active(Ability::Static(SA::ProtectionFromColor(c))) =
                 span
                 && blocker_colors.contains(c)
             {
@@ -688,7 +688,7 @@ mod tests {
             oracle_text: String::new(),
             abilities: keywords
                 .into_iter()
-                .map(|k| OracleSpan::Parsed(Ability::Static(k)))
+                .map(|k| OracleSpan::Active(Ability::Static(k)))
                 .collect(),
             text_annotations: vec![],
             power: Some(power),
@@ -736,7 +736,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+            abilities: vec![OracleSpan::Active(Ability::Triggered(
                 exalted_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1217,7 +1217,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+            abilities: vec![OracleSpan::Active(Ability::Triggered(
                 flanking_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1506,7 +1506,7 @@ mod tests {
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Fear))],
+            vec![OracleSpan::Active(Ability::Static(StaticAbility::Fear))],
             vec![ManaColor::Black],
         );
         gs.combat.attackers = vec![attacker];
@@ -1526,7 +1526,7 @@ mod tests {
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Fear))],
+            vec![OracleSpan::Active(Ability::Static(StaticAbility::Fear))],
             vec![],
         );
         gs.combat.attackers = vec![attacker];
@@ -1545,7 +1545,7 @@ mod tests {
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::Intimidate,
             ))],
             vec![ManaColor::Red],
@@ -1567,7 +1567,7 @@ mod tests {
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::Intimidate,
             ))],
             vec![ManaColor::Red],
@@ -1592,7 +1592,7 @@ mod tests {
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())),
             ))],
             vec![],
@@ -1632,7 +1632,7 @@ mod tests {
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())),
             ))],
             vec![],
@@ -1652,7 +1652,7 @@ mod tests {
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Red),
             ))],
             vec![],
@@ -1673,7 +1673,7 @@ mod tests {
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Red),
             ))],
             vec![],
@@ -1880,7 +1880,7 @@ mod tests {
 
         let mut gs = make_combat_state();
         // A 2/2 creature with "whenever this deals combat damage to a player, draw a card".
-        let ability_span = OracleSpan::Parsed(Ability::Triggered(
+        let ability_span = OracleSpan::Active(Ability::Triggered(
             deals_combat_damage_to_player_triggered_ability(),
         ));
         use crate::types::card::{CardDefinition, CardType, TypeLine};
@@ -1923,7 +1923,7 @@ mod tests {
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = make_combat_state();
-        let ability_span = OracleSpan::Parsed(Ability::Triggered(
+        let ability_span = OracleSpan::Active(Ability::Triggered(
             deals_combat_damage_to_player_triggered_ability(),
         ));
         let def = CardDefinition {
@@ -1965,7 +1965,7 @@ mod tests {
         use crate::types::card::{CardDefinition, CardType, TypeLine};
 
         let mut gs = make_combat_state();
-        let ability_span = OracleSpan::Parsed(Ability::Triggered(
+        let ability_span = OracleSpan::Active(Ability::Triggered(
             deals_combat_damage_to_player_triggered_ability(),
         ));
         let def = CardDefinition {
@@ -1978,7 +1978,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![
-                OracleSpan::Parsed(Ability::Static(StaticAbility::Trample)),
+                OracleSpan::Active(Ability::Static(StaticAbility::Trample)),
                 ability_span,
             ],
             text_annotations: vec![],

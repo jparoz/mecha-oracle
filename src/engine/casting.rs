@@ -116,7 +116,7 @@ pub fn cast_spell(
                     .abilities
                     .iter()
                     .filter_map(|span| match span {
-                        OracleSpan::Parsed(Ability::SpellEffect(sa)) => {
+                        OracleSpan::Active(Ability::SpellEffect(sa)) => {
                             Some(sa.target_requirements.clone())
                         }
                         _ => None,
@@ -279,7 +279,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],
@@ -302,7 +302,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Flash".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Flash))],
+            abilities: vec![OracleSpan::Active(Ability::Static(StaticAbility::Flash))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -665,7 +665,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+            abilities: vec![OracleSpan::Active(Ability::Triggered(
                 prowess_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -709,7 +709,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
@@ -740,7 +740,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
@@ -801,7 +801,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
@@ -887,7 +887,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Ward {2}".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },
@@ -919,7 +919,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets -1/-1 until end of turn.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
@@ -1053,7 +1053,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Ward\u{2014}Pay 3 life.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },
@@ -1162,7 +1162,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Counter target spell.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![TargetFilter::Spell(SpellFilter::any())],
                 steps: vec![EffectStep::CounterSpell],
             }))],
@@ -1187,7 +1187,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Counter target noncreature spell.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![TargetFilter::Spell(SpellFilter::noncreature())],
                 steps: vec![EffectStep::CounterSpell],
             }))],
@@ -1261,7 +1261,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::SpellEffect(SpellAbility {
+            abilities: vec![OracleSpan::Active(Ability::SpellEffect(SpellAbility {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],

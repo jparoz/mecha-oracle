@@ -47,7 +47,7 @@ pub fn is_legal_target(
             }
             // CR 702.16c: protection prevents targeting by sources of protected quality
             for span in &obj.definition.abilities {
-                if let OracleSpan::Parsed(Ability::Static(StaticAbility::ProtectionFromColor(c))) =
+                if let OracleSpan::Active(Ability::Static(StaticAbility::ProtectionFromColor(c))) =
                     span
                     && source_colors.contains(c)
                 {
@@ -262,7 +262,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Shroud))],
+            vec![OracleSpan::Active(Ability::Static(StaticAbility::Shroud))],
         );
         let target = EffectTarget::Object { id };
         assert!(!is_legal_target(
@@ -287,7 +287,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Hexproof))],
+            vec![OracleSpan::Active(Ability::Static(StaticAbility::Hexproof))],
         );
         let target = EffectTarget::Object { id };
         assert!(!is_legal_target(
@@ -305,7 +305,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Hexproof))],
+            vec![OracleSpan::Active(Ability::Static(StaticAbility::Hexproof))],
         );
         let target = EffectTarget::Object { id };
         assert!(is_legal_target(
@@ -403,7 +403,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Blue),
             ))],
         );
@@ -425,7 +425,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![OracleSpan::Parsed(Ability::Static(
+            vec![OracleSpan::Active(Ability::Static(
                 StaticAbility::ProtectionFromColor(ManaColor::Blue),
             ))],
         );

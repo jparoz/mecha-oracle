@@ -54,13 +54,13 @@ impl PermanentState {
         self.definition
             .abilities
             .iter()
-            .any(|span| matches!(span, OracleSpan::Parsed(Ability::Static(k)) if *k == kw))
+            .any(|span| matches!(span, OracleSpan::Active(Ability::Static(k)) if *k == kw))
     }
 
     /// Returns the Bushido parameter N if this permanent has Bushido N, otherwise None.
     pub fn bushido_n(&self) -> Option<u32> {
         self.definition.abilities.iter().find_map(|span| {
-            if let OracleSpan::Parsed(Ability::Static(StaticAbility::BushidoN(n))) = span {
+            if let OracleSpan::Active(Ability::Static(StaticAbility::BushidoN(n))) = span {
                 Some(*n)
             } else {
                 None
@@ -76,7 +76,7 @@ impl PermanentState {
             .abilities
             .iter()
             .filter_map(|span| {
-                if let OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(n))) = span {
+                if let OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(n))) = span {
                     Some(*n)
                 } else {
                     None
@@ -201,7 +201,7 @@ mod tests {
     fn summoning_sick_creature_with_haste_can_attack() {
         use crate::types::{Ability, OracleSpan, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![OracleSpan::Parsed(Ability::Static(StaticAbility::Haste))];
+        def.abilities = vec![OracleSpan::Active(Ability::Static(StaticAbility::Haste))];
         let perm = PermanentState::new(&def); // controller_since_turn = u32::MAX → sick
         assert!(perm.can_attack(1)); // sick but has Haste
     }
@@ -274,7 +274,7 @@ mod tests {
     fn bushido_n_returns_some_for_bushido_creature() {
         use crate::types::{Ability, OracleSpan, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![OracleSpan::Parsed(Ability::Static(
+        def.abilities = vec![OracleSpan::Active(Ability::Static(
             StaticAbility::BushidoN(3),
         ))];
         let perm = PermanentState::new(&def);
@@ -294,8 +294,8 @@ mod tests {
         let cost = ManaCost {
             pips: vec![ManaPip::Generic(2)],
         };
-        let span = OracleSpan::Parsed(Ability::Cycling(cost.clone()));
-        assert_eq!(span, OracleSpan::Parsed(Ability::Cycling(cost)));
+        let span = OracleSpan::Active(Ability::Cycling(cost.clone()));
+        assert_eq!(span, OracleSpan::Active(Ability::Cycling(cost)));
     }
 
     #[test]
@@ -386,7 +386,7 @@ mod tests {
     fn toxic_n_returns_some_for_toxic_creature() {
         use crate::types::{Ability, OracleSpan, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(
+        def.abilities = vec![OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(
             3,
         )))];
         let perm = PermanentState::new(&def);
@@ -405,8 +405,8 @@ mod tests {
         use crate::types::{Ability, OracleSpan, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
         def.abilities = vec![
-            OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(2))),
-            OracleSpan::Parsed(Ability::Static(StaticAbility::ToxicN(1))),
+            OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(2))),
+            OracleSpan::Active(Ability::Static(StaticAbility::ToxicN(1))),
         ];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.toxic_n(), Some(3));

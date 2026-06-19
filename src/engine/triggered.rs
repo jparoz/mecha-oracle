@@ -286,7 +286,7 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
 
         for span in &abilities {
             let triggered = match span {
-                OracleSpan::Parsed(Ability::Triggered(t)) => t,
+                OracleSpan::Active(Ability::Triggered(t)) => t,
                 _ => continue,
             };
 
@@ -736,7 +736,7 @@ mod tests {
                 subtypes: vec!["Elf".into(), "Scout".into()],
             },
             oracle_text: "When this enters, draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -765,7 +765,7 @@ mod tests {
                 subtypes: vec!["Wurm".into()],
             },
             oracle_text: "When this enters, you gain 7 life.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -804,7 +804,7 @@ mod tests {
             oracle_text: String::new(),
             abilities: keywords
                 .into_iter()
-                .map(|k| OracleSpan::Parsed(Ability::Static(k)))
+                .map(|k| OracleSpan::Active(Ability::Static(k)))
                 .collect(),
             text_annotations: vec![],
             power: Some(power),
@@ -862,7 +862,7 @@ mod tests {
             oracle_text: String::new(),
             abilities: keywords
                 .into_iter()
-                .map(|k| OracleSpan::Parsed(Ability::Static(k)))
+                .map(|k| OracleSpan::Active(Ability::Static(k)))
                 .collect(),
             text_annotations: vec![],
             power: Some(power),
@@ -884,7 +884,7 @@ mod tests {
         use crate::types::GameEvent;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
-        let training_span = OracleSpan::Parsed(Ability::Triggered(training_triggered_ability()));
+        let training_span = OracleSpan::Active(Ability::Triggered(training_triggered_ability()));
         let training_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![training_span]);
         let ally_id = keyword_attacker(&mut gs, PlayerId(0), 3, 3, vec![]);
         gs.combat.attackers = vec![training_id, ally_id];
@@ -911,7 +911,7 @@ mod tests {
         use crate::types::GameEvent;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
-        let training_span = OracleSpan::Parsed(Ability::Triggered(training_triggered_ability()));
+        let training_span = OracleSpan::Active(Ability::Triggered(training_triggered_ability()));
         let training_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![training_span]);
         let ally_id = keyword_attacker(&mut gs, PlayerId(0), 2, 2, vec![]);
         gs.combat.attackers = vec![training_id, ally_id];
@@ -938,7 +938,7 @@ mod tests {
         use crate::types::GameEvent;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
-        let training_span = OracleSpan::Parsed(Ability::Triggered(training_triggered_ability()));
+        let training_span = OracleSpan::Active(Ability::Triggered(training_triggered_ability()));
         let training_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![training_span]);
         gs.combat.attackers = vec![training_id];
 
@@ -966,7 +966,7 @@ mod tests {
         use crate::types::effect::EffectTarget;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
-        let training_span = OracleSpan::Parsed(Ability::Triggered(training_triggered_ability()));
+        let training_span = OracleSpan::Active(Ability::Triggered(training_triggered_ability()));
         let training_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![training_span]);
         let ally_id = keyword_attacker(&mut gs, PlayerId(0), 3, 3, vec![]);
         gs.combat.attackers = vec![training_id, ally_id];
@@ -1235,7 +1235,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Prowess".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+            abilities: vec![OracleSpan::Active(Ability::Triggered(
                 prowess_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1315,7 +1315,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(
+            abilities: vec![OracleSpan::Active(Ability::Triggered(
                 prowess_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1379,7 +1379,7 @@ mod tests {
         };
         let attacker_id = place_on_battlefield(&mut gs, attacker_def, PlayerId(0));
         // An Exalted permanent also controlled by P0.
-        let exalted_span = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
+        let exalted_span = OracleSpan::Active(Ability::Triggered(exalted_triggered_ability()));
         let _exalted_id = triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span]);
         gs.combat.attackers = vec![attacker_id];
 
@@ -1417,8 +1417,8 @@ mod tests {
         use crate::types::GameEvent;
 
         let mut gs = two_player_state();
-        let exalted_span_a = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
-        let exalted_span_b = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
+        let exalted_span_a = OracleSpan::Active(Ability::Triggered(exalted_triggered_ability()));
+        let exalted_span_b = OracleSpan::Active(Ability::Triggered(exalted_triggered_ability()));
         let a = triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span_a]);
         let b = triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span_b]);
         gs.combat.attackers = vec![a, b]; // two attackers — ExactlyOneAttacker condition fails
@@ -1455,8 +1455,8 @@ mod tests {
             colors: vec![],
         };
         let attacker_id = place_on_battlefield(&mut gs, plain_def, PlayerId(0));
-        let exalted_span_a = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
-        let exalted_span_b = OracleSpan::Parsed(Ability::Triggered(exalted_triggered_ability()));
+        let exalted_span_a = OracleSpan::Active(Ability::Triggered(exalted_triggered_ability()));
+        let exalted_span_b = OracleSpan::Active(Ability::Triggered(exalted_triggered_ability()));
         triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span_a]);
         triggered_attacker(&mut gs, PlayerId(0), 1, 1, vec![exalted_span_b]);
         gs.combat.attackers = vec![attacker_id];
@@ -1475,7 +1475,7 @@ mod tests {
         use crate::types::GameEvent;
 
         let mut gs = two_player_state();
-        let melee_span = OracleSpan::Parsed(Ability::Triggered(melee_triggered_ability()));
+        let melee_span = OracleSpan::Active(Ability::Triggered(melee_triggered_ability()));
         let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![melee_span]);
         gs.combat.attackers = vec![attacker_id];
 
@@ -1543,7 +1543,7 @@ mod tests {
         use crate::types::stack::StackPayload;
 
         let mut gs = two_player_state();
-        let flanking_span = OracleSpan::Parsed(Ability::Triggered(flanking_triggered_ability()));
+        let flanking_span = OracleSpan::Active(Ability::Triggered(flanking_triggered_ability()));
         let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![flanking_span]);
         let blocker_id = triggered_blocker(&mut gs, PlayerId(1), 2, 2, vec![]);
 
@@ -1582,8 +1582,8 @@ mod tests {
         use crate::types::GameEvent;
 
         let mut gs = two_player_state();
-        let flanking_span_a = OracleSpan::Parsed(Ability::Triggered(flanking_triggered_ability()));
-        let flanking_span_b = OracleSpan::Parsed(Ability::Static(StaticAbility::Flanking));
+        let flanking_span_a = OracleSpan::Active(Ability::Triggered(flanking_triggered_ability()));
+        let flanking_span_b = OracleSpan::Active(Ability::Static(StaticAbility::Flanking));
         let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![flanking_span_a]);
         // Blocker also has Flanking (as StaticAbility so has_keyword check fires).
         let blocker_id = triggered_blocker(&mut gs, PlayerId(1), 2, 2, vec![flanking_span_b]);
@@ -1616,8 +1616,8 @@ mod tests {
             3,
             3,
             vec![
-                OracleSpan::Parsed(Ability::Triggered(bushido_attacker_triggered_ability(2))),
-                OracleSpan::Parsed(Ability::Triggered(bushido_blocker_triggered_ability(2))),
+                OracleSpan::Active(Ability::Triggered(bushido_attacker_triggered_ability(2))),
+                OracleSpan::Active(Ability::Triggered(bushido_blocker_triggered_ability(2))),
             ],
         );
 
@@ -1628,8 +1628,8 @@ mod tests {
             2,
             2,
             vec![
-                OracleSpan::Parsed(Ability::Triggered(bushido_attacker_triggered_ability(1))),
-                OracleSpan::Parsed(Ability::Triggered(bushido_blocker_triggered_ability(1))),
+                OracleSpan::Active(Ability::Triggered(bushido_attacker_triggered_ability(1))),
+                OracleSpan::Active(Ability::Triggered(bushido_blocker_triggered_ability(1))),
             ],
         );
 
@@ -1692,8 +1692,8 @@ mod tests {
             3,
             3,
             vec![
-                OracleSpan::Parsed(Ability::Triggered(bushido_attacker_triggered_ability(2))),
-                OracleSpan::Parsed(Ability::Triggered(bushido_blocker_triggered_ability(2))),
+                OracleSpan::Active(Ability::Triggered(bushido_attacker_triggered_ability(2))),
+                OracleSpan::Active(Ability::Triggered(bushido_blocker_triggered_ability(2))),
             ],
         );
         gs.combat.attackers = vec![attacker_id];
@@ -1724,7 +1724,7 @@ mod tests {
             },
             oracle_text: String::new(),
             abilities: vec![
-                OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                     trigger: TriggerEvent::EntersTheBattlefield {
                         subject: crate::types::ability::TriggerSubjectFilter {
                             is_self: Some(true),
@@ -1735,7 +1735,7 @@ mod tests {
                     target_mode: crate::types::ability::TriggerTargetMode::None,
                     effect: vec![EffectStep::DrawCard(1)],
                 })),
-                OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+                OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                     trigger: TriggerEvent::EntersTheBattlefield {
                         subject: crate::types::ability::TriggerSubjectFilter {
                             is_self: Some(true),
@@ -1795,7 +1795,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },
@@ -1877,7 +1877,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },
@@ -1987,7 +1987,7 @@ mod tests {
     fn make_deals_combat_damage_ability(to: DamageTargetKind) -> OracleSpan {
         use crate::types::ability::{TriggerSubjectFilter, TriggerTargetMode};
         use crate::types::effect::EffectStep;
-        OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+        OracleSpan::Active(Ability::Triggered(TriggeredAbility {
             trigger: TriggerEvent::DealsCombatDamage {
                 subject: TriggerSubjectFilter {
                     is_self: Some(true),
@@ -2111,7 +2111,7 @@ mod tests {
         let mut gs = two_player_state();
 
         let battle_cry_span =
-            OracleSpan::Parsed(Ability::Triggered(battle_cry_triggered_ability()));
+            OracleSpan::Active(Ability::Triggered(battle_cry_triggered_ability()));
         let battle_cry_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![battle_cry_span]);
 
         let ally_def = CardDefinition {

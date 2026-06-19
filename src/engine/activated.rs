@@ -35,7 +35,7 @@ pub fn activate_ability(
         .abilities
         .iter()
         .filter_map(|span| match span {
-            OracleSpan::Parsed(Ability::Activated(a)) => Some(a.clone()),
+            OracleSpan::Active(Ability::Activated(a)) => Some(a.clone()),
             _ => None,
         })
         .nth(ability_index)
@@ -283,7 +283,7 @@ mod tests {
                 subtypes: vec!["Elf".into(), "Druid".into()],
             },
             oracle_text: "{T}: Add {G}.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(ManaPool {
@@ -308,7 +308,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{T}: Mill 2.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
@@ -330,7 +330,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{1}: Draw a card.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Mana(ManaCost {
                     pips: vec![ManaPip::Generic(1)],
                 })],
@@ -539,7 +539,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Sacrifice a creature: Mill 2.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Unimplemented("Sacrifice a creature".into())],
                 target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
@@ -603,7 +603,7 @@ mod tests {
                 subtypes: vec!["Elf".into()],
             },
             oracle_text: "{T}: Add {G}.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(ManaPool {
@@ -637,7 +637,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{T}: Deal 1 damage to target creature.".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Activated(ActivatedAbility {
+            abilities: vec![OracleSpan::Active(Ability::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![TargetFilter::Creature],
                 effect: vec![EffectStep::DealDamage(crate::types::effect::DamageStep {
@@ -676,7 +676,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Ward {2}".into(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },

@@ -244,7 +244,7 @@ mod tests {
             oracle_text: String::new(),
             abilities: keywords
                 .into_iter()
-                .map(|k| OracleSpan::Parsed(Ability::Static(k)))
+                .map(|k| OracleSpan::Active(Ability::Static(k)))
                 .collect(),
             text_annotations: vec![],
             power: Some(power),
@@ -548,7 +548,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::Dies {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -602,7 +602,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            abilities: vec![OracleSpan::Active(Ability::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::Dies {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
