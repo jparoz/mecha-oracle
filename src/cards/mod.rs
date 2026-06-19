@@ -127,12 +127,12 @@ mod tests {
         use crate::types::{IgnoredKind, RulesText};
         let db = test_db();
         let card = db.get("Grazing Gladehart").unwrap();
-        assert_eq!(card.abilities.len(), 2);
+        assert_eq!(card.rules_text.len(), 2);
         assert!(matches!(
-            &card.abilities[0],
+            &card.rules_text[0],
             RulesText::Ignored(IgnoredKind::AbilityWord, _)
         ));
-        assert!(matches!(&card.abilities[1], RulesText::Unparsed(_)));
+        assert!(matches!(&card.rules_text[1], RulesText::Unparsed(_)));
     }
 
     #[test]
@@ -142,7 +142,7 @@ mod tests {
         let card = db.get("Serra Angel").unwrap();
         assert!(!card.has_unparsed());
         assert!(
-            card.abilities
+            card.rules_text
                 .iter()
                 .all(|s| matches!(s, RulesText::Active(_)))
         );
@@ -164,7 +164,7 @@ mod tests {
             .get("Llanowar Elves")
             .expect("Llanowar Elves not in fixture");
         assert!(
-            card.abilities
+            card.rules_text
                 .iter()
                 .any(|s| { matches!(s, RulesText::Active(Rule::Activated(_))) })
         );

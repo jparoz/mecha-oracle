@@ -6,7 +6,7 @@ use crate::types::{CombatState, GameState, ObjectId, PTDelta, PlayerId, Step, Zo
 /// Apply the automatic rules for the start of the current step/phase.
 ///
 /// CR 603.2b: At the beginning of each step, fire a PhaseStep event so that
-/// "at the beginning of [step]" triggered abilities are collected onto the stack.
+/// "at the beginning of [step]" triggered rules_text are collected onto the stack.
 pub fn apply_step_start(mut state: GameState) -> GameState {
     // CR 603.2b: collect PhaseStep triggers before step-specific logic runs.
     // Untap and Cleanup have no priority window (CR 502.4, CR 514.3), so triggers
@@ -15,7 +15,7 @@ pub fn apply_step_start(mut state: GameState) -> GameState {
     // TODO(CR 603.3b): Triggers generated during Untap and Cleanup have no priority window;
     // they should be held and placed on the stack at the next opportunity (start of Upkeep).
     // Currently these triggers are pushed directly — a trigger-holding mechanism is needed
-    // before Untap/Cleanup-step abilities are implemented.
+    // before Untap/Cleanup-step rules_text are implemented.
     // Capture fields before the &mut borrow.
     let current_step = state.step;
     let current_active = state.active_player;
@@ -141,7 +141,7 @@ fn draw_step(state: GameState) -> GameState {
 
 /// Draw the top card of a player's library. If the library is empty, that player loses (CR 704.5b).
 /// CR 603.2: fires DrawsCard event after a successful draw so that "whenever you draw a card"
-/// triggered abilities (e.g. Rhystic Study, future Cumulative Upkeep draw effects) are collected,
+/// triggered rules_text (e.g. Rhystic Study, future Cumulative Upkeep draw effects) are collected,
 /// unless fire_events is false (e.g. during opening hand setup per CR 103.5, which is not gameplay).
 pub fn draw_card(mut state: GameState, player_id: PlayerId, fire_events: bool) -> GameState {
     let top = state.libraries.get_mut(&player_id).and_then(|lib| {
@@ -511,7 +511,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Static(StaticAbility::Decayed))],
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Decayed))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -645,7 +645,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(upkeep_trigger))],
+            rules_text: vec![RulesText::Active(Rule::Triggered(upkeep_trigger))],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -698,7 +698,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(upkeep_trigger))],
+            rules_text: vec![RulesText::Active(Rule::Triggered(upkeep_trigger))],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -765,7 +765,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(draw_trigger))],
+            rules_text: vec![RulesText::Active(Rule::Triggered(draw_trigger))],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -831,7 +831,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(etb_trigger))],
+            rules_text: vec![RulesText::Active(Rule::Triggered(etb_trigger))],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),

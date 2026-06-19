@@ -46,7 +46,7 @@ pub fn is_legal_target(
                 return false;
             }
             // CR 702.16c: protection prevents targeting by sources of protected quality
-            for span in &obj.definition.abilities {
+            for span in &obj.definition.rules_text {
                 if let RulesText::Active(Rule::Static(StaticAbility::ProtectionFromColor(c))) = span
                     && source_colors.contains(c)
                 {
@@ -74,7 +74,7 @@ pub fn is_legal_target(
                     return false;
                 };
                 let StackPayload::Spell { card_id } = &sobj.payload else {
-                    return false; // triggered/activated abilities are not spells
+                    return false; // triggered/activated rules_text are not spells
                 };
                 let Some(card_obj) = state.objects.get(card_id) else {
                     return false;
@@ -170,7 +170,7 @@ mod tests {
     fn place_creature(
         state: &mut GameState,
         owner: PlayerId,
-        abilities: Vec<RulesText>,
+        rules_text: Vec<RulesText>,
     ) -> crate::types::ObjectId {
         let def = CardDefinition {
             name: "Test Creature".into(),
@@ -181,7 +181,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities,
+            rules_text,
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -236,7 +236,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
@@ -456,7 +456,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,

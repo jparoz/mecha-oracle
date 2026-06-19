@@ -87,12 +87,12 @@ pub(crate) fn inject_source_flags(
 }
 
 fn has_damage_kw(
-    abilities: &[crate::types::RulesText],
+    rules_text: &[crate::types::RulesText],
     kw: &crate::types::ability::StaticAbility,
 ) -> bool {
     use crate::types::RulesText;
     use crate::types::ability::Rule;
-    abilities
+    rules_text
         .iter()
         .any(|span| matches!(span, RulesText::Active(Rule::Static(k)) if k == kw))
 }
@@ -139,7 +139,7 @@ pub(crate) fn execute_effect_steps(
                 }
             }
             EffectStep::AddMana(_) => {
-                // Mana abilities never reach the stack (CR 405.6c).
+                // Mana rules_text never reach the stack (CR 405.6c).
                 unreachable!("AddMana in stack object");
             }
             EffectStep::BoostPermanentPT(delta) => {
@@ -264,7 +264,7 @@ pub(crate) fn execute_effect_steps(
 
 /// CR 702.21a: Counter a spell or ability on the stack without it resolving.
 /// For spells, the card moves to the graveyard (CR 608.2b).
-/// For activated abilities, the ability simply ceases to exist (no card to move).
+/// For activated rules_text, the ability simply ceases to exist (no card to move).
 pub(crate) fn counter_spell_on_stack(
     state: &mut GameState,
     stack_id: crate::types::stack::StackId,
@@ -341,7 +341,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     .get(&card_id)
                     .map(|obj| {
                         obj.definition
-                            .abilities
+                            .rules_text
                             .iter()
                             .filter_map(|span| match span {
                                 crate::types::RulesText::Active(
@@ -357,7 +357,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                 let spell_abilities: Vec<crate::types::RulesText> = state
                     .objects
                     .get(&card_id)
-                    .map(|o| o.definition.abilities.clone())
+                    .map(|o| o.definition.rules_text.clone())
                     .unwrap_or_default();
                 let steps = inject_source_flags(steps, &spell_abilities);
 
@@ -395,7 +395,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                 return apply_sbas_and_push_triggers(state);
             }
 
-            // CR 117.3b: after triggered abilities are put on the stack, active player
+            // CR 117.3b: after triggered rules_text are put on the stack, active player
             // receives priority (distinct from CR 117.3c where the caster retains priority
             // after casting a spell or activating an ability).
             state.consecutive_passes = 0;
@@ -405,8 +405,8 @@ pub fn resolve_top(mut state: GameState) -> GameState {
         StackPayload::TriggeredAbility { effect, .. }
         | StackPayload::ActivatedAbility { effect, .. } => {
             let controller = stack_obj.controller;
-            // CR 608.2b: non-mana activated abilities with all-illegal targets fizzle.
-            // Triggered abilities don't fizzle — they just silently have no effect.
+            // CR 608.2b: non-mana activated rules_text with all-illegal targets fizzle.
+            // Triggered rules_text don't fizzle — they just silently have no effect.
             if is_activated
                 && !targets.is_empty()
                 && !crate::engine::targeting::targets_still_legal(&state, &targets)
@@ -505,7 +505,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
@@ -706,7 +706,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![],
                 steps,
             }))],
@@ -738,7 +738,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![],
                 steps,
             }))],
@@ -876,7 +876,7 @@ mod tests {
                 subtypes: vec!["Elf".into()],
             },
             oracle_text: "When this enters, draw a card.".into(),
-            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
+            rules_text: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -927,7 +927,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1010,7 +1010,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(4),
@@ -1095,7 +1095,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
@@ -1119,7 +1119,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![EffectStep::BoostPermanentPT(PTDelta {
                     power: 3,
@@ -1157,7 +1157,7 @@ mod tests {
     fn targeted_activated_ability_fizzles_when_player_target_loses() {
         // Discriminating fizzle test: activated DealDamage targeting a player who has_lost=true
         // would apply damage without the fizzle check (player still exists in state via get_player_mut).
-        // Triggered abilities don't fizzle; activated abilities do (CR 608.2b).
+        // Triggered rules_text don't fizzle; activated rules_text do (CR 608.2b).
         use crate::types::effect::EffectTarget;
         let mut gs = make_state();
         let before_life = gs.get_player(PlayerId(1)).unwrap().life;
@@ -1212,7 +1212,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -1281,7 +1281,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -1341,7 +1341,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1442,7 +1442,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(power),
             toughness: Some(toughness),
@@ -1751,12 +1751,12 @@ mod tests {
         use crate::types::ability::{Rule, StaticAbility};
         use crate::types::effect::{DamageStep, EffectStep};
 
-        let abilities = vec![RulesText::Active(Rule::Static(StaticAbility::Lifelink))];
+        let rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::Lifelink))];
         let effect = vec![EffectStep::DealDamage(DamageStep {
             amount: 2,
             ..Default::default()
         })];
-        let result = inject_source_flags(effect, &abilities);
+        let result = inject_source_flags(effect, &rules_text);
         match &result[0] {
             EffectStep::DealDamage(s) => {
                 assert!(s.lifelink);
@@ -1776,7 +1776,7 @@ mod tests {
         use crate::types::ability::{Rule, StaticAbility};
         use crate::types::effect::{DamageStep, EffectStep};
 
-        let abilities = vec![
+        let rules_text = vec![
             RulesText::Active(Rule::Static(StaticAbility::Wither)),
             RulesText::Active(Rule::Static(StaticAbility::Infect)),
         ];
@@ -1784,7 +1784,7 @@ mod tests {
             amount: 1,
             ..Default::default()
         })];
-        let result = inject_source_flags(effect, &abilities);
+        let result = inject_source_flags(effect, &rules_text);
         match &result[0] {
             EffectStep::DealDamage(s) => {
                 assert!(s.wither);
@@ -1841,7 +1841,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1877,7 +1877,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Counter target spell.".into(),
-            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![TargetFilter::Spell(SpellFilter::any())],
                 steps: vec![EffectStep::CounterSpell],
             }))],

@@ -4,7 +4,7 @@ use super::ids::{ObjectId, PlayerId};
 use super::zone::Zone;
 
 /// CR 305.6: lands with basic land subtypes (Forest, Island, Mountain, Plains, Swamp)
-/// get intrinsic mana abilities.
+/// get intrinsic mana rules_text.
 fn inject_intrinsic_abilities(definition: &mut CardDefinition) {
     use super::ability::{ActivatedAbility, CostComponent};
     use super::effect::EffectStep;
@@ -36,7 +36,7 @@ fn inject_intrinsic_abilities(definition: &mut CardDefinition) {
             _ => continue,
         };
         definition
-            .abilities
+            .rules_text
             .push(RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
@@ -80,7 +80,7 @@ impl CardObject {
 
     pub fn has_keyword(&self, kw: StaticAbility) -> bool {
         self.definition
-            .abilities
+            .rules_text
             .iter()
             .any(|span| matches!(span, RulesText::Active(Rule::Static(k)) if *k == kw))
     }
@@ -99,7 +99,7 @@ mod tests {
     fn has_keyword_returns_true_for_matching_ability() {
         use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = grizzly_bears();
-        def.abilities = vec![RulesText::Active(Rule::Static(StaticAbility::Flying))];
+        def.rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::Flying))];
         let obj = CardObject::new(ObjectId(1), def, PlayerId(0), Zone::Battlefield);
         assert!(obj.has_keyword(StaticAbility::Flying));
         assert!(!obj.has_keyword(StaticAbility::Trample));
@@ -124,7 +124,7 @@ mod tests {
 
         let mana_abilities: Vec<_> = obj
             .definition
-            .abilities
+            .rules_text
             .iter()
             .filter_map(|span| match span {
                 RulesText::Active(Rule::Activated(a)) => Some(a),
@@ -159,7 +159,7 @@ mod tests {
 
         let mana_abilities: Vec<_> = obj
             .definition
-            .abilities
+            .rules_text
             .iter()
             .filter_map(|span| match span {
                 RulesText::Active(Rule::Activated(a)) => Some(a),
@@ -186,7 +186,7 @@ mod tests {
 
         let mana_abilities = obj
             .definition
-            .abilities
+            .rules_text
             .iter()
             .filter(|span| matches!(span, RulesText::Active(Rule::Activated(_))))
             .count();

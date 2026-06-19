@@ -285,7 +285,7 @@ fn cant_cast_giant_growth_targeting_shroud_creature() {
             subtypes: vec![],
         },
         oracle_text: "Shroud".into(),
-        abilities: vec![RulesText::Active(Rule::Static(StaticAbility::Shroud))],
+        rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Shroud))],
         text_annotations: vec![],
         power: Some(1),
         toughness: Some(1),

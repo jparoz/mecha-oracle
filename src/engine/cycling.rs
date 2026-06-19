@@ -32,7 +32,7 @@ pub fn cycle_card(
         .objects
         .get(&card_id)
         .and_then(|obj| {
-            obj.definition.abilities.iter().find_map(|span| {
+            obj.definition.rules_text.iter().find_map(|span| {
                 if let RulesText::Active(Rule::Cycling(cost)) = span {
                     Some(cost.clone())
                 } else {
@@ -117,7 +117,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
@@ -140,7 +140,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Cycling".into(),
-            abilities: vec![RulesText::Active(Rule::Cycling(cost))],
+            rules_text: vec![RulesText::Active(Rule::Cycling(cost))],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -232,7 +232,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,

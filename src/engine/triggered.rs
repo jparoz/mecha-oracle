@@ -269,7 +269,7 @@ pub fn training_triggered_ability() -> TriggeredAbility {
     }
 }
 
-/// CR 603.2: collect all triggered abilities on the battlefield that fire for the given game event.
+/// CR 603.2: collect all triggered rules_text on the battlefield that fire for the given game event.
 pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> Vec<StackObject> {
     use crate::engine::stack::inject_source_flags;
     use crate::types::effect::EffectTarget;
@@ -279,12 +279,12 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
     let mut result = Vec::new();
 
     for source_id in source_ids {
-        let (controller, abilities) = match state.objects.get(&source_id) {
-            Some(o) => (o.controller, o.definition.abilities.clone()),
+        let (controller, rules_text) = match state.objects.get(&source_id) {
+            Some(o) => (o.controller, o.definition.rules_text.clone()),
             None => continue,
         };
 
-        for span in &abilities {
+        for span in &rules_text {
             let triggered = match span {
                 RulesText::Active(Rule::Triggered(t)) => t,
                 _ => continue,
@@ -502,7 +502,7 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                     .collect(),
             };
 
-            let effect = inject_source_flags(triggered_clone.effect, &abilities);
+            let effect = inject_source_flags(triggered_clone.effect, &rules_text);
             let sid = state.alloc_stack_id();
             let label = format!(
                 "{}: trigger",
@@ -712,7 +712,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
@@ -736,7 +736,7 @@ mod tests {
                 subtypes: vec!["Elf".into(), "Scout".into()],
             },
             oracle_text: "When this enters, draw a card.".into(),
-            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
+            rules_text: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -765,7 +765,7 @@ mod tests {
                 subtypes: vec!["Wurm".into()],
             },
             oracle_text: "When this enters, you gain 7 life.".into(),
-            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
+            rules_text: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::EntersTheBattlefield {
                     subject: TriggerSubjectFilter {
                         is_self: Some(true),
@@ -802,7 +802,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: keywords
+            rules_text: keywords
                 .into_iter()
                 .map(|k| RulesText::Active(Rule::Static(k)))
                 .collect(),
@@ -820,7 +820,7 @@ mod tests {
         owner: PlayerId,
         power: i32,
         toughness: i32,
-        abilities: Vec<RulesText>,
+        rules_text: Vec<RulesText>,
     ) -> ObjectId {
         use crate::types::card::{CardType, TypeLine};
         let def = CardDefinition {
@@ -832,7 +832,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities,
+            rules_text,
             text_annotations: vec![],
             power: Some(power),
             toughness: Some(toughness),
@@ -860,7 +860,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: keywords
+            rules_text: keywords
                 .into_iter()
                 .map(|k| RulesText::Active(Rule::Static(k)))
                 .collect(),
@@ -1198,7 +1198,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1235,7 +1235,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Prowess".into(),
-            abilities: vec![RulesText::Active(Rule::Triggered(
+            rules_text: vec![RulesText::Active(Rule::Triggered(
                 prowess_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1255,7 +1255,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -1315,7 +1315,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(
+            rules_text: vec![RulesText::Active(Rule::Triggered(
                 prowess_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1335,7 +1335,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1371,7 +1371,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1448,7 +1448,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1514,7 +1514,7 @@ mod tests {
         owner: PlayerId,
         power: i32,
         toughness: i32,
-        abilities: Vec<RulesText>,
+        rules_text: Vec<RulesText>,
     ) -> ObjectId {
         use crate::types::card::{CardType, TypeLine};
         let def = CardDefinition {
@@ -1526,7 +1526,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities,
+            rules_text,
             text_annotations: vec![],
             power: Some(power),
             toughness: Some(toughness),
@@ -1723,7 +1723,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![
+            rules_text: vec![
                 RulesText::Active(Rule::Triggered(TriggeredAbility {
                     trigger: TriggerEvent::EntersTheBattlefield {
                         subject: crate::types::ability::TriggerSubjectFilter {
@@ -1795,7 +1795,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
+            rules_text: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },
@@ -1877,7 +1877,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
+            rules_text: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },
@@ -2122,7 +2122,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),

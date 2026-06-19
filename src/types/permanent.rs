@@ -52,14 +52,14 @@ impl PermanentState {
 
     pub fn has_keyword(&self, kw: StaticAbility) -> bool {
         self.definition
-            .abilities
+            .rules_text
             .iter()
             .any(|span| matches!(span, RulesText::Active(Rule::Static(k)) if *k == kw))
     }
 
     /// Returns the Bushido parameter N if this permanent has Bushido N, otherwise None.
     pub fn bushido_n(&self) -> Option<u32> {
-        self.definition.abilities.iter().find_map(|span| {
+        self.definition.rules_text.iter().find_map(|span| {
             if let RulesText::Active(Rule::Static(StaticAbility::BushidoN(n))) = span {
                 Some(*n)
             } else {
@@ -68,12 +68,12 @@ impl PermanentState {
         })
     }
 
-    /// Returns the total Toxic value if this permanent has any Toxic N abilities, otherwise None.
-    // CR 702.164b: total toxic value is the sum of all N values of toxic abilities.
+    /// Returns the total Toxic value if this permanent has any Toxic N rules_text, otherwise None.
+    // CR 702.164b: total toxic value is the sum of all N values of toxic rules_text.
     pub fn toxic_n(&self) -> Option<u32> {
         let total: u32 = self
             .definition
-            .abilities
+            .rules_text
             .iter()
             .filter_map(|span| {
                 if let RulesText::Active(Rule::Static(StaticAbility::ToxicN(n))) = span {
@@ -125,7 +125,7 @@ impl PermanentState {
     /// CR 302.6 — a creature is summoning sick if it has not been under its controller's
     /// control continuously since the beginning of their most recent turn.
     /// Pass `controllers_most_recent_turn` from `GameState::controllers_most_recent_turn`.
-    /// Returns false for non-creatures (sickness only restricts creature abilities).
+    /// Returns false for non-creatures (sickness only restricts creature rules_text).
     pub fn summoning_sick(&self, controllers_most_recent_turn: u32) -> bool {
         self.is_creature() && self.controller_since_turn >= controllers_most_recent_turn
     }
@@ -201,7 +201,7 @@ mod tests {
     fn summoning_sick_creature_with_haste_can_attack() {
         use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![RulesText::Active(Rule::Static(StaticAbility::Haste))];
+        def.rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::Haste))];
         let perm = PermanentState::new(&def); // controller_since_turn = u32::MAX → sick
         assert!(perm.can_attack(1)); // sick but has Haste
     }
@@ -274,7 +274,7 @@ mod tests {
     fn bushido_n_returns_some_for_bushido_creature() {
         use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![RulesText::Active(Rule::Static(StaticAbility::BushidoN(3)))];
+        def.rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::BushidoN(3)))];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.bushido_n(), Some(3));
     }
@@ -384,7 +384,7 @@ mod tests {
     fn toxic_n_returns_some_for_toxic_creature() {
         use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![RulesText::Active(Rule::Static(StaticAbility::ToxicN(3)))];
+        def.rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::ToxicN(3)))];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.toxic_n(), Some(3));
     }
@@ -400,7 +400,7 @@ mod tests {
         // CR 702.164b: total toxic value is the sum of all N values.
         use crate::types::{Rule, RulesText, ability::StaticAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.abilities = vec![
+        def.rules_text = vec![
             RulesText::Active(Rule::Static(StaticAbility::ToxicN(2))),
             RulesText::Active(Rule::Static(StaticAbility::ToxicN(1))),
         ];

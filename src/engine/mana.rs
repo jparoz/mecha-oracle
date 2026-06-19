@@ -927,7 +927,7 @@ mod tests {
                 subtypes: vec!["Forest".into()],
             },
             oracle_text: "({T}: Add {G}.)".into(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,

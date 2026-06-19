@@ -49,7 +49,7 @@ pub fn declare_attackers(
     state.combat.blocking_map = attacker_ids.iter().map(|&id| (id, vec![])).collect();
     state.combat.attackers_declared = true;
 
-    // CR 603.2: fire Attacks event for each attacker; collect triggered abilities.
+    // CR 603.2: fire Attacks event for each attacker; collect triggered rules_text.
     let mut attack_triggers = Vec::new();
     for &attacker_id in &state.combat.attackers.clone() {
         let mut t = crate::engine::triggered::collect_triggers_for_event(
@@ -148,7 +148,7 @@ pub fn declare_blockers(
     state.mana_checkpoint = None;
     state.combat.blockers_declared = true;
 
-    // CR 603.2: fire Blocks and BecomesBlocked events; collect triggered abilities.
+    // CR 603.2: fire Blocks and BecomesBlocked events; collect triggered rules_text.
     let blocking_map_snapshot: Vec<(ObjectId, Vec<ObjectId>)> = state
         .combat
         .blocking_map
@@ -283,7 +283,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     {
         use crate::types::ability::{LandwalkKind, Rule, StaticAbility as SA};
         let defending_player = state.opponent_of(state.active_player);
-        for span in &attacker_obj.definition.abilities {
+        for span in &attacker_obj.definition.rules_text {
             if let crate::types::RulesText::Active(Rule::Static(SA::Landwalk(kind))) = span {
                 let defender_has_land = state.battlefield.iter().any(|(land_id, _)| {
                     let land_obj = match state.objects.get(land_id) {
@@ -317,7 +317,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     {
         use crate::types::ability::{Rule, StaticAbility as SA};
         let blocker_colors = &blocker_obj.definition.colors;
-        for span in &attacker_obj.definition.abilities {
+        for span in &attacker_obj.definition.rules_text {
             if let crate::types::RulesText::Active(Rule::Static(SA::ProtectionFromColor(c))) = span
                 && blocker_colors.contains(c)
             {
@@ -608,9 +608,9 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
         state.stack_objects.insert(id, t);
     }
 
-    // CR 603.2: fire DealsCombatDamage events and collect triggered abilities.
+    // CR 603.2: fire DealsCombatDamage events and collect triggered rules_text.
     // Fired after SBAs so that creatures destroyed by combat damage are already removed,
-    // matching the rule that triggered abilities wait for SBAs before going on the stack.
+    // matching the rule that triggered rules_text wait for SBAs before going on the stack.
     let mut combat_triggers = Vec::new();
     for (attacker_id, target_kind) in combat_damage_events {
         let mut t = crate::engine::triggered::collect_triggers_for_event(
@@ -685,7 +685,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: keywords
+            rules_text: keywords
                 .into_iter()
                 .map(|k| RulesText::Active(Rule::Static(k)))
                 .collect(),
@@ -719,7 +719,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -735,7 +735,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(
+            rules_text: vec![RulesText::Active(Rule::Triggered(
                 exalted_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1216,7 +1216,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![RulesText::Active(Rule::Triggered(
+            rules_text: vec![RulesText::Active(Rule::Triggered(
                 flanking_triggered_ability(),
             ))],
             text_annotations: vec![],
@@ -1233,7 +1233,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1468,7 +1468,7 @@ mod tests {
     fn place_creature_with_colors(
         state: &mut GameState,
         owner: PlayerId,
-        abilities: Vec<crate::types::RulesText>,
+        rules_text: Vec<crate::types::RulesText>,
         colors: Vec<crate::types::mana::ManaColor>,
     ) -> ObjectId {
         use crate::types::card::{CardDefinition, CardType, TypeLine};
@@ -1481,7 +1481,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities,
+            rules_text,
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1604,7 +1604,7 @@ mod tests {
                 subtypes: vec!["Island".to_string()],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -1888,7 +1888,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Whenever this deals combat damage to a player, draw a card.".into(),
-            abilities: vec![ability_span],
+            rules_text: vec![ability_span],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1930,7 +1930,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![ability_span],
+            rules_text: vec![ability_span],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -1972,7 +1972,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![
+            rules_text: vec![
                 RulesText::Active(Rule::Static(StaticAbility::Trample)),
                 ability_span,
             ],

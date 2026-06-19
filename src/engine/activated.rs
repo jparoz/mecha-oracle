@@ -32,7 +32,7 @@ pub fn activate_ability(
         .get(&object_id)
         .unwrap()
         .definition
-        .abilities
+        .rules_text
         .iter()
         .filter_map(|span| match span {
             RulesText::Active(Rule::Activated(a)) => Some(a.clone()),
@@ -41,7 +41,7 @@ pub fn activate_ability(
         .nth(ability_index)
         .ok_or(EngineError::AbilityIndexOutOfRange)?;
 
-    // Target validation for non-mana abilities
+    // Target validation for non-mana rules_text
     let produces_mana = ability
         .effect
         .iter()
@@ -120,7 +120,7 @@ pub fn activate_ability(
     }
 
     if produces_mana {
-        // CR 405.6c: mana abilities resolve immediately without using the stack.
+        // CR 405.6c: mana rules_text resolve immediately without using the stack.
         for step in &ability.effect {
             match step {
                 EffectStep::AddMana(pool_add) => {
@@ -171,7 +171,7 @@ pub fn activate_ability(
         // priority_player is already set to that player; no change needed.
         Ok(state)
     } else {
-        // CR 405: non-mana activated abilities use the stack.
+        // CR 405: non-mana activated rules_text use the stack.
         // CR 117.1b: a player may activate an activated ability only when they have priority.
         if state.priority_player != activating_player {
             return Err(EngineError::NotYourPriority);
@@ -190,7 +190,7 @@ pub fn activate_ability(
                 state
                     .objects
                     .get(&object_id)
-                    .map(|o| o.definition.abilities.clone())
+                    .map(|o| o.definition.rules_text.clone())
                     .unwrap_or_default()
             })
             .unwrap_or_default();
@@ -283,7 +283,7 @@ mod tests {
                 subtypes: vec!["Elf".into(), "Druid".into()],
             },
             oracle_text: "{T}: Add {G}.".into(),
-            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
+            rules_text: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(ManaPool {
@@ -308,7 +308,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{T}: Mill 2.".into(),
-            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
+            rules_text: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
@@ -330,7 +330,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{1}: Draw a card.".into(),
-            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
+            rules_text: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Mana(ManaCost {
                     pips: vec![ManaPip::Generic(1)],
                 })],
@@ -368,7 +368,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: Some(1),
             toughness: Some(1),
@@ -539,7 +539,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Sacrifice a creature: Mill 2.".into(),
-            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
+            rules_text: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Unimplemented("Sacrifice a creature".into())],
                 target_requirements: vec![],
                 effect: vec![EffectStep::Mill(2)],
@@ -603,7 +603,7 @@ mod tests {
                 subtypes: vec!["Elf".into()],
             },
             oracle_text: "{T}: Add {G}.".into(),
-            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
+            rules_text: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![],
                 effect: vec![EffectStep::AddMana(ManaPool {
@@ -624,7 +624,7 @@ mod tests {
         assert_eq!(pool.snow_green, 1);
     }
 
-    // --- CR 702.21a Ward trigger tests for activated abilities ---
+    // --- CR 702.21a Ward trigger tests for activated rules_text ---
 
     fn make_targeted_tap_ability_def() -> CardDefinition {
         use crate::types::ability::TargetFilter;
@@ -637,7 +637,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "{T}: Deal 1 damage to target creature.".into(),
-            abilities: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
+            rules_text: vec![RulesText::Active(Rule::Activated(ActivatedAbility {
                 cost: vec![CostComponent::Tap],
                 target_requirements: vec![TargetFilter::Creature],
                 effect: vec![EffectStep::DealDamage(crate::types::effect::DamageStep {
@@ -676,7 +676,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Ward {2}".into(),
-            abilities: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
+            rules_text: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
                 trigger: TriggerEvent::TargetedBy {
                     controller: TurnOwner::Opponent,
                 },

@@ -507,10 +507,10 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
 
     // Cast spell (lands cannot be cast)
     if !is_land && obj.definition.mana_cost.is_some() && can_cast_structural(state, pid, obj) {
-        // Collect target requirements from all SpellEffect abilities
+        // Collect target requirements from all SpellEffect rules_text
         let target_filters: Vec<_> = obj
             .definition
-            .abilities
+            .rules_text
             .iter()
             .filter_map(|span| match span {
                 RulesText::Active(Rule::SpellEffect(sa)) if !sa.target_requirements.is_empty() => {
@@ -575,7 +575,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
     }
 
     // Cycling
-    for span in &obj.definition.abilities {
+    for span in &obj.definition.rules_text {
         if let RulesText::Active(Rule::Cycling(cost)) = span
             && state.priority_player == pid
         {
@@ -642,11 +642,11 @@ fn compute_battlefield_actions(
         }
     }
 
-    // Activated abilities
-    // CR 117.1b: non-mana activated abilities require priority; mana abilities do not.
-    let abilities: Vec<_> = obj
+    // Activated rules_text
+    // CR 117.1b: non-mana activated rules_text require priority; mana rules_text do not.
+    let rules_text: Vec<_> = obj
         .definition
-        .abilities
+        .rules_text
         .iter()
         .filter_map(|span| match span {
             RulesText::Active(Rule::Activated(a)) => Some(a),
@@ -655,12 +655,12 @@ fn compute_battlefield_actions(
         .enumerate()
         .collect();
 
-    for (i, ability) in &abilities {
+    for (i, ability) in &rules_text {
         let produces_mana = ability
             .effect
             .iter()
             .any(|e| matches!(e, EffectStep::AddMana(_)));
-        // Mana abilities don't need priority; non-mana abilities do (CR 117.1b)
+        // Mana rules_text don't need priority; non-mana rules_text do (CR 117.1b)
         let structural_ok = produces_mana || state.priority_player == pid;
         if structural_ok {
             if !can_pay_cost_components(state, pid, Some(obj.id), &ability.cost) {
@@ -1679,7 +1679,7 @@ mod tests {
     #[test]
     fn dryad_arbor_appears_in_creatures_not_lands() {
         // A Land Creature is displayed in the creatures row; the tap-for-mana action
-        // is available there via activated abilities. It must NOT appear in the lands row
+        // is available there via activated rules_text. It must NOT appear in the lands row
         // to avoid a duplicate entry that confuses the UI layout.
         use mecha_oracle::engine::casting::play_land;
         let db = test_db();
@@ -1821,7 +1821,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            abilities: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],
@@ -2067,7 +2067,7 @@ mod tests {
                     subtypes: vec![],
                 },
                 oracle_text: String::new(),
-                abilities: vec![RulesText::Active(Rule::Static(StaticAbility::Flying))],
+                rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Flying))],
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
@@ -2211,7 +2211,7 @@ mod tests {
                     subtypes: vec![],
                 },
                 oracle_text: String::new(),
-                abilities: vec![RulesText::Active(Rule::Static(StaticAbility::Flying))],
+                rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Flying))],
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
@@ -2559,7 +2559,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -2580,7 +2580,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Tap: Add {C}.".into(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -2602,7 +2602,7 @@ mod tests {
                 subtypes: vec!["Plains".into()],
             },
             oracle_text: "({T}: Add {W}.)".into(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -2624,7 +2624,7 @@ mod tests {
                 subtypes: vec!["Swamp".into(), "Forest".into()],
             },
             oracle_text: String::new(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -2649,7 +2649,7 @@ mod tests {
                 subtypes: vec!["Gate".into()],
             },
             oracle_text: "{T}: Add {U}.".into(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -2671,7 +2671,7 @@ mod tests {
                 subtypes: vec!["Island".into()],
             },
             oracle_text: "({T}: Add {U}.)".into(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -2692,7 +2692,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "({T}: Add {C}.)".into(),
-            abilities: vec![],
+            rules_text: vec![],
             text_annotations: vec![],
             power: None,
             toughness: None,
@@ -2766,7 +2766,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Cycling {2}".into(),
-            abilities: vec![RulesText::Active(Rule::Cycling(ManaCost {
+            rules_text: vec![RulesText::Active(Rule::Cycling(ManaCost {
                 pips: vec![ManaPip::Generic(2)],
             }))],
             text_annotations: vec![],

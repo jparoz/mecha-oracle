@@ -57,7 +57,7 @@ pub struct CardDefinition {
     pub mana_cost: Option<ManaCost>,
     pub type_line: TypeLine,
     pub oracle_text: String,
-    pub abilities: Vec<RulesText>,
+    pub rules_text: Vec<RulesText>,
     pub text_annotations: Vec<TextAnnotation>,
     pub power: Option<i32>,
     pub toughness: Option<i32>,
@@ -66,7 +66,7 @@ pub struct CardDefinition {
 
 impl CardDefinition {
     pub fn has_unparsed(&self) -> bool {
-        self.abilities
+        self.rules_text
             .iter()
             .any(|s| matches!(s, RulesText::Unparsed(_)))
     }
