@@ -26,7 +26,7 @@ pub enum StackPayload {
 }
 
 /// An object on the stack (CR 405).
-/// The stack is a zone where spells and non-mana rules_text wait to resolve.
+/// The stack is a zone where spells and non-mana abilities wait to resolve.
 #[derive(Debug, Clone)]
 pub struct StackObject {
     pub id: StackId,

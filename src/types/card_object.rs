@@ -4,7 +4,7 @@ use super::ids::{ObjectId, PlayerId};
 use super::zone::Zone;
 
 /// CR 305.6: lands with basic land subtypes (Forest, Island, Mountain, Plains, Swamp)
-/// get intrinsic mana rules_text.
+/// get intrinsic mana abilities.
 fn inject_intrinsic_abilities(definition: &mut CardDefinition) {
     use super::ability::{ActivatedAbility, CostComponent};
     use super::effect::EffectStep;

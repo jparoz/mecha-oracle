@@ -74,7 +74,7 @@ pub fn is_legal_target(
                     return false;
                 };
                 let StackPayload::Spell { card_id } = &sobj.payload else {
-                    return false; // triggered/activated rules_text are not spells
+                    return false; // triggered/activated abilities are not spells
                 };
                 let Some(card_obj) = state.objects.get(card_id) else {
                     return false;

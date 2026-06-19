@@ -507,7 +507,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
 
     // Cast spell (lands cannot be cast)
     if !is_land && obj.definition.mana_cost.is_some() && can_cast_structural(state, pid, obj) {
-        // Collect target requirements from all SpellEffect rules_text
+        // Collect target requirements from all spell abilities (SpellEffect)
         let target_filters: Vec<_> = obj
             .definition
             .rules_text
@@ -642,8 +642,8 @@ fn compute_battlefield_actions(
         }
     }
 
-    // Activated rules_text
-    // CR 117.1b: non-mana activated rules_text require priority; mana rules_text do not.
+    // Activated abilities
+    // CR 117.1b: non-mana activated abilities require priority; mana abilities do not.
     let rules_text: Vec<_> = obj
         .definition
         .rules_text
@@ -660,7 +660,7 @@ fn compute_battlefield_actions(
             .effect
             .iter()
             .any(|e| matches!(e, EffectStep::AddMana(_)));
-        // Mana rules_text don't need priority; non-mana rules_text do (CR 117.1b)
+        // Mana abilities don't need priority; non-mana abilities do (CR 117.1b)
         let structural_ok = produces_mana || state.priority_player == pid;
         if structural_ok {
             if !can_pay_cost_components(state, pid, Some(obj.id), &ability.cost) {
@@ -1679,7 +1679,7 @@ mod tests {
     #[test]
     fn dryad_arbor_appears_in_creatures_not_lands() {
         // A Land Creature is displayed in the creatures row; the tap-for-mana action
-        // is available there via activated rules_text. It must NOT appear in the lands row
+        // is available there via activated abilities. It must NOT appear in the lands row
         // to avoid a duplicate entry that confuses the UI layout.
         use mecha_oracle::engine::casting::play_land;
         let db = test_db();

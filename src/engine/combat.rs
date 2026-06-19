@@ -49,7 +49,7 @@ pub fn declare_attackers(
     state.combat.blocking_map = attacker_ids.iter().map(|&id| (id, vec![])).collect();
     state.combat.attackers_declared = true;
 
-    // CR 603.2: fire Attacks event for each attacker; collect triggered rules_text.
+    // CR 603.2: fire Attacks event for each attacker; collect triggered abilities.
     let mut attack_triggers = Vec::new();
     for &attacker_id in &state.combat.attackers.clone() {
         let mut t = crate::engine::triggered::collect_triggers_for_event(
@@ -148,7 +148,7 @@ pub fn declare_blockers(
     state.mana_checkpoint = None;
     state.combat.blockers_declared = true;
 
-    // CR 603.2: fire Blocks and BecomesBlocked events; collect triggered rules_text.
+    // CR 603.2: fire Blocks and BecomesBlocked events; collect triggered abilities.
     let blocking_map_snapshot: Vec<(ObjectId, Vec<ObjectId>)> = state
         .combat
         .blocking_map
@@ -608,9 +608,9 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
         state.stack_objects.insert(id, t);
     }
 
-    // CR 603.2: fire DealsCombatDamage events and collect triggered rules_text.
+    // CR 603.2: fire DealsCombatDamage events and collect triggered abilities.
     // Fired after SBAs so that creatures destroyed by combat damage are already removed,
-    // matching the rule that triggered rules_text wait for SBAs before going on the stack.
+    // matching the rule that triggered abilities wait for SBAs before going on the stack.
     let mut combat_triggers = Vec::new();
     for (attacker_id, target_kind) in combat_damage_events {
         let mut t = crate::engine::triggered::collect_triggers_for_event(

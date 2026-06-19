@@ -68,8 +68,8 @@ impl PermanentState {
         })
     }
 
-    /// Returns the total Toxic value if this permanent has any Toxic N rules_text, otherwise None.
-    // CR 702.164b: total toxic value is the sum of all N values of toxic rules_text.
+    /// Returns the total Toxic value if this permanent has any Toxic N abilities, otherwise None.
+    // CR 702.164b: total toxic value is the sum of all N values of toxic abilities.
     pub fn toxic_n(&self) -> Option<u32> {
         let total: u32 = self
             .definition
@@ -125,7 +125,7 @@ impl PermanentState {
     /// CR 302.6 — a creature is summoning sick if it has not been under its controller's
     /// control continuously since the beginning of their most recent turn.
     /// Pass `controllers_most_recent_turn` from `GameState::controllers_most_recent_turn`.
-    /// Returns false for non-creatures (sickness only restricts creature rules_text).
+    /// Returns false for non-creatures (sickness only restricts creature abilities).
     pub fn summoning_sick(&self, controllers_most_recent_turn: u32) -> bool {
         self.is_creature() && self.controller_since_turn >= controllers_most_recent_turn
     }

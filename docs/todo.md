@@ -1,11 +1,6 @@
 # Meta issues
 - Can we run dead code analysis on library re-exports? That is, check that all library exports are actually used in the binary?
 
-# Renames
-- Consider renaming `Ability` (in `types/ability.rs`) to `Rule` or `RulesText` — it looks odd to see `Ability::SpellEffect` as a variant on a type named `Ability`, even though it's the right place structurally.
-    - Also rename SpellAbility to something else like SpellEffect
-- Rename Parsed to something more like Ast, because we sometimes manually insert these into cards with methods other than parsing rules text (e.g. intrinsic abilities).
-
 # Gameplay issues
 - Players should discard to hand size at the cleanup step (see CR 402.2)
 - `can_pay_cost_components` (costs.rs) always returns true for mana (by design), so the serve.rs UI action filter will show X-cost activated abilities as available regardless of pool size. When X-cost activated abilities are added, thread `x_value` into `can_pay_cost_components` and the serve.rs call site (line 606).

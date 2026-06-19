@@ -41,7 +41,7 @@ pub fn activate_ability(
         .nth(ability_index)
         .ok_or(EngineError::AbilityIndexOutOfRange)?;
 
-    // Target validation for non-mana rules_text
+    // Target validation for non-mana activated abilities
     let produces_mana = ability
         .effect
         .iter()
@@ -120,7 +120,7 @@ pub fn activate_ability(
     }
 
     if produces_mana {
-        // CR 405.6c: mana rules_text resolve immediately without using the stack.
+        // CR 405.6c: mana abilities resolve immediately without using the stack.
         for step in &ability.effect {
             match step {
                 EffectStep::AddMana(pool_add) => {
@@ -171,7 +171,7 @@ pub fn activate_ability(
         // priority_player is already set to that player; no change needed.
         Ok(state)
     } else {
-        // CR 405: non-mana activated rules_text use the stack.
+        // CR 405: non-mana activated abilities use the stack.
         // CR 117.1b: a player may activate an activated ability only when they have priority.
         if state.priority_player != activating_player {
             return Err(EngineError::NotYourPriority);
@@ -624,7 +624,7 @@ mod tests {
         assert_eq!(pool.snow_green, 1);
     }
 
-    // --- CR 702.21a Ward trigger tests for activated rules_text ---
+    // --- CR 702.21a Ward trigger tests for activated abilities ---
 
     fn make_targeted_tap_ability_def() -> CardDefinition {
         use crate::types::ability::TargetFilter;

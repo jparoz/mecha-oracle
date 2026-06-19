@@ -269,7 +269,7 @@ pub fn training_triggered_ability() -> TriggeredAbility {
     }
 }
 
-/// CR 603.2: collect all triggered rules_text on the battlefield that fire for the given game event.
+/// CR 603.2: collect all triggered abilities on the battlefield that fire for the given game event.
 pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> Vec<StackObject> {
     use crate::engine::stack::inject_source_flags;
     use crate::types::effect::EffectTarget;

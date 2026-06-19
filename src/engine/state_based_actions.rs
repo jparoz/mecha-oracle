@@ -3,7 +3,7 @@ use crate::types::{
 };
 
 /// Repeatedly finds and applies SBAs until no new ones trigger (CR 704.3).
-/// Returns the updated GameState and any triggered rules_text that fired (CR 603.2).
+/// Returns the updated GameState and any triggered abilities that fired (CR 603.2).
 pub fn check_and_apply_sbas(
     state: GameState,
 ) -> (GameState, Vec<crate::types::stack::StackObject>) {
