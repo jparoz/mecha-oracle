@@ -1985,6 +1985,124 @@ mod tests {
         );
     }
 
+    // --- DealsCombatDamage trigger matching tests ---
+
+    fn make_deals_combat_damage_ability(to: DamageTargetKind) -> OracleSpan {
+        use crate::types::ability::{TriggerSubjectFilter, TriggerTargetMode};
+        use crate::types::effect::EffectStep;
+        OracleSpan::Parsed(Ability::Triggered(TriggeredAbility {
+            trigger: TriggerEvent::DealsCombatDamage {
+                subject: TriggerSubjectFilter {
+                    is_self: Some(true),
+                    ..Default::default()
+                },
+                to,
+            },
+            condition: None,
+            target_mode: TriggerTargetMode::None,
+            effect: vec![EffectStep::DrawCard(1)],
+        }))
+    }
+
+    #[test]
+    fn deals_combat_damage_to_creature_trigger_fires_when_blocking() {
+        // Test A: creature-damage trigger fires when attacker deals damage to a creature.
+        // CR 603.2: DealsCombatDamage { to: Creature } event should trigger an ability
+        // that watches for damage dealt to creatures.
+        use crate::types::GameEvent;
+
+        let mut gs = two_player_state();
+        let ability_span = make_deals_combat_damage_ability(DamageTargetKind::Creature);
+        let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![ability_span]);
+        let _blocker_id = triggered_blocker(&mut gs, PlayerId(1), 2, 2, vec![]);
+
+        gs.combat.attackers = vec![attacker_id];
+
+        // Directly fire the DealsCombatDamage { to: Creature } event (as the combat loop would
+        // after dealing damage to a blocker).
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::DealsCombatDamage {
+                subject_id: attacker_id,
+                to: DamageTargetKind::Creature,
+            },
+        );
+
+        assert_eq!(
+            triggers.len(),
+            1,
+            "DealsCombatDamage {{ to: Creature }} trigger should fire when attacker deals creature damage"
+        );
+    }
+
+    #[test]
+    fn deals_combat_damage_any_trigger_fires_for_player_and_creature_events() {
+        // Test B: DamageTargetKind::Any wildcard trigger fires for both player and creature events.
+        // CR 603.2: trigger with `to: Any` matches both Player and Creature damage events.
+        use crate::types::GameEvent;
+
+        let mut gs = two_player_state();
+        let ability_span = make_deals_combat_damage_ability(DamageTargetKind::Any);
+        let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![ability_span]);
+
+        gs.combat.attackers = vec![attacker_id];
+
+        // Fire a Player damage event — Any trigger should match.
+        let player_triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::DealsCombatDamage {
+                subject_id: attacker_id,
+                to: DamageTargetKind::Player,
+            },
+        );
+        assert_eq!(
+            player_triggers.len(),
+            1,
+            "DealsCombatDamage {{ to: Any }} trigger should fire for Player damage event"
+        );
+
+        // Fire a Creature damage event — Any trigger should also match.
+        let creature_triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::DealsCombatDamage {
+                subject_id: attacker_id,
+                to: DamageTargetKind::Creature,
+            },
+        );
+        assert_eq!(
+            creature_triggers.len(),
+            1,
+            "DealsCombatDamage {{ to: Any }} trigger should fire for Creature damage event"
+        );
+    }
+
+    #[test]
+    fn deals_combat_damage_to_player_trigger_silent_for_creature_damage_event() {
+        // Test C: a Player-only trigger does NOT fire when the event is a Creature damage event.
+        // CR 603.2: trigger with `to: Player` must not match `to: Creature` events.
+        use crate::types::GameEvent;
+
+        let mut gs = two_player_state();
+        // Use the canonical player-trigger ability (is_self=true, to=Player).
+        let ability_span = make_deals_combat_damage_ability(DamageTargetKind::Player);
+        let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![ability_span]);
+
+        gs.combat.attackers = vec![attacker_id];
+
+        // Fire a Creature damage event — Player trigger should NOT match.
+        let triggers = collect_triggers_for_event(
+            &mut gs,
+            &GameEvent::DealsCombatDamage {
+                subject_id: attacker_id,
+                to: DamageTargetKind::Creature,
+            },
+        );
+        assert!(
+            triggers.is_empty(),
+            "DealsCombatDamage {{ to: Player }} trigger must be silent for Creature damage events"
+        );
+    }
+
     #[test]
     fn battle_cry_boosts_other_attackers_not_self() {
         // CR 702.91b: each OTHER attacking creature gets +1/+0

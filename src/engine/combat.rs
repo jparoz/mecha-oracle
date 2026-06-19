@@ -517,7 +517,7 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
         if attacked_player.is_some() {
             combat_damage_events.push((attacker_id, crate::types::DamageTargetKind::Player));
         }
-        if !blockers.is_empty() && atk_power > 0 {
+        if total_damage_dealt > 0 && !blockers.is_empty() {
             combat_damage_events.push((attacker_id, crate::types::DamageTargetKind::Creature));
         }
 
