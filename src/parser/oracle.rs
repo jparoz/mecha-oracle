@@ -419,43 +419,43 @@ fn match_keyword(kw: &str) -> RulesText {
     let s = s.as_str();
 
     // ── Fully-implemented keywords ────────────────────────────────────────────
-    macro_rules! parsed {
+    macro_rules! active {
         ($variant:ident) => {
             RulesText::Active(Rule::Static(StaticAbility::$variant))
         };
     }
     match s {
-        "flying" => return parsed!(Flying),
-        "reach" => return parsed!(Reach),
-        "trample" => return parsed!(Trample),
-        "first strike" => return parsed!(FirstStrike),
-        "double strike" => return parsed!(DoubleStrike),
-        "vigilance" => return parsed!(Vigilance),
-        "haste" => return parsed!(Haste),
-        "lifelink" => return parsed!(Lifelink),
-        "deathtouch" => return parsed!(Deathtouch),
-        "menace" => return parsed!(Menace),
-        "indestructible" => return parsed!(Indestructible),
-        "defender" => return parsed!(Defender),
-        "shadow" => return parsed!(Shadow),
-        "horsemanship" => return parsed!(Horsemanship),
-        "skulk" => return parsed!(Skulk),
-        "decayed" => return parsed!(Decayed),
-        "flash" => return parsed!(Flash),
-        "exalted" => return parsed!(Exalted),
-        "flanking" => return parsed!(Flanking),
-        "melee" => return parsed!(Melee),
-        "prowess" => return parsed!(Prowess),
-        "shroud" => return parsed!(Shroud),
-        "hexproof" => return parsed!(Hexproof),
+        "flying" => return active!(Flying),
+        "reach" => return active!(Reach),
+        "trample" => return active!(Trample),
+        "first strike" => return active!(FirstStrike),
+        "double strike" => return active!(DoubleStrike),
+        "vigilance" => return active!(Vigilance),
+        "haste" => return active!(Haste),
+        "lifelink" => return active!(Lifelink),
+        "deathtouch" => return active!(Deathtouch),
+        "menace" => return active!(Menace),
+        "indestructible" => return active!(Indestructible),
+        "defender" => return active!(Defender),
+        "shadow" => return active!(Shadow),
+        "horsemanship" => return active!(Horsemanship),
+        "skulk" => return active!(Skulk),
+        "decayed" => return active!(Decayed),
+        "flash" => return active!(Flash),
+        "exalted" => return active!(Exalted),
+        "flanking" => return active!(Flanking),
+        "melee" => return active!(Melee),
+        "prowess" => return active!(Prowess),
+        "shroud" => return active!(Shroud),
+        "hexproof" => return active!(Hexproof),
         // CR 702.80 Wither
-        "wither" => return parsed!(Wither),
+        "wither" => return active!(Wither),
         // CR 702.90 Infect
-        "infect" => return parsed!(Infect),
+        "infect" => return active!(Infect),
         // CR 702.100 Evolve
-        "evolve" => return parsed!(Evolve),
+        "evolve" => return active!(Evolve),
         // CR 702.149 Training
-        "training" => return parsed!(Training),
+        "training" => return active!(Training),
         _ => {}
     }
 
@@ -1600,7 +1600,7 @@ mod tests {
         parse_instant_or_sorcery(text, name).0
     }
 
-    fn parsed(kw: StaticAbility) -> RulesText {
+    fn active(kw: StaticAbility) -> RulesText {
         RulesText::Active(Rule::Static(kw))
     }
     fn reminder(text: &str) -> RulesText {
@@ -1638,7 +1638,7 @@ mod tests {
     fn single_keyword() {
         assert_eq!(
             parse_perm("Flying", ""),
-            vec![parsed(StaticAbility::Flying)]
+            vec![active(StaticAbility::Flying)]
         );
     }
 
@@ -1647,8 +1647,8 @@ mod tests {
         assert_eq!(
             parse_perm("Flying, vigilance", ""),
             vec![
-                parsed(StaticAbility::Flying),
-                parsed(StaticAbility::Vigilance)
+                active(StaticAbility::Flying),
+                active(StaticAbility::Vigilance)
             ]
         );
     }
@@ -1658,8 +1658,8 @@ mod tests {
         assert_eq!(
             parse_perm("Trample\nLifelink", ""),
             vec![
-                parsed(StaticAbility::Trample),
-                parsed(StaticAbility::Lifelink)
+                active(StaticAbility::Trample),
+                active(StaticAbility::Lifelink)
             ]
         );
     }
@@ -1668,7 +1668,7 @@ mod tests {
     fn two_word_keyword() {
         assert_eq!(
             parse_perm("First strike", ""),
-            vec![parsed(StaticAbility::FirstStrike)]
+            vec![active(StaticAbility::FirstStrike)]
         );
     }
 
@@ -1680,7 +1680,7 @@ mod tests {
                 "",
             ),
             vec![
-                parsed(StaticAbility::Deathtouch),
+                active(StaticAbility::Deathtouch),
                 reminder(
                     "(Any amount of damage this deals to a creature is enough to destroy it.)"
                 ),
@@ -1754,13 +1754,13 @@ mod tests {
         // Landwalk is now promoted to StaticAbility::Landwalk
         assert_eq!(
             parse_perm("Islandwalk", ""),
-            vec![parsed(StaticAbility::Landwalk(LandwalkKind::LandType(
+            vec![active(StaticAbility::Landwalk(LandwalkKind::LandType(
                 "Island".to_string()
             )))]
         );
         assert_eq!(
             parse_perm("Nonbasic landwalk", ""),
-            vec![parsed(StaticAbility::Landwalk(LandwalkKind::Nonbasic))]
+            vec![active(StaticAbility::Landwalk(LandwalkKind::Nonbasic))]
         );
     }
 
@@ -2033,7 +2033,7 @@ mod tests {
         assert_eq!(
             result,
             vec![
-                parsed(StaticAbility::Flying),
+                active(StaticAbility::Flying),
                 ability_word("Landfall \u{2014}"),
                 unparsed("Whenever a land you control enters, you gain 1 life."),
             ]
@@ -2545,13 +2545,13 @@ mod tests {
     #[test]
     fn parse_exalted_keyword() {
         let spans = parse_perm("Exalted", "");
-        assert_eq!(spans, vec![parsed(StaticAbility::Exalted)]);
+        assert_eq!(spans, vec![active(StaticAbility::Exalted)]);
     }
 
     #[test]
     fn parse_flanking_keyword() {
         let spans = parse_perm("Flanking", "");
-        assert_eq!(spans, vec![parsed(StaticAbility::Flanking)]);
+        assert_eq!(spans, vec![active(StaticAbility::Flanking)]);
     }
 
     #[test]
@@ -2567,25 +2567,25 @@ mod tests {
     #[test]
     fn parse_wither_keyword() {
         let spans = parse_perm("Wither", "");
-        assert_eq!(spans, vec![parsed(StaticAbility::Wither)]);
+        assert_eq!(spans, vec![active(StaticAbility::Wither)]);
     }
 
     #[test]
     fn parse_infect_keyword() {
         let spans = parse_perm("Infect", "");
-        assert_eq!(spans, vec![parsed(StaticAbility::Infect)]);
+        assert_eq!(spans, vec![active(StaticAbility::Infect)]);
     }
 
     #[test]
     fn parse_evolve_keyword() {
         let spans = parse_perm("Evolve", "");
-        assert_eq!(spans, vec![parsed(StaticAbility::Evolve)]);
+        assert_eq!(spans, vec![active(StaticAbility::Evolve)]);
     }
 
     #[test]
     fn parse_training_keyword() {
         let spans = parse_perm("Training", "");
-        assert_eq!(spans, vec![parsed(StaticAbility::Training)]);
+        assert_eq!(spans, vec![active(StaticAbility::Training)]);
     }
 
     #[test]
@@ -2600,13 +2600,13 @@ mod tests {
     #[test]
     fn parse_melee_keyword() {
         let spans = parse_perm("Melee", "");
-        assert_eq!(spans, vec![parsed(StaticAbility::Melee)]);
+        assert_eq!(spans, vec![active(StaticAbility::Melee)]);
     }
 
     #[test]
     fn parse_prowess_keyword() {
         let spans = parse_perm("Prowess", "");
-        assert_eq!(spans, vec![parsed(StaticAbility::Prowess)]);
+        assert_eq!(spans, vec![active(StaticAbility::Prowess)]);
     }
 
     #[test]
@@ -2670,7 +2670,7 @@ mod tests {
         use crate::types::ability::StaticAbility;
         assert_eq!(
             parse_perm("Shroud", ""),
-            vec![parsed(StaticAbility::Shroud)]
+            vec![active(StaticAbility::Shroud)]
         );
     }
 
@@ -2679,7 +2679,7 @@ mod tests {
         use crate::types::ability::StaticAbility;
         assert_eq!(
             parse_perm("Hexproof", ""),
-            vec![parsed(StaticAbility::Hexproof)]
+            vec![active(StaticAbility::Hexproof)]
         );
     }
 

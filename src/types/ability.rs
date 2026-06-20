@@ -451,7 +451,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn oracle_span_variants_are_comparable() {
+    fn rules_text_variants_are_comparable() {
         let a = RulesText::Active(Rule::Static(StaticAbility::Flying));
         let b = RulesText::Active(Rule::Static(StaticAbility::Flying));
         assert_eq!(a, b);

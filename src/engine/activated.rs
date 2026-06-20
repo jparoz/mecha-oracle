@@ -183,7 +183,7 @@ pub fn activate_ability(
             .unwrap_or_else(|| "activated ability".into());
         // Guard: only inject keyword flags from permanents currently on the battlefield.
         // The outer battlefield.get ensures we do not inject from any lingering object ID.
-        let source_abilities: Vec<crate::types::RulesText> = state
+        let source_rules_text: Vec<crate::types::RulesText> = state
             .battlefield
             .get(&object_id)
             .map(|_| {
@@ -201,7 +201,7 @@ pub fn activate_ability(
                 source_id: object_id,
                 effect: crate::engine::stack::inject_source_flags(
                     ability.effect.clone(),
-                    &source_abilities,
+                    &source_rules_text,
                 ),
                 label,
             },

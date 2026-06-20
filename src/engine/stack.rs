@@ -58,7 +58,7 @@ fn resolve_x_in_cost(
         .collect()
 }
 
-/// Reads keyword flags from `source_abilities` and injects them into any `DealDamage`
+/// Reads keyword flags from `source_rules_text` and injects them into any `DealDamage`
 /// steps in `effect`. Called at stack-push time so flags are snapshotted from the
 /// source's current state. CR 702.2e, 702.15b, 702.80a, 702.90b each define last-known
 /// information rules for their respective keywords; snapshotting at push time captures
@@ -66,7 +66,7 @@ fn resolve_x_in_cost(
 /// source later leaves the battlefield.
 pub(crate) fn inject_source_flags(
     effect: crate::types::effect::Effect,
-    source_abilities: &[crate::types::RulesText],
+    source_rules_text: &[crate::types::RulesText],
 ) -> crate::types::effect::Effect {
     use crate::types::ability::StaticAbility;
     use crate::types::effect::{DamageStep, EffectStep};
@@ -75,10 +75,10 @@ pub(crate) fn inject_source_flags(
         .into_iter()
         .map(|step| match step {
             EffectStep::DealDamage(s) => EffectStep::DealDamage(DamageStep {
-                lifelink: has_damage_kw(source_abilities, &StaticAbility::Lifelink),
-                deathtouch: has_damage_kw(source_abilities, &StaticAbility::Deathtouch),
-                wither: has_damage_kw(source_abilities, &StaticAbility::Wither),
-                infect: has_damage_kw(source_abilities, &StaticAbility::Infect),
+                lifelink: has_damage_kw(source_rules_text, &StaticAbility::Lifelink),
+                deathtouch: has_damage_kw(source_rules_text, &StaticAbility::Deathtouch),
+                wither: has_damage_kw(source_rules_text, &StaticAbility::Wither),
+                infect: has_damage_kw(source_rules_text, &StaticAbility::Infect),
                 ..s
             }),
             other => other,
@@ -354,12 +354,12 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     })
                     .unwrap_or_default();
 
-                let spell_abilities: Vec<crate::types::RulesText> = state
+                let spell_rules_text: Vec<crate::types::RulesText> = state
                     .objects
                     .get(&card_id)
                     .map(|o| o.definition.rules_text.clone())
                     .unwrap_or_default();
-                let steps = inject_source_flags(steps, &spell_abilities);
+                let steps = inject_source_flags(steps, &spell_rules_text);
 
                 // CR 608.2b: if all targets are illegal at resolution, spell is countered
                 // by the rules (instant/sorcery still moves to graveyard, effects not applied).
