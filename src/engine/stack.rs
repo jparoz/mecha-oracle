@@ -257,18 +257,102 @@ pub(crate) fn execute_effect_steps(
                 return state; // early return; remaining steps stored in continuation
             }
             EffectStep::MoveZone {
-                from: _,
-                to: _,
-                to_player: _,
+                from,
+                to,
+                to_player,
             } => {
-                // CR 400.7: move the object from one zone to another.
-                // This is a placeholder implementation for now.
-                // A full implementation would:
-                // 1. Verify the object is in the 'from' zone
-                // 2. Update the object's zone to 'to'
-                // 3. Update the appropriate zone collection (libraries, hands, battlefields, etc.)
-                // 4. Handle 'to_player' for personal zones (hand, library, graveyard)
-                // For now, this is unimplemented.
+                use crate::types::ZoneOwner;
+                for target in targets.iter() {
+                    if let EffectTarget::Object { id } = target {
+                        let id = *id;
+                        // Snapshot before mutation to avoid borrow conflicts.
+                        let (owner, current_zone, controller_at_move, def) =
+                            match state.objects.get(&id) {
+                                Some(o) => (o.owner, o.zone, o.controller, o.definition.clone()),
+                                None => continue,
+                            };
+                        // CR 400.7: no-op if the object is not in the expected source zone.
+                        if current_zone != *from {
+                            continue;
+                        }
+                        let new_controller = match to_player {
+                            ZoneOwner::CardOwner => owner,
+                            ZoneOwner::CardController => controller_at_move,
+                        };
+                        // Remove from source zone.
+                        match from {
+                            Zone::Graveyard => {
+                                if let Some(gy) = state.graveyards.get_mut(&owner) {
+                                    gy.retain(|&x| x != id);
+                                }
+                            }
+                            Zone::Battlefield => {
+                                state.battlefield.remove(&id);
+                            }
+                            Zone::Exile => {
+                                state.exile.retain(|&x| x != id);
+                            }
+                            Zone::Hand => {
+                                if let Some(hand) = state.hands.get_mut(&owner) {
+                                    hand.retain(|&x| x != id);
+                                }
+                            }
+                            Zone::Library => {
+                                if let Some(lib) = state.libraries.get_mut(&owner) {
+                                    lib.retain(|&x| x != id);
+                                }
+                            }
+                            Zone::Stack | Zone::Command => {}
+                        }
+                        // Update object zone and controller.
+                        if let Some(obj) = state.objects.get_mut(&id) {
+                            obj.zone = *to;
+                            if *to == Zone::Battlefield {
+                                obj.controller = new_controller;
+                            }
+                        }
+                        // Insert into destination zone.
+                        match to {
+                            Zone::Battlefield => {
+                                let mut perm = PermanentState::new(&def);
+                                perm.controller_since_turn = state.turn_number;
+                                state.battlefield.insert(id, perm);
+                                // CR 603.2: collect ETB triggers and push them onto the stack.
+                                let etb_triggers =
+                                    crate::engine::triggered::collect_triggers_for_event(
+                                        &mut state,
+                                        &crate::types::GameEvent::EntersTheBattlefield {
+                                            subject_id: id,
+                                        },
+                                    );
+                                for t in etb_triggers {
+                                    let tid = t.id;
+                                    state.stack.push(tid);
+                                    state.stack_objects.insert(tid, t);
+                                }
+                            }
+                            Zone::Graveyard => {
+                                if let Some(gy) = state.graveyards.get_mut(&owner) {
+                                    gy.push(id);
+                                }
+                            }
+                            Zone::Exile => {
+                                state.exile.push(id);
+                            }
+                            Zone::Hand => {
+                                if let Some(hand) = state.hands.get_mut(&new_controller) {
+                                    hand.push(id);
+                                }
+                            }
+                            Zone::Library => {
+                                if let Some(lib) = state.libraries.get_mut(&owner) {
+                                    lib.push(id);
+                                }
+                            }
+                            Zone::Stack | Zone::Command => {}
+                        }
+                    }
+                }
             }
             EffectStep::Unimplemented(_) => {}
         }
@@ -1754,6 +1838,175 @@ mod tests {
         );
         let gs = resolve_top(gs);
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life - 3);
+    }
+
+    #[test]
+    fn move_zone_graveyard_to_battlefield_transitions_object() {
+        // MoveZone moves a card from the graveyard to the battlefield.
+        use crate::types::CardObject;
+        use crate::types::effect::{EffectStep, EffectTarget};
+        use crate::types::zone::{Zone, ZoneOwner};
+
+        let mut gs = make_state();
+
+        let def = CardDefinition {
+            name: "Persist Test".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, PlayerId(0), Zone::Graveyard);
+        gs.graveyards.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+
+        let targets = vec![EffectTarget::Object { id }];
+        let gs = super::execute_effect_steps(
+            gs,
+            PlayerId(0),
+            &[EffectStep::MoveZone {
+                from: Zone::Graveyard,
+                to: Zone::Battlefield,
+                to_player: ZoneOwner::CardOwner,
+            }],
+            &targets,
+            None,
+        );
+
+        assert!(
+            gs.battlefield.contains_key(&id),
+            "object should be on battlefield"
+        );
+        assert_eq!(gs.objects[&id].zone, Zone::Battlefield);
+        assert!(
+            !gs.graveyards[&PlayerId(0)].contains(&id),
+            "should not be in graveyard"
+        );
+        assert_eq!(gs.objects[&id].controller, PlayerId(0));
+    }
+
+    #[test]
+    fn move_zone_noop_when_object_not_in_from_zone() {
+        // MoveZone is a no-op if the object is not in the specified `from` zone.
+        use crate::types::effect::{EffectStep, EffectTarget};
+        use crate::types::zone::{Zone, ZoneOwner};
+        use crate::types::{CardObject, PermanentState};
+
+        let mut gs = make_state();
+
+        // Creature is on the battlefield, but from: Graveyard — should be a no-op.
+        let def = CardDefinition {
+            name: "Battlefield Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, PlayerId(0), Zone::Battlefield);
+        gs.battlefield
+            .insert(id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let targets = vec![EffectTarget::Object { id }];
+        let gs = super::execute_effect_steps(
+            gs,
+            PlayerId(0),
+            &[EffectStep::MoveZone {
+                from: Zone::Graveyard,
+                to: Zone::Battlefield,
+                to_player: ZoneOwner::CardOwner,
+            }],
+            &targets,
+            None,
+        );
+
+        assert!(
+            gs.battlefield.contains_key(&id),
+            "object should still be on battlefield"
+        );
+        assert_eq!(gs.objects[&id].zone, Zone::Battlefield);
+        assert!(gs.graveyards[&PlayerId(0)].is_empty());
+    }
+
+    #[test]
+    fn move_zone_to_battlefield_fires_etb_triggers() {
+        // When MoveZone moves a card to the battlefield, any ETB triggers are pushed onto the stack.
+        use crate::types::ability::{
+            Rule, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+        };
+        use crate::types::effect::{EffectStep, EffectTarget};
+        use crate::types::zone::{Zone, ZoneOwner};
+        use crate::types::{CardObject, RulesText};
+
+        let mut gs = make_state();
+        put_in_library(&mut gs, PlayerId(0));
+
+        // A card in the graveyard with an ETB trigger.
+        let def = CardDefinition {
+            name: "ETB Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "When this enters, draw a card.".into(),
+            rules_text: vec![RulesText::Active(Rule::Triggered(TriggeredAbility {
+                trigger: TriggerEvent::EntersTheBattlefield {
+                    subject: TriggerSubjectFilter {
+                        is_self: Some(true),
+                        ..Default::default()
+                    },
+                },
+                condition: None,
+                target_mode: TriggerTargetMode::None,
+                effect: vec![EffectStep::DrawCard(1)],
+            }))],
+            text_annotations: vec![],
+            power: Some(1),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, def, PlayerId(0), Zone::Graveyard);
+        gs.graveyards.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+
+        let targets = vec![EffectTarget::Object { id }];
+        let gs = super::execute_effect_steps(
+            gs,
+            PlayerId(0),
+            &[EffectStep::MoveZone {
+                from: Zone::Graveyard,
+                to: Zone::Battlefield,
+                to_player: ZoneOwner::CardOwner,
+            }],
+            &targets,
+            None,
+        );
+
+        assert!(gs.battlefield.contains_key(&id));
+        assert_eq!(gs.stack.len(), 1, "ETB trigger should be on the stack");
+        // Card not yet drawn — trigger hasn't resolved.
+        assert!(gs.hands[&PlayerId(0)].is_empty());
     }
 
     // ── inject_source_flags unit tests ──────────────────────────────────────────
