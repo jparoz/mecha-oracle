@@ -29,13 +29,10 @@ Keywords below are parsed and shown cyan+underlined in the UI but have no rules 
 ## 🔢 Counter system block
 
 *(Counter infrastructure and Wither/Infect/Toxic N/Evolve/Training implemented June 2026.)*
+*(Persist and Undying implemented June 2026.)*
 
 Still blocked on graveyard zone-change hook:
 
-- **Persist** (702.79): return from graveyard with -1/-1 counter if no -1/-1 counter.
-  (Also needs graveyard zone-change hook — see next section.)
-- **Undying** (702.93): return from graveyard with +1/+1 counter if no +1/+1 counter.
-  (Also needs graveyard zone-change hook.)
 - **Scavenge [cost]** (702.97): activated — exile from graveyard, put +1/+1 counters on a
   creature. (Also needs graveyard zone-change hook.)
 
@@ -47,8 +44,6 @@ Requires: graveyard contents addressable by `ObjectId`, a "dies" trigger event i
 `TriggerEvent`, and zone-change semantics that preserve identity. Counter system also
 needed for most entries here.
 
-- **Persist** (702.79) — see Counter block above.
-- **Undying** (702.93) — see Counter block above.
 - **Scavenge [cost]** (702.97) — see Counter block above.
 - **Unearth [cost]** (702.84): activated — return from graveyard temporarily (exile at EOT
   or if it would leave the battlefield).
@@ -76,6 +71,28 @@ Currently `casting.rs` only handles standard `ManaCost` payment.
   is removed.
 - **Foretell [cost]** (702.143): exile face-down during your turn; cast later for
   reduced cost.
+
+---
+
+## 🔌 Activated abilities from non-battlefield zones
+
+Currently, cycling is implemented as a special case in `engine/cycling.rs`. A general
+framework is needed for abilities that activate from zones other than the battlefield.
+
+- **General framework**: `engine/activated.rs` handles only battlefield activations;
+  extend to support other source zones.
+- **Graveyard activations**:
+  - **Scavenge [cost]** (702.97): exile from graveyard, put +1/+1 counters on a creature.
+  - **Unearth [cost]** (702.84): return temporarily; exile at EOT or if it would leave.
+  - **Escape [cost]** (702.138): cast from graveyard by exiling N other cards.
+  - **Flashback [cost]** (702.34): cast from graveyard for the Flashback cost.
+  - **Dredge N** (702.52): replace a draw with "mill N, return this card".
+  - **Delve** (702.66): exile cards to pay generic mana when casting.
+- **Hand activations**:
+  - **Foretell [cost]** (702.143): exile face-down during your turn; cast later for reduced cost.
+- **Exile activations**:
+  - **Cascade** (702.85): exile cards off top until a cheaper one is found, cast it free.
+  - **Suspend N—[cost]** (702.62): exile with N time counters; cast when last counter removed.
 
 ---
 

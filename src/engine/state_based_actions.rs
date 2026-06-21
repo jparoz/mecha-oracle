@@ -582,6 +582,216 @@ mod tests {
     }
 
     #[test]
+    fn persist_creature_returns_with_minus_counter_after_dying() {
+        // CR 702.79: a 2/2 Persist creature (no -1/-1 counters) dies and returns
+        // to the battlefield under its owner's control with a -1/-1 counter.
+        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::mana::ManaCost;
+        use crate::types::{CardDefinition, CardType, CounterKind, RulesText, TypeLine, Zone};
+
+        let mut state = make_state();
+
+        let def = CardDefinition {
+            name: "Young Wolf".into(),
+            mana_cost: Some(ManaCost { pips: vec![] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Wolf".into()],
+            },
+            oracle_text: "Persist".into(),
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Persist))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = add_creature_to_battlefield(&mut state, PlayerId(0), def);
+        state.battlefield.get_mut(&id).unwrap().damage_marked = 5;
+
+        // SBA: dies, Persist trigger returned.
+        let (mut state, triggers) = check_and_apply_sbas(state);
+        assert!(
+            !state.battlefield.contains_key(&id),
+            "creature should have died"
+        );
+        assert!(state.graveyards[&PlayerId(0)].contains(&id));
+        assert_eq!(triggers.len(), 1, "exactly one Persist trigger");
+
+        // Push trigger onto the stack.
+        for t in triggers {
+            let tid = t.id;
+            state.stack.push(tid);
+            state.stack_objects.insert(tid, t);
+        }
+
+        // Resolve the trigger: MoveZone (gy→bf) + AddCounter (-1/-1).
+        let state = crate::engine::stack::resolve_top(state);
+
+        assert!(
+            state.battlefield.contains_key(&id),
+            "creature should be back on battlefield"
+        );
+        assert_eq!(state.objects[&id].zone, Zone::Battlefield);
+        assert!(!state.graveyards[&PlayerId(0)].contains(&id));
+        assert_eq!(
+            state.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: -1,
+                toughness: -1
+            }),
+            1,
+            "Persist creature should have exactly one -1/-1 counter"
+        );
+        assert_eq!(state.objects[&id].controller, PlayerId(0));
+    }
+
+    #[test]
+    fn persist_does_not_trigger_when_minus_counter_present() {
+        // CR 702.79: a Persist creature that already has a -1/-1 counter dies permanently.
+        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::mana::ManaCost;
+        use crate::types::{CardDefinition, CardType, CounterKind, RulesText, TypeLine};
+
+        let mut state = make_state();
+
+        let def = CardDefinition {
+            name: "Young Wolf".into(),
+            mana_cost: Some(ManaCost { pips: vec![] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Persist".into(),
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Persist))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = add_creature_to_battlefield(&mut state, PlayerId(0), def);
+        state.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            1,
+        );
+        state.battlefield.get_mut(&id).unwrap().damage_marked = 5;
+
+        let (state, triggers) = check_and_apply_sbas(state);
+
+        assert!(!state.battlefield.contains_key(&id));
+        assert!(state.graveyards[&PlayerId(0)].contains(&id));
+        assert!(
+            triggers.is_empty(),
+            "Persist must not trigger when -1/-1 counter present"
+        );
+    }
+
+    #[test]
+    fn undying_creature_returns_with_plus_counter_after_dying() {
+        // CR 702.93: a 2/1 Undying creature (no +1/+1 counters) dies and returns
+        // under its owner's control with a +1/+1 counter (becomes 3/2).
+        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::mana::ManaCost;
+        use crate::types::{CardDefinition, CardType, CounterKind, RulesText, TypeLine, Zone};
+
+        let mut state = make_state();
+
+        let def = CardDefinition {
+            name: "Strangleroot Geist".into(),
+            mana_cost: Some(ManaCost { pips: vec![] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Spirit".into()],
+            },
+            oracle_text: "Undying".into(),
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Undying))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let id = add_creature_to_battlefield(&mut state, PlayerId(0), def);
+        state.battlefield.get_mut(&id).unwrap().damage_marked = 5;
+
+        let (mut state, triggers) = check_and_apply_sbas(state);
+        assert!(!state.battlefield.contains_key(&id));
+        assert!(state.graveyards[&PlayerId(0)].contains(&id));
+        assert_eq!(triggers.len(), 1, "exactly one Undying trigger");
+
+        for t in triggers {
+            let tid = t.id;
+            state.stack.push(tid);
+            state.stack_objects.insert(tid, t);
+        }
+
+        let state = crate::engine::stack::resolve_top(state);
+
+        assert!(
+            state.battlefield.contains_key(&id),
+            "creature should be back on battlefield"
+        );
+        assert_eq!(state.objects[&id].zone, Zone::Battlefield);
+        assert!(!state.graveyards[&PlayerId(0)].contains(&id));
+        assert_eq!(
+            state.battlefield[&id].counter_count(&CounterKind::PtModifier {
+                power: 1,
+                toughness: 1
+            }),
+            1,
+            "Undying creature should have exactly one +1/+1 counter"
+        );
+        assert_eq!(state.objects[&id].controller, PlayerId(0));
+    }
+
+    #[test]
+    fn undying_does_not_trigger_when_plus_counter_present() {
+        // CR 702.93: an Undying creature that already has a +1/+1 counter dies permanently.
+        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::mana::ManaCost;
+        use crate::types::{CardDefinition, CardType, CounterKind, RulesText, TypeLine};
+
+        let mut state = make_state();
+
+        let def = CardDefinition {
+            name: "Strangleroot Geist".into(),
+            mana_cost: Some(ManaCost { pips: vec![] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Undying".into(),
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Undying))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let id = add_creature_to_battlefield(&mut state, PlayerId(0), def);
+        state.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            1,
+        );
+        state.battlefield.get_mut(&id).unwrap().damage_marked = 5;
+
+        let (state, triggers) = check_and_apply_sbas(state);
+
+        assert!(!state.battlefield.contains_key(&id));
+        assert!(state.graveyards[&PlayerId(0)].contains(&id));
+        assert!(
+            triggers.is_empty(),
+            "Undying must not trigger when +1/+1 counter present"
+        );
+    }
+
+    #[test]
     fn check_and_apply_sbas_no_dies_trigger_when_creature_survives() {
         use crate::types::RulesText;
         use crate::types::ability::{
