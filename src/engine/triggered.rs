@@ -601,6 +601,121 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                 }
             }
         }
+
+        // TRANSITIONAL SHIM — StaticAbility::Persist / StaticAbility::Undying.
+        // When the parser emits TriggeredAbility spans for these keywords, remove this block.
+        // IMPORTANT: If a card carries both StaticAbility::Persist AND a TriggeredAbility Persist
+        // span, it will double-fire. Remove this shim before that migration begins.
+        if let GameEvent::Dies {
+            subject_id: dying_id,
+        } = event
+        {
+            use crate::types::zone::{Zone, ZoneOwner};
+
+            let dying_id = *dying_id;
+            if source_id == dying_id {
+                let has_persist = rules_text.iter().any(|span| {
+                    matches!(
+                        span,
+                        RulesText::Active(Rule::Static(StaticAbility::Persist))
+                    )
+                });
+                let has_undying = rules_text.iter().any(|span| {
+                    matches!(
+                        span,
+                        RulesText::Active(Rule::Static(StaticAbility::Undying))
+                    )
+                });
+
+                if has_persist {
+                    let minus_key = crate::types::CounterKind::PtModifier {
+                        power: -1,
+                        toughness: -1,
+                    };
+                    let has_minus = state
+                        .battlefield
+                        .get(&dying_id)
+                        .map(|p| p.counter_count(&minus_key) > 0)
+                        .unwrap_or(false);
+                    if !has_minus {
+                        let sid = state.alloc_stack_id();
+                        let label = format!(
+                            "{}: Persist",
+                            state
+                                .objects
+                                .get(&dying_id)
+                                .map(|o| o.definition.name.as_str())
+                                .unwrap_or("?")
+                        );
+                        result.push(StackObject {
+                            id: sid,
+                            payload: StackPayload::TriggeredAbility {
+                                source_id: dying_id,
+                                effect: vec![
+                                    EffectStep::MoveZone {
+                                        from: Zone::Graveyard,
+                                        to: Zone::Battlefield,
+                                        to_player: ZoneOwner::CardOwner,
+                                    },
+                                    EffectStep::AddCounter {
+                                        kind: minus_key,
+                                        count: 1,
+                                    },
+                                ],
+                                label,
+                            },
+                            controller,
+                            targets: vec![EffectTarget::Object { id: dying_id }],
+                            x_value: None,
+                        });
+                    }
+                }
+
+                if has_undying {
+                    let plus_key = crate::types::CounterKind::PtModifier {
+                        power: 1,
+                        toughness: 1,
+                    };
+                    let has_plus = state
+                        .battlefield
+                        .get(&dying_id)
+                        .map(|p| p.counter_count(&plus_key) > 0)
+                        .unwrap_or(false);
+                    if !has_plus {
+                        let sid = state.alloc_stack_id();
+                        let label = format!(
+                            "{}: Undying",
+                            state
+                                .objects
+                                .get(&dying_id)
+                                .map(|o| o.definition.name.as_str())
+                                .unwrap_or("?")
+                        );
+                        result.push(StackObject {
+                            id: sid,
+                            payload: StackPayload::TriggeredAbility {
+                                source_id: dying_id,
+                                effect: vec![
+                                    EffectStep::MoveZone {
+                                        from: Zone::Graveyard,
+                                        to: Zone::Battlefield,
+                                        to_player: ZoneOwner::CardOwner,
+                                    },
+                                    EffectStep::AddCounter {
+                                        kind: plus_key,
+                                        count: 1,
+                                    },
+                                ],
+                                label,
+                            },
+                            controller,
+                            targets: vec![EffectTarget::Object { id: dying_id }],
+                            x_value: None,
+                        });
+                    }
+                }
+            }
+        }
     }
 
     result
@@ -1966,6 +2081,260 @@ mod tests {
         assert!(
             triggers.is_empty(),
             "ETB trigger should not fire on Attacks event"
+        );
+    }
+
+    #[test]
+    fn subject_lacks_counter_condition_satisfied_when_no_counter() {
+        // TriggerCondition::SubjectLacksCounter fires when the subject has zero of the given counter.
+        use crate::types::ability::Rule;
+        use crate::types::ability::{TriggerSubjectFilter, TriggerTargetMode};
+        use crate::types::effect::EffectStep;
+        use crate::types::{CounterKind, GameEvent, RulesText};
+
+        let mut gs = two_player_state();
+        let kind = CounterKind::PtModifier {
+            power: -1,
+            toughness: -1,
+        };
+        let trigger_span = RulesText::Active(Rule::Triggered(TriggeredAbility {
+            trigger: TriggerEvent::Dies {
+                subject: TriggerSubjectFilter {
+                    is_self: Some(true),
+                    ..Default::default()
+                },
+            },
+            condition: Some(TriggerCondition::SubjectLacksCounter(kind.clone())),
+            target_mode: TriggerTargetMode::None,
+            effect: vec![EffectStep::DrawCard(1)],
+        }));
+        let id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![trigger_span]);
+
+        // No counter on the creature → condition satisfied → trigger fires.
+        let triggers = collect_triggers_for_event(&mut gs, &GameEvent::Dies { subject_id: id });
+        assert_eq!(triggers.len(), 1);
+    }
+
+    #[test]
+    fn subject_lacks_counter_condition_not_satisfied_when_counter_present() {
+        // TriggerCondition::SubjectLacksCounter does NOT fire when the subject has the counter.
+        use crate::types::ability::Rule;
+        use crate::types::ability::{TriggerSubjectFilter, TriggerTargetMode};
+        use crate::types::effect::EffectStep;
+        use crate::types::{CounterKind, GameEvent, RulesText};
+
+        let mut gs = two_player_state();
+        let kind = CounterKind::PtModifier {
+            power: -1,
+            toughness: -1,
+        };
+        let trigger_span = RulesText::Active(Rule::Triggered(TriggeredAbility {
+            trigger: TriggerEvent::Dies {
+                subject: TriggerSubjectFilter {
+                    is_self: Some(true),
+                    ..Default::default()
+                },
+            },
+            condition: Some(TriggerCondition::SubjectLacksCounter(kind.clone())),
+            target_mode: TriggerTargetMode::None,
+            effect: vec![EffectStep::DrawCard(1)],
+        }));
+        let id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![trigger_span]);
+        gs.battlefield.get_mut(&id).unwrap().add_counters(kind, 1);
+
+        // Has the counter → condition not satisfied → no trigger.
+        let triggers = collect_triggers_for_event(&mut gs, &GameEvent::Dies { subject_id: id });
+        assert!(triggers.is_empty());
+    }
+
+    #[test]
+    fn persist_trigger_fires_on_death_when_no_minus_counter() {
+        // CR 702.79: StaticAbility::Persist shim fires when no -1/-1 counter present.
+        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::effect::EffectStep;
+        use crate::types::stack::StackPayload;
+        use crate::types::zone::{Zone, ZoneOwner};
+        use crate::types::{CounterKind, GameEvent, RulesText};
+
+        let mut gs = two_player_state();
+        let def = crate::types::card::CardDefinition {
+            name: "Young Wolf".into(),
+            mana_cost: None,
+            type_line: crate::types::card::TypeLine {
+                supertypes: vec![],
+                card_types: vec![crate::types::card::CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Persist".into(),
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Persist))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = place_on_battlefield(&mut gs, def, PlayerId(0));
+
+        let triggers = collect_triggers_for_event(&mut gs, &GameEvent::Dies { subject_id: id });
+
+        assert_eq!(triggers.len(), 1, "exactly one Persist trigger");
+        let t = &triggers[0];
+        assert_eq!(t.controller, PlayerId(0));
+        use crate::types::effect::EffectTarget;
+        assert_eq!(t.targets, vec![EffectTarget::Object { id }]);
+        let StackPayload::TriggeredAbility { effect, .. } = &t.payload else {
+            panic!("expected TriggeredAbility");
+        };
+        assert_eq!(effect.len(), 2);
+        assert!(matches!(
+            &effect[0],
+            EffectStep::MoveZone {
+                from: Zone::Graveyard,
+                to: Zone::Battlefield,
+                to_player: ZoneOwner::CardOwner,
+            }
+        ));
+        assert!(matches!(
+            &effect[1],
+            EffectStep::AddCounter {
+                kind: CounterKind::PtModifier {
+                    power: -1,
+                    toughness: -1
+                },
+                count: 1
+            }
+        ));
+    }
+
+    #[test]
+    fn persist_trigger_suppressed_when_minus_counter_present() {
+        // CR 702.79: Persist does not fire when the dying creature already has a -1/-1 counter.
+        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::{CounterKind, GameEvent, RulesText};
+
+        let mut gs = two_player_state();
+        let def = crate::types::card::CardDefinition {
+            name: "Young Wolf".into(),
+            mana_cost: None,
+            type_line: crate::types::card::TypeLine {
+                supertypes: vec![],
+                card_types: vec![crate::types::card::CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Persist".into(),
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Persist))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = place_on_battlefield(&mut gs, def, PlayerId(0));
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: -1,
+                toughness: -1,
+            },
+            1,
+        );
+
+        let triggers = collect_triggers_for_event(&mut gs, &GameEvent::Dies { subject_id: id });
+        assert!(
+            triggers.is_empty(),
+            "Persist must not trigger when -1/-1 counter present"
+        );
+    }
+
+    #[test]
+    fn undying_trigger_fires_on_death_when_no_plus_counter() {
+        // CR 702.93: StaticAbility::Undying shim fires when no +1/+1 counter present.
+        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::effect::EffectStep;
+        use crate::types::stack::StackPayload;
+        use crate::types::zone::{Zone, ZoneOwner};
+        use crate::types::{CounterKind, GameEvent, RulesText};
+
+        let mut gs = two_player_state();
+        let def = crate::types::card::CardDefinition {
+            name: "Strangleroot Geist".into(),
+            mana_cost: None,
+            type_line: crate::types::card::TypeLine {
+                supertypes: vec![],
+                card_types: vec![crate::types::card::CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Undying".into(),
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Undying))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let id = place_on_battlefield(&mut gs, def, PlayerId(0));
+
+        let triggers = collect_triggers_for_event(&mut gs, &GameEvent::Dies { subject_id: id });
+
+        assert_eq!(triggers.len(), 1, "exactly one Undying trigger");
+        let t = &triggers[0];
+        use crate::types::effect::EffectTarget;
+        assert_eq!(t.targets, vec![EffectTarget::Object { id }]);
+        let StackPayload::TriggeredAbility { effect, .. } = &t.payload else {
+            panic!("expected TriggeredAbility");
+        };
+        assert_eq!(effect.len(), 2);
+        assert!(matches!(
+            &effect[0],
+            EffectStep::MoveZone {
+                from: Zone::Graveyard,
+                to: Zone::Battlefield,
+                to_player: ZoneOwner::CardOwner,
+            }
+        ));
+        assert!(matches!(
+            &effect[1],
+            EffectStep::AddCounter {
+                kind: CounterKind::PtModifier {
+                    power: 1,
+                    toughness: 1
+                },
+                count: 1
+            }
+        ));
+    }
+
+    #[test]
+    fn undying_trigger_suppressed_when_plus_counter_present() {
+        // CR 702.93: Undying does not fire when the dying creature already has a +1/+1 counter.
+        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::{CounterKind, GameEvent, RulesText};
+
+        let mut gs = two_player_state();
+        let def = crate::types::card::CardDefinition {
+            name: "Strangleroot Geist".into(),
+            mana_cost: None,
+            type_line: crate::types::card::TypeLine {
+                supertypes: vec![],
+                card_types: vec![crate::types::card::CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Undying".into(),
+            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Undying))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let id = place_on_battlefield(&mut gs, def, PlayerId(0));
+        gs.battlefield.get_mut(&id).unwrap().add_counters(
+            CounterKind::PtModifier {
+                power: 1,
+                toughness: 1,
+            },
+            1,
+        );
+
+        let triggers = collect_triggers_for_event(&mut gs, &GameEvent::Dies { subject_id: id });
+        assert!(
+            triggers.is_empty(),
+            "Undying must not trigger when +1/+1 counter present"
         );
     }
 
