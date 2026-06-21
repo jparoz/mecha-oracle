@@ -45,10 +45,10 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
         }
     }
 
-    // CR 704.5g: creature on battlefield with toughness ≤ 0 → graveyard.
-    // CR 704.5h: creature with damage ≥ toughness → graveyard.
+    // CR 704.5f: creature on battlefield with toughness ≤ 0 → graveyard.
+    // CR 704.5g: creature with damage ≥ toughness → graveyard.
     // CR 704.5h (deathtouch): creature dealt any deathtouch damage → graveyard.
-    // CR 702.12b: Indestructible creatures are exempt from both 704.5g and 704.5h.
+    // CR 702.12b: Indestructible creatures are exempt from both 704.5f and 704.5g.
     for (&id, perm) in &state.battlefield {
         if perm.is_creature() && !perm.has_keyword(StaticAbility::Indestructible) {
             let cont_bonus = super::continuous_pt_bonus(state, id);
@@ -309,7 +309,7 @@ mod tests {
 
         let (gs, _) = check_and_apply_sbas(gs);
 
-        assert!(gs.battlefield.contains_key(&id)); // indestructible ignores both 704.5g and 704.5h
+        assert!(gs.battlefield.contains_key(&id)); // indestructible ignores both 704.5f and 704.5g
     }
 
     #[test]

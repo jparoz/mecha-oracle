@@ -57,6 +57,8 @@ pub fn continuous_pt_bonus(state: &GameState, target_id: ObjectId) -> PTDelta {
     let mut bonus = PTDelta::default();
 
     for (&src_id, src_perm) in &state.battlefield {
+        // src_perm holds the card definition (rules text); src_obj holds the controller.
+        // PermanentState has no controller field — ownership lives in CardObject.
         let src_obj = match state.objects.get(&src_id) {
             Some(o) => o,
             None => continue,
@@ -109,7 +111,7 @@ mod tests {
     use crate::types::{
         CardDefinition, CardObject, CardType, ContinuousEffect, ControllerFilter, GameState,
         ObjectId, PTDelta, PermanentFilter, PermanentState, Player, PlayerId, Rule, RulesText,
-        Zone, card::Supertype, card::TypeLine, mana::ManaColor,
+        Zone, card::TypeLine, mana::ManaColor,
     };
 
     fn two_player_state() -> GameState {
@@ -266,10 +268,4 @@ mod tests {
             }
         );
     }
-
-    // suppress unused import warning — `Supertype` brought in for completeness but not directly used
-    // in these tests; however it is part of the public type surface we exercise through CardDefinition.
-    const _: fn() = || {
-        let _: Supertype = Supertype::Basic;
-    };
 }

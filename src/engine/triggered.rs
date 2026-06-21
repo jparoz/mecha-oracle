@@ -75,6 +75,8 @@ fn trigger_condition_satisfied(
         TriggerCondition::ExactlyOneAttacker => state.combat.attackers.len() == 1,
 
         TriggerCondition::AttackingAlongsideGreaterPowerCreature => {
+            // TODO: pass continuous_pt_bonus when anthems should affect trigger condition checks (CR 611.3a).
+            // Currently passes 0 — continuous effects are not applied to trigger evaluation.
             let my_power = state
                 .battlefield
                 .get(&source_id)
