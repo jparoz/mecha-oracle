@@ -26,32 +26,27 @@ Keywords below are parsed and shown cyan+underlined in the UI but have no rules 
 
 ---
 
-## 🔢 Counter system block
+## ⚰️  Zone-change and non-battlefield activations block
 
-*(Counter infrastructure and Wither/Infect/Toxic N/Evolve/Training implemented June 2026.)*
-*(Persist and Undying implemented June 2026.)*
+*(Zone-change: MoveZone effect step implemented June 2026. Persist and Undying implemented June 2026. Counter system (Wither/Infect/Toxic/Evolve/Training) implemented June 2026.)*
+*(Cycling already works as a special case in `engine/cycling.rs` — the framework below generalises that.)*
 
-Still blocked on graveyard zone-change hook:
+Remaining prerequisites: graveyard contents addressable by `ObjectId`, a general activated-ability-from-other-zones framework in `engine/activated.rs` (currently battlefield-only), and "dies" trigger event preserved across zone changes.
 
-- **Scavenge [cost]** (702.97): activated — exile from graveyard, put +1/+1 counters on a
-  creature. (Also needs graveyard zone-change hook.)
-
----
-
-## ⚰️  Graveyard / zone-change block
-
-Requires: graveyard contents addressable by `ObjectId`, a "dies" trigger event in
-`TriggerEvent`, and zone-change semantics that preserve identity. Counter system also
-needed for most entries here.
-
-- **Scavenge [cost]** (702.97) — see Counter block above.
-- **Unearth [cost]** (702.84): activated — return from graveyard temporarily (exile at EOT
-  or if it would leave the battlefield).
-- **Escape [cost]** (702.138): cast from graveyard by exiling N other cards.
+### Graveyard activations / cast-from-graveyard
+- **Scavenge [cost]** (702.97): activated — exile from graveyard, put +1/+1 counters on a creature.
+- **Unearth [cost]** (702.84): activated — return from graveyard temporarily (exile at EOT or if it would leave the battlefield).
 - **Flashback [cost]** (702.34): cast from graveyard for the Flashback cost.
+- **Escape [cost]** (702.138): cast from graveyard by exiling N other cards.
 - **Dredge N** (702.52): replace a draw with "mill N, return this card".
 - **Delve** (702.66): exile cards from graveyard to pay generic mana when casting.
+
+### Exile-zone activations
+- **Suspend N—[cost]** (702.62): exile with N time counters; cast when last counter is removed.
 - **Cascade** (702.85): exile cards off top until a cheaper one is found, cast it free.
+
+### Hand activations
+- **Foretell [cost]** (702.143): exile face-down during your turn; cast later for reduced cost.
 
 ---
 
@@ -67,32 +62,6 @@ Currently `casting.rs` only handles standard `ManaCost` payment.
 - **Bestow [cost]** (702.103): cast as Aura or as a creature depending on targets.
 - **Emerge [cost]** (702.119): sacrifice a creature to reduce the mana cost.
 - **Mutate [cost]** (702.140): merge onto existing creature.
-- **Suspend N—[cost]** (702.62): exile with N time counters; cast when last counter
-  is removed.
-- **Foretell [cost]** (702.143): exile face-down during your turn; cast later for
-  reduced cost.
-
----
-
-## 🔌 Activated abilities from non-battlefield zones
-
-Currently, cycling is implemented as a special case in `engine/cycling.rs`. A general
-framework is needed for abilities that activate from zones other than the battlefield.
-
-- **General framework**: `engine/activated.rs` handles only battlefield activations;
-  extend to support other source zones.
-- **Graveyard activations**:
-  - **Scavenge [cost]** (702.97): exile from graveyard, put +1/+1 counters on a creature.
-  - **Unearth [cost]** (702.84): return temporarily; exile at EOT or if it would leave.
-  - **Escape [cost]** (702.138): cast from graveyard by exiling N other cards.
-  - **Flashback [cost]** (702.34): cast from graveyard for the Flashback cost.
-  - **Dredge N** (702.52): replace a draw with "mill N, return this card".
-  - **Delve** (702.66): exile cards to pay generic mana when casting.
-- **Hand activations**:
-  - **Foretell [cost]** (702.143): exile face-down during your turn; cast later for reduced cost.
-- **Exile activations**:
-  - **Cascade** (702.85): exile cards off top until a cheaper one is found, cast it free.
-  - **Suspend N—[cost]** (702.62): exile with N time counters; cast when last counter removed.
 
 ---
 
@@ -122,4 +91,3 @@ framework is needed for abilities that activate from zones other than the battle
   pair/unpair logic on zone changes.
 
 ---
-
