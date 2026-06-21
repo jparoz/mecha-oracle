@@ -87,16 +87,29 @@ A new `pub fn continuous_pt_bonus(state: &GameState, target_id: ObjectId) -> PTD
      - If it matches and `effect.pt_modification` is `Some(delta)`, accumulate `delta` into the running total.
 4. Return the accumulated `PTDelta`.
 
-`PermanentState::effective_power()` and `effective_toughness()` are **not changed** — the bonus is always added at each call site so no game-state reference leaks into the struct.
+### `effective_power` / `effective_toughness` signature change
+
+`PermanentState::effective_power()` and `effective_toughness()` gain a `continuous_bonus: i32` parameter:
+
+```rust
+pub fn effective_power(&self, continuous_bonus: i32) -> Option<i32>
+pub fn effective_toughness(&self, continuous_bonus: i32) -> Option<i32>
+```
+
+Each method folds the bonus into its existing calculation alongside `pt_boost_until_eot` and counter modifications. This keeps all P/T summation logic inside the method rather than scattered across call sites.
+
+Passing a precomputed `i32` (not `&GameState`) avoids the borrow-checker problem that would arise from borrowing `state.battlefield` to get the `PermanentState` and then trying to borrow `state` again as a method argument.
 
 ### Call sites
 
+At every call site, callers first compute `continuous_pt_bonus(state, id)` and extract `.power` or `.toughness` from the result, then pass it into the method:
+
 | Site | File | Change |
 |---|---|---|
-| P/T display | `serve.rs:722-723` | Add `continuous_pt_bonus(state, obj.id)` to displayed power/toughness |
-| Toughness ≤ 0 SBA | `state_based_actions.rs:55-56` | Add bonus to effective toughness before the `<= 0` check |
-| Combat power (damage dealt) | `combat.rs` (attacker/blocker power reads) | Add bonus to effective power |
-| Combat toughness (lethal threshold) | `combat.rs` (toughness/remaining-damage reads) | Add bonus to effective toughness |
+| P/T display | `serve.rs:722-723` | Compute bonus; pass `.power`/`.toughness` to `effective_power`/`effective_toughness` |
+| Toughness ≤ 0 SBA | `state_based_actions.rs:55-56` | Compute bonus; pass `.toughness` to `effective_toughness` |
+| Combat power (damage dealt) | `combat.rs` (attacker/blocker power reads) | Compute bonus; pass `.power` to `effective_power` |
+| Combat toughness (lethal threshold) | `combat.rs` (toughness/remaining-damage reads) | Compute bonus; pass `.toughness` to `effective_toughness` |
 
 ## Test Deck Update
 
