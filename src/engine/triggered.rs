@@ -180,11 +180,10 @@ fn trigger_condition_satisfied(
                 Some(id) => id,
                 None => return false,
             };
-            !state
+            state
                 .battlefield
                 .get(&sid)
-                .map(|p| p.counters.contains_key(counter_kind))
-                .unwrap_or(false)
+                .is_some_and(|p| p.counter_count(counter_kind) == 0)
         }
     }
 }

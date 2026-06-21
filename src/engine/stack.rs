@@ -275,6 +275,10 @@ pub(crate) fn execute_effect_steps(
                         if current_zone != *from {
                             continue;
                         }
+                        // Guard against same-zone moves which would silently wipe PermanentState.
+                        if from == to {
+                            continue;
+                        }
                         let new_controller = match to_player {
                             ZoneOwner::CardOwner => owner,
                             ZoneOwner::CardController => controller_at_move,
@@ -317,7 +321,7 @@ pub(crate) fn execute_effect_steps(
                                 let mut perm = PermanentState::new(&def);
                                 perm.controller_since_turn = state.turn_number;
                                 state.battlefield.insert(id, perm);
-                                // CR 603.2: collect ETB triggers and push them onto the stack.
+                                // CR 603.3: place detected ETB triggers onto the stack.
                                 let etb_triggers =
                                     crate::engine::triggered::collect_triggers_for_event(
                                         &mut state,
