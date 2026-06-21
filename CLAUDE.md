@@ -1,5 +1,7 @@
 # Comprehensive rules
 We're building a Magic: The Gathering rules enforcement engine, and as such the rules version should be consistent. A copy of the full comprehensive rules is available at docs/CR.txt and should be referenced as the definitive answer on MTG rules. Whenever possible, provide a rules reference number (e.g. 107.4) justifying any rules-related decisions in replies to the user, and in a comment at the top of relevant functions/code sections. Whenever you do provide a rules reference number in a lasting way (e.g. in code comments, in a spec document), ALWAYS grep the rules document at docs/CR.txt for the reference number (e.g. `grep '^103\\.2\\.' docs/CR.txt`) and verify that the reference actually relates to the rule that you think it does.
+The format of CR reference numbers is `NNN.MMx`, where NNN is the rule number, MM is the subrule number, and x is either a full stop (`.`) or a lowercase letter. The number of digits may vary. Note that reference numbers which do have a lowercase letter and the end _do not_ have a full stop as well.
+References should be included in parentheses, e.g. `(123.45b)`. Sometimes you may see the letters CR included in the parentheses; this is unnecessary, and in new references should only be done rarely, where it may be unclear or ambiguous that it is a CR reference.
 
 # docs/todo.md
 

@@ -3,7 +3,9 @@
 - Players should discard to hand size at the cleanup step (see CR 402.2)
 - `can_pay_cost_components` (costs.rs) always returns true for mana (by design), so the serve.rs UI action filter will show X-cost activated abilities as available regardless of pool size. When X-cost activated abilities are added, thread `x_value` into `can_pay_cost_components` and the serve.rs call site (line 606).
 - SpellEffect actually should be called SpellAbility, that's what it's called when there's text which happens when an instant or sorcery is resolving. (CR 113.3.)
-
+- `StaticAbility` (types/ability.rs) is misnamed — per CR 113.3, many of its variants are triggered abilities, not static abilities: Exalted (CR 702.83a), Flanking (CR 702.25a), BushidoN (CR 702.45a), Melee (CR 702.121a), Prowess (CR 702.108a), BattleCry (CR 702.91a), Evolve (CR 702.100a), Training (CR 702.149a), Persist (CR 702.79a), Undying (CR 702.93a). Decayed (CR 702.147a) is a mix of static ("can't block") and triggered ("sacrifice at end of combat"). The enum should be renamed to `KeywordAbility` or similar to reflect that it stores CR 702 keyword markers regardless of rules category.
+- The test decks (docs/test-decks/) should be expanded to cover more card types. Specifically: update the green_abilities.json deck to be a proper G/W deck (Glorious Anthem, Plains, dual lands such as Savannah); add a deck that includes equipment cards once equip is implemented.
+- Dual lands (e.g. Savannah — Land: Forest Plains) only tap for one color because `land_produces` (engine/mana.rs) returns the first matching subtype. A proper fix would return multiple colors and add a mana-choice step in the UI; for now, Savannah taps for Green only.
 
 
 # Parsed but unimplemented keyword abilities
