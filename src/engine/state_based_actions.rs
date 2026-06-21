@@ -51,8 +51,9 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     // CR 702.12b: Indestructible creatures are exempt from both 704.5g and 704.5h.
     for (&id, perm) in &state.battlefield {
         if perm.is_creature() && !perm.has_keyword(StaticAbility::Indestructible) {
+            let cont_bonus = super::continuous_pt_bonus(state, id);
             let lethal_damage = perm
-                .effective_toughness(0)
+                .effective_toughness(cont_bonus.toughness)
                 .map(|t| t <= 0 || perm.damage_marked as i32 >= t)
                 .unwrap_or(false);
             if lethal_damage || perm.damaged_by_deathtouch {
@@ -788,6 +789,83 @@ mod tests {
         assert!(
             triggers.is_empty(),
             "Undying must not trigger when +1/+1 counter present"
+        );
+    }
+
+    #[test]
+    fn anthem_prevents_zero_toughness_death() {
+        use crate::types::{
+            ContinuousEffect, ControllerFilter, PTDelta, PermanentFilter, Rule, RulesText,
+            card::{CardDefinition, CardType, TypeLine},
+            mana::ManaColor,
+        };
+        // A 2/2 bear with -2/-2 counter (effective toughness 0 without anthem).
+        // An anthem grants +0/+1, keeping it at 0+1=1 toughness — should survive.
+        let mut gs = make_state();
+        let db = test_db();
+        let bear_id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        gs.battlefield.get_mut(&bear_id).unwrap().add_counters(
+            crate::types::CounterKind::PtModifier {
+                power: -2,
+                toughness: -2,
+            },
+            1,
+        );
+
+        // Without anthem: toughness 0 → should die.
+        let (gs2, _) = check_and_apply_sbas(gs.clone());
+        assert!(
+            !gs2.battlefield.contains_key(&bear_id),
+            "should die without anthem"
+        );
+
+        // Add anthem granting +0/+1.
+        let anthem_def = CardDefinition {
+            name: "Test Anthem".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec![],
+            },
+            oracle_text: "Creatures you control get +0/+1.".into(),
+            rules_text: vec![RulesText::Active(Rule::Continuous(ContinuousEffect {
+                subject_filter: PermanentFilter {
+                    controller: ControllerFilter::You,
+                    card_types: vec![CardType::Creature],
+                    ..Default::default()
+                },
+                pt_modification: Some(PTDelta {
+                    power: 0,
+                    toughness: 1,
+                }),
+            }))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![ManaColor::White],
+        };
+        let anthem_id = gs.alloc_id();
+        let anthem_obj = crate::types::CardObject::new(
+            anthem_id,
+            anthem_def,
+            PlayerId(0),
+            crate::types::Zone::Battlefield,
+        );
+        gs.battlefield.insert(
+            anthem_id,
+            crate::types::PermanentState::new(&anthem_obj.definition),
+        );
+        gs.add_object(anthem_obj);
+
+        let (gs3, _) = check_and_apply_sbas(gs);
+        assert!(
+            gs3.battlefield.contains_key(&bear_id),
+            "should survive with anthem"
         );
     }
 
