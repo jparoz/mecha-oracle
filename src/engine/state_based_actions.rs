@@ -52,7 +52,7 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     for (&id, perm) in &state.battlefield {
         if perm.is_creature() && !perm.has_keyword(StaticAbility::Indestructible) {
             let lethal_damage = perm
-                .effective_toughness()
+                .effective_toughness(0)
                 .map(|t| t <= 0 || perm.damage_marked as i32 >= t)
                 .unwrap_or(false);
             if lethal_damage || perm.damaged_by_deathtouch {

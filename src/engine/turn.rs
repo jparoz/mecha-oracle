@@ -607,7 +607,7 @@ mod tests {
         let gs = apply_step_start(gs);
 
         assert_eq!(gs.battlefield[&id].pt_boost_until_eot, PTDelta::default());
-        assert_eq!(gs.battlefield[&id].effective_power(), Some(2)); // back to 2/2 base
+        assert_eq!(gs.battlefield[&id].effective_power(0), Some(2)); // back to 2/2 base
     }
 
     // --- Task 8 tests: PhaseStep and DrawsCard event emission ---

@@ -94,7 +94,7 @@ impl PermanentState {
         self.definition.type_line.is_land()
     }
 
-    pub fn effective_power(&self) -> Option<i32> {
+    pub fn effective_power(&self, continuous_bonus: i32) -> Option<i32> {
         self.current_power.map(|p| {
             let counter_bonus: i32 = self
                 .counters
@@ -104,11 +104,11 @@ impl PermanentState {
                     _ => None,
                 })
                 .sum();
-            p + self.pt_boost_until_eot.power + counter_bonus
+            p + self.pt_boost_until_eot.power + counter_bonus + continuous_bonus
         })
     }
 
-    pub fn effective_toughness(&self) -> Option<i32> {
+    pub fn effective_toughness(&self, continuous_bonus: i32) -> Option<i32> {
         self.current_toughness.map(|t| {
             let counter_bonus: i32 = self
                 .counters
@@ -118,7 +118,7 @@ impl PermanentState {
                     _ => None,
                 })
                 .sum();
-            t + self.pt_boost_until_eot.toughness + counter_bonus
+            t + self.pt_boost_until_eot.toughness + counter_bonus + continuous_bonus
         })
     }
 
@@ -253,21 +253,21 @@ mod tests {
     fn effective_power_includes_eot_boost() {
         let mut perm = grizzly_bears_perm();
         perm.pt_boost_until_eot.power = 3;
-        assert_eq!(perm.effective_power(), Some(5)); // 2 base + 3
+        assert_eq!(perm.effective_power(0), Some(5)); // 2 base + 3
     }
 
     #[test]
     fn effective_toughness_includes_eot_boost() {
         let mut perm = grizzly_bears_perm();
         perm.pt_boost_until_eot.toughness = -1;
-        assert_eq!(perm.effective_toughness(), Some(1)); // 2 base - 1
+        assert_eq!(perm.effective_toughness(0), Some(1)); // 2 base - 1
     }
 
     #[test]
     fn effective_power_with_negative_boost_does_not_panic() {
         let mut perm = grizzly_bears_perm();
         perm.pt_boost_until_eot.power = -5;
-        assert_eq!(perm.effective_power(), Some(-3)); // 2 base - 5
+        assert_eq!(perm.effective_power(0), Some(-3)); // 2 base - 5
     }
 
     #[test]
@@ -351,8 +351,8 @@ mod tests {
             },
             3,
         );
-        assert_eq!(perm.effective_power(), Some(5)); // 2 + 3
-        assert_eq!(perm.effective_toughness(), Some(5));
+        assert_eq!(perm.effective_power(0), Some(5)); // 2 + 3
+        assert_eq!(perm.effective_toughness(0), Some(5));
     }
 
     #[test]
@@ -361,8 +361,15 @@ mod tests {
         let mut perm = grizzly_bears_perm(); // base 2/2
         perm.add_counters(CounterKind::Named("test".to_string()), 5);
         perm.add_counters(CounterKind::Named("charge".to_string()), 10);
-        assert_eq!(perm.effective_power(), Some(2)); // unchanged
-        assert_eq!(perm.effective_toughness(), Some(2));
+        assert_eq!(perm.effective_power(0), Some(2)); // unchanged
+        assert_eq!(perm.effective_toughness(0), Some(2));
+    }
+
+    #[test]
+    fn effective_power_includes_continuous_bonus() {
+        let perm = grizzly_bears_perm(); // base 2/2
+        assert_eq!(perm.effective_power(1), Some(3));
+        assert_eq!(perm.effective_toughness(-1), Some(1));
     }
 
     #[test]
@@ -376,8 +383,8 @@ mod tests {
             },
             2,
         );
-        assert_eq!(perm.effective_power(), Some(0));
-        assert_eq!(perm.effective_toughness(), Some(0));
+        assert_eq!(perm.effective_power(0), Some(0));
+        assert_eq!(perm.effective_toughness(0), Some(0));
     }
 
     #[test]

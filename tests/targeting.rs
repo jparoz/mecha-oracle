@@ -98,12 +98,12 @@ fn giant_growth_cast_and_resolve_boosts_creature() {
 
     // CR 613.1b: +3/+3 until end of turn — creature is now 5/5.
     assert_eq!(
-        gs.battlefield[&bears_id].effective_power(),
+        gs.battlefield[&bears_id].effective_power(0),
         Some(5),
         "Grizzly Bears should be 5/5 after Giant Growth"
     );
     assert_eq!(
-        gs.battlefield[&bears_id].effective_toughness(),
+        gs.battlefield[&bears_id].effective_toughness(0),
         Some(5),
         "Grizzly Bears should be 5/5 after Giant Growth"
     );

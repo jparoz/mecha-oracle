@@ -719,8 +719,8 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
                 .mana_cost
                 .as_ref()
                 .map(format_mana_cost_braced),
-            power: perm.and_then(|p| p.effective_power()),
-            toughness: perm.and_then(|p| p.effective_toughness()),
+            power: perm.and_then(|p| p.effective_power(0)),
+            toughness: perm.and_then(|p| p.effective_toughness(0)),
             colors: display_colors(&obj.definition)
                 .iter()
                 .map(|c| c.to_string())

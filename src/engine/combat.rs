@@ -239,12 +239,12 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
         let attacker_power = state
             .battlefield
             .get(&attacker_id)
-            .and_then(|p| p.effective_power())
+            .and_then(|p| p.effective_power(0))
             .unwrap_or(0);
         let blocker_power = state
             .battlefield
             .get(&blocker_id)
-            .and_then(|p| p.effective_power())
+            .and_then(|p| p.effective_power(0))
             .unwrap_or(0);
         if blocker_power > attacker_power {
             return false;
@@ -412,7 +412,7 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             let power = state
                 .battlefield
                 .get(&attacker_id)
-                .and_then(|p| p.effective_power())
+                .and_then(|p| p.effective_power(0))
                 .map(|p| p.max(0) as u32)
                 .unwrap_or(0);
             (
@@ -459,7 +459,7 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                         .get(&blocker_id)
                         .map(|p| {
                             let toughness = p
-                                .effective_toughness()
+                                .effective_toughness(0)
                                 .map(|t| t.max(0) as u32)
                                 .unwrap_or(0);
                             toughness.saturating_sub(p.damage_marked)
@@ -533,7 +533,7 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                 let power = state
                     .battlefield
                     .get(&blocker_id)
-                    .and_then(|p| p.effective_power())
+                    .and_then(|p| p.effective_power(0))
                     .map(|p| p.max(0) as u32)
                     .unwrap_or(0);
                 (

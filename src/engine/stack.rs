@@ -1064,8 +1064,8 @@ mod tests {
 
         let gs = resolve_top(gs);
 
-        assert_eq!(gs.battlefield[&id].effective_power(), Some(3));
-        assert_eq!(gs.battlefield[&id].effective_toughness(), Some(3));
+        assert_eq!(gs.battlefield[&id].effective_power(0), Some(3));
+        assert_eq!(gs.battlefield[&id].effective_toughness(0), Some(3));
         assert!(gs.stack.is_empty());
     }
 
@@ -1485,8 +1485,8 @@ mod tests {
             }),
             2
         );
-        assert_eq!(gs.battlefield[&id].effective_power(), Some(4)); // 2 base + 2 counters
-        assert_eq!(gs.battlefield[&id].effective_toughness(), Some(4));
+        assert_eq!(gs.battlefield[&id].effective_power(0), Some(4)); // 2 base + 2 counters
+        assert_eq!(gs.battlefield[&id].effective_toughness(0), Some(4));
         assert!(gs.stack.is_empty());
     }
 

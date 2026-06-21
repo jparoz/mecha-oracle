@@ -166,10 +166,10 @@ fn cr_107_1b_ex1_negative_power_from_boost() {
         toughness: 0,
     };
 
-    assert_eq!(perm.effective_power(), Some(-2), "3 + (-5) = -2");
-    assert_eq!(perm.effective_toughness(), Some(4), "toughness unchanged");
+    assert_eq!(perm.effective_power(0), Some(-2), "3 + (-5) = -2");
+    assert_eq!(perm.effective_toughness(0), Some(4), "toughness unchanged");
     // The "total power and toughness" described in the CR (−2 + 4 = 2) is arithmetic sum.
-    let total = perm.effective_power().unwrap() + perm.effective_toughness().unwrap();
+    let total = perm.effective_power(0).unwrap() + perm.effective_toughness(0).unwrap();
     assert_eq!(total, 2);
 }
 

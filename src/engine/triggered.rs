@@ -78,7 +78,7 @@ fn trigger_condition_satisfied(
             let my_power = state
                 .battlefield
                 .get(&source_id)
-                .and_then(|p| p.effective_power())
+                .and_then(|p| p.effective_power(0))
                 .unwrap_or(0);
             state
                 .combat
@@ -89,7 +89,7 @@ fn trigger_condition_satisfied(
                     state
                         .battlefield
                         .get(&id)
-                        .and_then(|p| p.effective_power())
+                        .and_then(|p| p.effective_power(0))
                         .map(|p| p > my_power)
                         .unwrap_or(false)
                 })
@@ -103,7 +103,7 @@ fn trigger_condition_satisfied(
             let entering_power = match state
                 .battlefield
                 .get(&sid)
-                .and_then(|p| p.effective_power())
+                .and_then(|p| p.effective_power(0))
             {
                 Some(p) => p,
                 None => return false,
@@ -111,7 +111,7 @@ fn trigger_condition_satisfied(
             let my_power = state
                 .battlefield
                 .get(&source_id)
-                .and_then(|p| p.effective_power())
+                .and_then(|p| p.effective_power(0))
                 .unwrap_or(0);
             entering_power > my_power
         }
@@ -124,7 +124,7 @@ fn trigger_condition_satisfied(
             let entering_toughness = match state
                 .battlefield
                 .get(&sid)
-                .and_then(|p| p.effective_toughness())
+                .and_then(|p| p.effective_toughness(0))
             {
                 Some(t) => t,
                 None => return false,
@@ -132,7 +132,7 @@ fn trigger_condition_satisfied(
             let my_toughness = state
                 .battlefield
                 .get(&source_id)
-                .and_then(|p| p.effective_toughness())
+                .and_then(|p| p.effective_toughness(0))
                 .unwrap_or(0);
             entering_toughness > my_toughness
         }
@@ -145,20 +145,20 @@ fn trigger_condition_satisfied(
             let ep = state
                 .battlefield
                 .get(&sid)
-                .and_then(|p| p.effective_power());
+                .and_then(|p| p.effective_power(0));
             let et = state
                 .battlefield
                 .get(&sid)
-                .and_then(|p| p.effective_toughness());
+                .and_then(|p| p.effective_toughness(0));
             let mp = state
                 .battlefield
                 .get(&source_id)
-                .and_then(|p| p.effective_power())
+                .and_then(|p| p.effective_power(0))
                 .unwrap_or(0);
             let mt = state
                 .battlefield
                 .get(&source_id)
-                .and_then(|p| p.effective_toughness())
+                .and_then(|p| p.effective_toughness(0))
                 .unwrap_or(0);
             ep.map(|p| p > mp).unwrap_or(false) || et.map(|t| t > mt).unwrap_or(false)
         }
@@ -557,20 +557,20 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                     let entering_power = state
                         .battlefield
                         .get(&entering_id)
-                        .and_then(|p| p.effective_power());
+                        .and_then(|p| p.effective_power(0));
                     let entering_toughness = state
                         .battlefield
                         .get(&entering_id)
-                        .and_then(|p| p.effective_toughness());
+                        .and_then(|p| p.effective_toughness(0));
                     let my_power = state
                         .battlefield
                         .get(&source_id)
-                        .and_then(|p| p.effective_power())
+                        .and_then(|p| p.effective_power(0))
                         .unwrap_or(0);
                     let my_toughness = state
                         .battlefield
                         .get(&source_id)
-                        .and_then(|p| p.effective_toughness())
+                        .and_then(|p| p.effective_toughness(0))
                         .unwrap_or(0);
                     let qualifies = entering_power.map(|ep| ep > my_power).unwrap_or(false)
                         || entering_toughness
