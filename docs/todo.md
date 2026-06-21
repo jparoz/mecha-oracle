@@ -1,9 +1,8 @@
-# Meta issues
+# General issues
 - Can we run dead code analysis on library re-exports? That is, check that all library exports are actually used in the binary?
-
-# Gameplay issues
 - Players should discard to hand size at the cleanup step (see CR 402.2)
 - `can_pay_cost_components` (costs.rs) always returns true for mana (by design), so the serve.rs UI action filter will show X-cost activated abilities as available regardless of pool size. When X-cost activated abilities are added, thread `x_value` into `can_pay_cost_components` and the serve.rs call site (line 606).
+- SpellEffect actually should be called SpellAbility, that's what it's called when there's text which happens when an instant or sorcery is resolving. (CR 113.3.)
 
 
 
