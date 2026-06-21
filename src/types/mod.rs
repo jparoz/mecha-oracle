@@ -13,10 +13,11 @@ pub mod step;
 pub mod zone;
 
 pub use ability::{
-    ActivatedAbility, AnnotationKind, CardFilter, CastFilter, Cost, CostComponent,
-    DamageTargetKind, GameEvent, IgnoredKind, LandwalkKind, PermanentFilter, Rule, RulesText,
-    SpellEffect, SpellFilter, StaticAbility, TargetFilter, TextAnnotation, TriggerCondition,
-    TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility, TurnOwner,
+    ActivatedAbility, AnnotationKind, CardFilter, CastFilter, ContinuousEffect, ControllerFilter,
+    Cost, CostComponent, DamageTargetKind, GameEvent, IgnoredKind, LandwalkKind, PermanentFilter,
+    Rule, RulesText, SpellEffect, SpellFilter, StaticAbility, TargetFilter, TextAnnotation,
+    TriggerCondition, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
+    TurnOwner,
 };
 pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;
