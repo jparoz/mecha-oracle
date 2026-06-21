@@ -236,15 +236,17 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     }
     // CR 702.118b: skulk
     if attacker_obj.has_keyword(StaticAbility::Skulk) {
+        let atk_cont = super::continuous_pt_bonus(state, attacker_id);
         let attacker_power = state
             .battlefield
             .get(&attacker_id)
-            .and_then(|p| p.effective_power(0))
+            .and_then(|p| p.effective_power(atk_cont.power))
             .unwrap_or(0);
+        let blk_cont = super::continuous_pt_bonus(state, blocker_id);
         let blocker_power = state
             .battlefield
             .get(&blocker_id)
-            .and_then(|p| p.effective_power(0))
+            .and_then(|p| p.effective_power(blk_cont.power))
             .unwrap_or(0);
         if blocker_power > attacker_power {
             return false;
@@ -409,10 +411,11 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                 Some(o) => o,
                 None => continue,
             };
+            let atk_cont = super::continuous_pt_bonus(&state, attacker_id);
             let power = state
                 .battlefield
                 .get(&attacker_id)
-                .and_then(|p| p.effective_power(0))
+                .and_then(|p| p.effective_power(atk_cont.power))
                 .map(|p| p.max(0) as u32)
                 .unwrap_or(0);
             (
@@ -454,12 +457,13 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                 let lethal = if has_deathtouch {
                     1u32
                 } else {
+                    let blk_cont = super::continuous_pt_bonus(&state, blocker_id);
                     state
                         .battlefield
                         .get(&blocker_id)
                         .map(|p| {
                             let toughness = p
-                                .effective_toughness(0)
+                                .effective_toughness(blk_cont.toughness)
                                 .map(|t| t.max(0) as u32)
                                 .unwrap_or(0);
                             toughness.saturating_sub(p.damage_marked)
@@ -530,10 +534,11 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                     Some(o) => o,
                     None => continue,
                 };
+                let blk_cont = super::continuous_pt_bonus(&state, blocker_id);
                 let power = state
                     .battlefield
                     .get(&blocker_id)
-                    .and_then(|p| p.effective_power(0))
+                    .and_then(|p| p.effective_power(blk_cont.power))
                     .map(|p| p.max(0) as u32)
                     .unwrap_or(0);
                 (
@@ -1992,5 +1997,67 @@ mod tests {
             !gs.stack.is_empty(),
             "Trample attacker should fire DealsCombatDamage trigger (excess to player)"
         );
+    }
+
+    #[test]
+    fn anthem_increases_attacker_damage() {
+        // Attacker: 2/2 Grizzly Bears with a "creatures you control get +1/+0" anthem.
+        // Expected attacker power = 3, expected to deal 3 damage to the player.
+        use crate::types::{
+            CardObject, ContinuousEffect, ControllerFilter, PTDelta, PermanentFilter,
+            PermanentState, Rule, RulesText, Zone,
+            card::{CardDefinition, CardType, TypeLine},
+            mana::ManaColor,
+        };
+
+        let db = test_db();
+
+        let anthem_def = CardDefinition {
+            name: "Power Anthem".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec![],
+            },
+            oracle_text: "Creatures you control get +1/+0.".into(),
+            rules_text: vec![RulesText::Active(Rule::Continuous(ContinuousEffect {
+                subject_filter: PermanentFilter {
+                    controller: ControllerFilter::You,
+                    card_types: vec![CardType::Creature],
+                    ..Default::default()
+                },
+                pt_modification: Some(PTDelta {
+                    power: 1,
+                    toughness: 0,
+                }),
+            }))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![ManaColor::White],
+        };
+
+        let mut gs = make_combat_state();
+        let bear_id = add_creature(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let anthem_id = gs.alloc_id();
+        let anthem_obj = CardObject::new(anthem_id, anthem_def, PlayerId(0), Zone::Battlefield);
+        gs.battlefield
+            .insert(anthem_id, PermanentState::new(&anthem_obj.definition));
+        gs.add_object(anthem_obj);
+
+        gs = declare_attackers(gs, PlayerId(0), &[bear_id]).unwrap();
+        gs.step = Step::DeclareBlockers;
+        gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
+        gs.step = Step::CombatDamage;
+
+        let gs = deal_combat_damage(gs);
+
+        // Bears deals 2+1=3 damage to player 1.
+        assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, 17);
     }
 }
