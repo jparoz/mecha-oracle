@@ -440,6 +440,13 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
             EffectStep::AddCounter { kind, count } => format!("Add {count} {kind:?} counter(s)"),
             EffectStep::DealDamage(s) => format!("Deal {} damage", s.amount),
             EffectStep::CounterSpell => "Counter target spell".to_string(),
+            EffectStep::MoveZone {
+                from,
+                to,
+                to_player,
+            } => {
+                format!("Move from {from:?} to {to:?} (to {to_player:?})")
+            }
             EffectStep::Payment { .. } => "Pay cost".to_string(),
             EffectStep::Unimplemented(s) => s.clone(),
         })

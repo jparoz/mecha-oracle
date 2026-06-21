@@ -29,4 +29,4 @@ pub use permanent::{PTDelta, PermanentState};
 pub use player::Player;
 pub use stack::{StackId, StackObject, StackPayload};
 pub use step::{Phase, Step};
-pub use zone::Zone;
+pub use zone::{Zone, ZoneOwner};

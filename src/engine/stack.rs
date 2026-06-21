@@ -256,6 +256,20 @@ pub(crate) fn execute_effect_steps(
                 });
                 return state; // early return; remaining steps stored in continuation
             }
+            EffectStep::MoveZone {
+                from: _,
+                to: _,
+                to_player: _,
+            } => {
+                // CR 400.7: move the object from one zone to another.
+                // This is a placeholder implementation for now.
+                // A full implementation would:
+                // 1. Verify the object is in the 'from' zone
+                // 2. Update the object's zone to 'to'
+                // 3. Update the appropriate zone collection (libraries, hands, battlefields, etc.)
+                // 4. Handle 'to_player' for personal zones (hand, library, graveyard)
+                // For now, this is unimplemented.
+            }
             EffectStep::Unimplemented(_) => {}
         }
     }

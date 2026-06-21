@@ -1,4 +1,5 @@
 use super::card::CardType;
+use super::counter::CounterKind;
 use super::effect::Effect;
 use super::ids::{ObjectId, PlayerId};
 use super::mana::{ManaColor, ManaCost};
@@ -47,6 +48,8 @@ pub enum StaticAbility {
     ToxicN(u32),                    // CR 702.164
     Evolve,                         // CR 702.100
     Training,                       // CR 702.149
+    Persist,                        // CR 702.79
+    Undying,                        // CR 702.93
 }
 
 /// CR 109.5: who "you" refers to in a triggered ability — the controller of the source
@@ -103,6 +106,7 @@ pub enum TriggerCondition {
     EnteringCreatureHasGreaterToughness,        // CR 702.100a Evolve (toughness)
     EnteringCreatureHasGreaterPowerOrToughness, // CR 702.100a Evolve (either)
     SubjectLacksKeyword(StaticAbility),         // CR 702.25b Flanking
+    SubjectLacksCounter(CounterKind),           // CR 702.79 Persist / CR 702.93 Undying
 }
 
 /// Concrete runtime event data fired by the engine at each trigger point.
@@ -290,6 +294,8 @@ impl StaticAbility {
             Self::ToxicN(n) => format!("Toxic {n}"),
             Self::Evolve => "Evolve".to_string(),
             Self::Training => "Training".to_string(),
+            Self::Persist => "Persist".to_string(),
+            Self::Undying => "Undying".to_string(),
         }
     }
 }
@@ -672,5 +678,20 @@ mod tests {
     #[test]
     fn trigger_target_mode_default_is_none() {
         assert_eq!(TriggerTargetMode::default(), TriggerTargetMode::None);
+    }
+
+    #[test]
+    fn display_name_persist_undying() {
+        assert_eq!(StaticAbility::Persist.display_name(), "Persist");
+        assert_eq!(StaticAbility::Undying.display_name(), "Undying");
+    }
+
+    #[test]
+    fn subject_lacks_counter_construction() {
+        let cond = TriggerCondition::SubjectLacksCounter(crate::types::CounterKind::PtModifier {
+            power: -1,
+            toughness: -1,
+        });
+        assert!(matches!(cond, TriggerCondition::SubjectLacksCounter(_)));
     }
 }

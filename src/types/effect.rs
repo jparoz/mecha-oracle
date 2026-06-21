@@ -4,6 +4,7 @@ use super::ids::{ObjectId, PlayerId};
 use super::mana::ManaPool;
 use super::permanent::PTDelta;
 use super::stack::StackId;
+use super::zone::{Zone, ZoneOwner};
 
 /// A declared target on the stack (CR 115.1).
 /// Struct variants for clean Serde round-tripping via the API.
@@ -38,6 +39,15 @@ pub enum EffectStep {
     AddCounter {
         kind: CounterKind,
         count: u32,
+    },
+    /// Move a card object between zones (CR 400.7).
+    /// `from` is the expected current zone; step is a no-op if the object is not there.
+    /// `to_player` determines who controls a permanent entering the battlefield, or whose
+    /// hand/library/graveyard receives the card for player-specific destination zones.
+    MoveZone {
+        from: Zone,
+        to: Zone,
+        to_player: ZoneOwner,
     },
     DealDamage(DamageStep),
     CounterSpell, // CR 701.5: counter the target spell on the stack
@@ -97,5 +107,16 @@ mod tests {
         assert_eq!(json, r#"{"kind":"stack_object","id":7}"#);
         let round_trip: EffectTarget = serde_json::from_str(&json).unwrap();
         assert_eq!(round_trip, t);
+    }
+
+    #[test]
+    fn move_zone_step_construction() {
+        use crate::types::zone::{Zone, ZoneOwner};
+        let step = EffectStep::MoveZone {
+            from: Zone::Graveyard,
+            to: Zone::Battlefield,
+            to_player: ZoneOwner::CardOwner,
+        };
+        assert!(matches!(step, EffectStep::MoveZone { .. }));
     }
 }

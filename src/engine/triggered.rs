@@ -174,6 +174,18 @@ fn trigger_condition_satisfied(
                 .map(|p| p.has_keyword(kw.clone()))
                 .unwrap_or(false)
         }
+
+        TriggerCondition::SubjectLacksCounter(counter_kind) => {
+            let sid = match subject_id {
+                Some(id) => id,
+                None => return false,
+            };
+            !state
+                .battlefield
+                .get(&sid)
+                .map(|p| p.counters.contains_key(counter_kind))
+                .unwrap_or(false)
+        }
     }
 }
 
