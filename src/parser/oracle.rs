@@ -939,6 +939,102 @@ fn is_cr702_keyword(s: &str) -> bool {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
+/// Parses "+N/+M" (or "-N/+M" etc.) returning `(power, toughness)`.
+/// The first character must be `+` or `-`.
+fn parse_pt_modifier_str(s: &str) -> Option<(i32, i32)> {
+    let s = s.trim();
+    if !s.starts_with('+') && !s.starts_with('-') {
+        return None;
+    }
+    let slash = s.find('/')?;
+    let parse_side = |side: &str| -> Option<i32> {
+        let side = side.trim();
+        if let Some(rest) = side.strip_prefix('+') {
+            rest.parse().ok()
+        } else {
+            side.parse().ok()
+        }
+    };
+    let power = parse_side(&s[..slash])?;
+    let toughness = parse_side(&s[slash + 1..])?;
+    Some((power, toughness))
+}
+
+/// CR 611.3b: try to parse a paragraph as a continuous P/T effect of the form
+/// "Creatures you control get +N/+M.",
+/// "[Color] creatures get +N/+M.", or
+/// "Creatures you control with [Subtype] get +N/+M."
+fn try_parse_continuous_pt_effect(paragraph: &str) -> Option<RulesText> {
+    use crate::types::ability::{ContinuousEffect, ControllerFilter, PermanentFilter};
+    use crate::types::card::CardType;
+    use crate::types::permanent::PTDelta;
+
+    let s = paragraph.trim_end_matches('.').trim();
+    let lower = s.to_lowercase();
+
+    // Must contain " get " separating subject from predicate.
+    let get_pat = " get ";
+    let get_pos = lower.find(get_pat)?;
+    let subject = lower[..get_pos].trim();
+    let pt_str = s[get_pos + get_pat.len()..].trim();
+    let (power, toughness) = parse_pt_modifier_str(pt_str)?;
+
+    // "creatures you control"
+    if subject == "creatures you control" {
+        return Some(RulesText::Active(Rule::Continuous(ContinuousEffect {
+            subject_filter: PermanentFilter {
+                controller: ControllerFilter::You,
+                card_types: vec![CardType::Creature],
+                ..Default::default()
+            },
+            pt_modification: Some(PTDelta { power, toughness }),
+        })));
+    }
+
+    // "creatures you control with [subtype]"
+    if let Some(rest) = subject.strip_prefix("creatures you control with ") {
+        let sub = rest.trim();
+        if !sub.is_empty() {
+            let mut chars = sub.chars();
+            let capitalized = chars.next()?.to_uppercase().collect::<String>() + chars.as_str();
+            return Some(RulesText::Active(Rule::Continuous(ContinuousEffect {
+                subject_filter: PermanentFilter {
+                    controller: ControllerFilter::You,
+                    card_types: vec![CardType::Creature],
+                    subtypes: vec![capitalized],
+                    ..Default::default()
+                },
+                pt_modification: Some(PTDelta { power, toughness }),
+            })));
+        }
+    }
+
+    // "[color] creatures"
+    if let Some(color_word) = subject.strip_suffix(" creatures") {
+        let color = match color_word.trim() {
+            "white" => Some(ManaColor::White),
+            "blue" => Some(ManaColor::Blue),
+            "black" => Some(ManaColor::Black),
+            "red" => Some(ManaColor::Red),
+            "green" => Some(ManaColor::Green),
+            _ => None,
+        };
+        if let Some(c) = color {
+            return Some(RulesText::Active(Rule::Continuous(ContinuousEffect {
+                subject_filter: PermanentFilter {
+                    controller: ControllerFilter::Any,
+                    card_types: vec![CardType::Creature],
+                    colors: vec![c],
+                    ..Default::default()
+                },
+                pt_modification: Some(PTDelta { power, toughness }),
+            })));
+        }
+    }
+
+    None
+}
+
 fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<RulesText> {
     use crate::types::ability::{
         Rule, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
@@ -1137,6 +1233,12 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<RulesText>, Vec<Text
                     kind: AnnotationKind::ParsedUnimplemented,
                 });
             }
+            spans.push(span);
+            continue;
+        }
+
+        // Continuous P/T effect: "Creatures you control get +N/+M." etc. (CR 611.3b)
+        if let Some(span) = try_parse_continuous_pt_effect(paragraph) {
             spans.push(span);
             continue;
         }
@@ -3092,5 +3194,75 @@ mod tests {
                 .any(|a| a.kind == AnnotationKind::ReminderText
                     && text[a.start..a.end].starts_with("(Look at the top two cards"))
         );
+    }
+
+    #[test]
+    fn glorious_anthem_parses_as_continuous_effect() {
+        use super::parse_permanent;
+        use crate::types::{ControllerFilter, PTDelta, Rule, RulesText, card::CardType};
+
+        let (spans, _) = parse_permanent("Creatures you control get +1/+1.", "Glorious Anthem");
+        assert_eq!(spans.len(), 1);
+        match &spans[0] {
+            RulesText::Active(Rule::Continuous(effect)) => {
+                assert!(matches!(
+                    effect.subject_filter.controller,
+                    ControllerFilter::You
+                ));
+                assert_eq!(effect.subject_filter.card_types, vec![CardType::Creature]);
+                assert_eq!(
+                    effect.pt_modification,
+                    Some(PTDelta {
+                        power: 1,
+                        toughness: 1
+                    })
+                );
+            }
+            other => panic!("expected Rule::Continuous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn color_anthem_parses_as_continuous_effect() {
+        use super::parse_permanent;
+        use crate::types::{ControllerFilter, PTDelta, Rule, RulesText, mana::ManaColor};
+
+        let (spans, _) = parse_permanent("White creatures get +1/+1.", "Crusade");
+        assert_eq!(spans.len(), 1);
+        match &spans[0] {
+            RulesText::Active(Rule::Continuous(effect)) => {
+                assert!(matches!(
+                    effect.subject_filter.controller,
+                    ControllerFilter::Any
+                ));
+                assert_eq!(effect.subject_filter.colors, vec![ManaColor::White]);
+                assert_eq!(
+                    effect.pt_modification,
+                    Some(PTDelta {
+                        power: 1,
+                        toughness: 1
+                    })
+                );
+            }
+            other => panic!("expected Rule::Continuous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn subtype_anthem_parses_as_continuous_effect() {
+        use super::parse_permanent;
+        use crate::types::{Rule, RulesText};
+
+        let (spans, _) = parse_permanent(
+            "Creatures you control with Elf get +1/+1.",
+            "Elvish Archdruid",
+        );
+        assert_eq!(spans.len(), 1);
+        match &spans[0] {
+            RulesText::Active(Rule::Continuous(effect)) => {
+                assert_eq!(effect.subject_filter.subtypes, vec!["Elf".to_string()]);
+            }
+            other => panic!("expected Rule::Continuous, got {other:?}"),
+        }
     }
 }
