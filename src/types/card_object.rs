@@ -1,4 +1,4 @@
-use super::ability::{Rule, RulesText, StaticAbility};
+use super::ability::{KeywordAbility, Rule, RulesText};
 use super::card::CardDefinition;
 use super::ids::{ObjectId, PlayerId};
 use super::zone::Zone;
@@ -78,7 +78,7 @@ impl CardObject {
         self.definition.type_line.is_land()
     }
 
-    pub fn has_keyword(&self, kw: StaticAbility) -> bool {
+    pub fn has_keyword(&self, kw: KeywordAbility) -> bool {
         self.definition
             .rules_text
             .iter()
@@ -97,12 +97,12 @@ mod tests {
 
     #[test]
     fn has_keyword_returns_true_for_matching_ability() {
-        use crate::types::{Rule, RulesText, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::KeywordAbility};
         let mut def = grizzly_bears();
-        def.rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::Flying))];
+        def.rules_text = vec![RulesText::Active(Rule::Static(KeywordAbility::Flying))];
         let obj = CardObject::new(ObjectId(1), def, PlayerId(0), Zone::Battlefield);
-        assert!(obj.has_keyword(StaticAbility::Flying));
-        assert!(!obj.has_keyword(StaticAbility::Trample));
+        assert!(obj.has_keyword(KeywordAbility::Flying));
+        assert!(!obj.has_keyword(KeywordAbility::Trample));
     }
 
     #[test]

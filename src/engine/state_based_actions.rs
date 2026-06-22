@@ -1,5 +1,5 @@
 use crate::types::{
-    CounterKind, GameEvent, GameState, ObjectId, PlayerId, Zone, ability::StaticAbility,
+    CounterKind, GameEvent, GameState, ObjectId, PlayerId, Zone, ability::KeywordAbility,
 };
 
 /// Repeatedly finds and applies SBAs until no new ones trigger (CR 704.3).
@@ -50,7 +50,7 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     // CR 704.5h (deathtouch): creature dealt any deathtouch damage → graveyard.
     // CR 702.12b: Indestructible creatures are exempt from both 704.5f and 704.5g.
     for (&id, perm) in &state.battlefield {
-        if perm.is_creature() && !perm.has_keyword(StaticAbility::Indestructible) {
+        if perm.is_creature() && !perm.has_keyword(KeywordAbility::Indestructible) {
             let cont_bonus = super::continuous_pt_bonus(state, id);
             let lethal_damage = perm
                 .effective_toughness(cont_bonus.toughness)
@@ -230,7 +230,7 @@ mod tests {
         owner: PlayerId,
         power: i32,
         toughness: i32,
-        keywords: Vec<crate::types::ability::StaticAbility>,
+        keywords: Vec<crate::types::ability::KeywordAbility>,
     ) -> ObjectId {
         use crate::types::{CardDefinition, CardType, Rule, RulesText, TypeLine};
         let id = state.alloc_id();
@@ -262,14 +262,14 @@ mod tests {
 
     #[test]
     fn indestructible_survives_lethal_damage() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_state();
         let id = keyword_creature_on_battlefield(
             &mut gs,
             PlayerId(0),
             2,
             2,
-            vec![StaticAbility::Indestructible],
+            vec![KeywordAbility::Indestructible],
         );
         gs.battlefield.get_mut(&id).unwrap().damage_marked = 5; // more than toughness
 
@@ -296,14 +296,14 @@ mod tests {
 
     #[test]
     fn indestructible_survives_deathtouch_damage() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_state();
         let id = keyword_creature_on_battlefield(
             &mut gs,
             PlayerId(0),
             2,
             2,
-            vec![StaticAbility::Indestructible],
+            vec![KeywordAbility::Indestructible],
         );
         gs.battlefield.get_mut(&id).unwrap().damaged_by_deathtouch = true;
 
@@ -586,7 +586,7 @@ mod tests {
     fn persist_creature_returns_with_minus_counter_after_dying() {
         // CR 702.79: a 2/2 Persist creature (no -1/-1 counters) dies and returns
         // to the battlefield under its owner's control with a -1/-1 counter.
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaCost;
         use crate::types::{CardDefinition, CardType, CounterKind, RulesText, TypeLine, Zone};
 
@@ -601,7 +601,7 @@ mod tests {
                 subtypes: vec!["Wolf".into()],
             },
             oracle_text: "Persist".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Persist))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Persist))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -649,7 +649,7 @@ mod tests {
     #[test]
     fn persist_does_not_trigger_when_minus_counter_present() {
         // CR 702.79: a Persist creature that already has a -1/-1 counter dies permanently.
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaCost;
         use crate::types::{CardDefinition, CardType, CounterKind, RulesText, TypeLine};
 
@@ -664,7 +664,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Persist".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Persist))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Persist))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -694,7 +694,7 @@ mod tests {
     fn undying_creature_returns_with_plus_counter_after_dying() {
         // CR 702.93: a 2/1 Undying creature (no +1/+1 counters) dies and returns
         // under its owner's control with a +1/+1 counter (becomes 3/2).
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaCost;
         use crate::types::{CardDefinition, CardType, CounterKind, RulesText, TypeLine, Zone};
 
@@ -709,7 +709,7 @@ mod tests {
                 subtypes: vec!["Spirit".into()],
             },
             oracle_text: "Undying".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Undying))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Undying))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(1),
@@ -751,7 +751,7 @@ mod tests {
     #[test]
     fn undying_does_not_trigger_when_plus_counter_present() {
         // CR 702.93: an Undying creature that already has a +1/+1 counter dies permanently.
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaCost;
         use crate::types::{CardDefinition, CardType, CounterKind, RulesText, TypeLine};
 
@@ -766,7 +766,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Undying".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Undying))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Undying))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(1),

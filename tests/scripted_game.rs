@@ -402,7 +402,7 @@ fn first_striker_kills_blocker_and_survives_unscathed() {
 fn trample_excess_kills_player() {
     // Charging Badger is only 1/1 — not enough to demonstrate excess with a single blocker.
     // Use a manually-constructed 5/5 trampler instead.
-    use mecha_oracle::types::ability::StaticAbility;
+    use mecha_oracle::types::ability::KeywordAbility;
     use mecha_oracle::types::{
         CardDefinition, Rule, RulesText,
         card::{CardType, TypeLine},
@@ -424,7 +424,7 @@ fn trample_excess_kills_player() {
             subtypes: vec![],
         },
         oracle_text: String::new(),
-        rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Trample))],
+        rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Trample))],
         text_annotations: vec![],
         power: Some(5),
         toughness: Some(5),

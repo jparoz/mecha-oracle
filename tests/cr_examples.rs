@@ -14,7 +14,7 @@ use mecha_oracle::engine::mana::greedy_payment_plan;
 use mecha_oracle::types::card::{CardType, Supertype, TypeLine};
 use mecha_oracle::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use mecha_oracle::types::permanent::{PTDelta, PermanentState};
-use mecha_oracle::types::{CardDefinition, Rule, RulesText, StaticAbility};
+use mecha_oracle::types::{CardDefinition, KeywordAbility, Rule, RulesText};
 use mecha_oracle::types::{CardObject, GameState, Player, PlayerId, Zone};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -380,7 +380,7 @@ fn cr_112_4_ex1_effect_changes_creature_color_on_entry() {
 #[test]
 #[ignore = "requires: CantBlock static ability variant in the ability enum"]
 fn cr_113_2a_ex1_cant_block_is_an_ability() {
-    // Would test: oracle text "This creature can't block." is parsed as a StaticAbility
+    // Would test: oracle text "This creature can't block." is parsed as a KeywordAbility
     // (or equivalent), not as reminder text or rules text.
 }
 
@@ -806,7 +806,7 @@ fn cr_509_1b_ex1_flying_and_shadow_evasion_cumulative() {
     use mecha_oracle::engine::combat::can_block_attacker;
     use mecha_oracle::engine::turn::skip_to_first_main;
 
-    fn def_with_keywords(kws: &[StaticAbility]) -> CardDefinition {
+    fn def_with_keywords(kws: &[KeywordAbility]) -> CardDefinition {
         let mut d = make_creature_def(1, 1);
         d.rules_text = kws
             .iter()
@@ -824,7 +824,7 @@ fn cr_509_1b_ex1_flying_and_shadow_evasion_cumulative() {
 
     // Place flying+shadow attacker for Alice.
     let att_id = gs.alloc_id();
-    let att_def = def_with_keywords(&[StaticAbility::Flying, StaticAbility::Shadow]);
+    let att_def = def_with_keywords(&[KeywordAbility::Flying, KeywordAbility::Shadow]);
     let att_obj = CardObject::new(att_id, att_def, p0, Zone::Battlefield);
     let mut att_perm = PermanentState::new(&att_obj.definition);
     att_perm.controller_since_turn = 0;
@@ -833,7 +833,7 @@ fn cr_509_1b_ex1_flying_and_shadow_evasion_cumulative() {
 
     // Place flying-only blocker for Bob.
     let blk_id = gs.alloc_id();
-    let blk_def = def_with_keywords(&[StaticAbility::Flying]);
+    let blk_def = def_with_keywords(&[KeywordAbility::Flying]);
     let blk_obj = CardObject::new(blk_id, blk_def, p1, Zone::Battlefield);
     let blk_perm = PermanentState::new(&blk_obj.definition);
     gs.battlefield.insert(blk_id, blk_perm);
@@ -1474,8 +1474,8 @@ fn cr_702_164b_ex1_toxic_stacks_additively() {
     let def = {
         let mut d = make_creature_def(1, 1);
         d.rules_text = vec![
-            RulesText::Active(Rule::Static(StaticAbility::ToxicN(2))),
-            RulesText::Active(Rule::Static(StaticAbility::ToxicN(1))),
+            RulesText::Active(Rule::Static(KeywordAbility::ToxicN(2))),
+            RulesText::Active(Rule::Static(KeywordAbility::ToxicN(1))),
         ];
         d
     };

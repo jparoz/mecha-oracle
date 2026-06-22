@@ -53,7 +53,7 @@ pub fn can_pay_cost_components(
     object_id: Option<ObjectId>,
     components: &[CostComponent],
 ) -> bool {
-    use crate::types::ability::StaticAbility;
+    use crate::types::ability::KeywordAbility;
     for component in components {
         if let CostComponent::Tap = component {
             let Some(id) = object_id else { return false };
@@ -64,7 +64,7 @@ pub fn can_pay_cost_components(
                 return false;
             }
             let cmt = state.controllers_most_recent_turn(player_id);
-            if perm.summoning_sick(cmt) && !perm.has_keyword(StaticAbility::Haste) {
+            if perm.summoning_sick(cmt) && !perm.has_keyword(KeywordAbility::Haste) {
                 return false;
             }
         }

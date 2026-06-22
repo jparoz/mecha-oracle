@@ -1,4 +1,4 @@
-use crate::types::ability::{Rule, StaticAbility, TargetFilter};
+use crate::types::ability::{KeywordAbility, Rule, TargetFilter};
 
 // CR 202.3: mana value is the sum of pip values; delegates to ManaCost::mana_value().
 fn mana_value_of(cost: &crate::types::mana::ManaCost) -> u32 {
@@ -38,16 +38,17 @@ pub fn is_legal_target(
                 return false;
             }
             // CR 702.18: Shroud prevents targeting by anyone
-            if obj.has_keyword(StaticAbility::Shroud) {
+            if obj.has_keyword(KeywordAbility::Shroud) {
                 return false;
             }
             // CR 702.11: Hexproof prevents targeting by opponents
-            if obj.has_keyword(StaticAbility::Hexproof) && obj.controller != caster {
+            if obj.has_keyword(KeywordAbility::Hexproof) && obj.controller != caster {
                 return false;
             }
             // CR 702.16c: protection prevents targeting by sources of protected quality
             for span in &obj.definition.rules_text {
-                if let RulesText::Active(Rule::Static(StaticAbility::ProtectionFromColor(c))) = span
+                if let RulesText::Active(Rule::Static(KeywordAbility::ProtectionFromColor(c))) =
+                    span
                     && source_colors.contains(c)
                 {
                     return false;
@@ -261,7 +262,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Shroud))],
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Shroud))],
         );
         let target = EffectTarget::Object { id };
         assert!(!is_legal_target(
@@ -286,7 +287,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Hexproof))],
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Hexproof))],
         );
         let target = EffectTarget::Object { id };
         assert!(!is_legal_target(
@@ -304,7 +305,7 @@ mod tests {
         let id = place_creature(
             &mut gs,
             PlayerId(1),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Hexproof))],
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Hexproof))],
         );
         let target = EffectTarget::Object { id };
         assert!(is_legal_target(
@@ -403,7 +404,7 @@ mod tests {
             &mut gs,
             PlayerId(1),
             vec![RulesText::Active(Rule::Static(
-                StaticAbility::ProtectionFromColor(ManaColor::Blue),
+                KeywordAbility::ProtectionFromColor(ManaColor::Blue),
             ))],
         );
         let target = EffectTarget::Object { id };
@@ -425,7 +426,7 @@ mod tests {
             &mut gs,
             PlayerId(1),
             vec![RulesText::Active(Rule::Static(
-                StaticAbility::ProtectionFromColor(ManaColor::Blue),
+                KeywordAbility::ProtectionFromColor(ManaColor::Blue),
             ))],
         );
         let target = EffectTarget::Object { id };

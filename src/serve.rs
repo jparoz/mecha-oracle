@@ -17,7 +17,8 @@ use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
 use mecha_oracle::types::ability::{
-    ActivatedAbility, AnnotationKind, CostComponent, Rule, RulesText, StaticAbility, TextAnnotation,
+    ActivatedAbility, AnnotationKind, CostComponent, KeywordAbility, Rule, RulesText,
+    TextAnnotation,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
 use mecha_oracle::types::stack::StackPayload;
@@ -470,7 +471,7 @@ fn can_cast_structural(state: &GameState, pid: PlayerId, obj: &CardObject) -> bo
         .type_line
         .card_types
         .contains(&CardType::Instant)
-        || obj.has_keyword(StaticAbility::Flash);
+        || obj.has_keyword(KeywordAbility::Flash);
     if is_instant_speed {
         return true;
     }
@@ -514,13 +515,13 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
 
     // Cast spell (lands cannot be cast)
     if !is_land && obj.definition.mana_cost.is_some() && can_cast_structural(state, pid, obj) {
-        // Collect target requirements from all spell abilities (SpellEffect)
+        // Collect target requirements from all spell abilities (SpellAbility)
         let target_filters: Vec<_> = obj
             .definition
             .rules_text
             .iter()
             .filter_map(|span| match span {
-                RulesText::Active(Rule::SpellEffect(sa)) if !sa.target_requirements.is_empty() => {
+                RulesText::Active(Rule::SpellAbility(sa)) if !sa.target_requirements.is_empty() => {
                     Some(sa.target_requirements.as_slice())
                 }
                 _ => None,
@@ -1945,7 +1946,7 @@ mod tests {
         ];
         let db = test_db();
         let mut gs = build_game_state(config, &db, false).unwrap();
-        use mecha_oracle::types::ability::SpellEffect;
+        use mecha_oracle::types::ability::SpellAbility;
         let def = CardDefinition {
             name: "Cheap Instant".into(),
             mana_cost: Some(ManaCost {
@@ -1957,7 +1958,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],
@@ -2182,7 +2183,7 @@ mod tests {
     #[test]
     fn autoskips_declare_blockers_when_no_valid_blocker_for_any_attacker() {
         // P0 has a flying attacker; P1 has only a ground creature — no valid blockers.
-        use mecha_oracle::types::ability::StaticAbility;
+        use mecha_oracle::types::ability::KeywordAbility;
         use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
         use mecha_oracle::types::{CardObject, Rule, RulesText, Zone};
         let db = test_db();
@@ -2203,7 +2204,7 @@ mod tests {
                     subtypes: vec![],
                 },
                 oracle_text: String::new(),
-                rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Flying))],
+                rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Flying))],
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),
@@ -2324,7 +2325,7 @@ mod tests {
 
     #[test]
     fn blocker_ui_only_shows_valid_pairings() {
-        use mecha_oracle::types::ability::StaticAbility;
+        use mecha_oracle::types::ability::KeywordAbility;
         use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
         use mecha_oracle::types::{CardObject, Rule, RulesText, Zone};
 
@@ -2347,7 +2348,7 @@ mod tests {
                     subtypes: vec![],
                 },
                 oracle_text: String::new(),
-                rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Flying))],
+                rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Flying))],
                 text_annotations: vec![],
                 power: Some(2),
                 toughness: Some(2),

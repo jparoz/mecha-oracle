@@ -1,4 +1,4 @@
-use super::ability::{Rule, RulesText, StaticAbility};
+use super::ability::{KeywordAbility, Rule, RulesText};
 use super::card::CardDefinition;
 use super::counter::CounterKind;
 use std::collections::HashMap;
@@ -50,7 +50,7 @@ impl PermanentState {
         }
     }
 
-    pub fn has_keyword(&self, kw: StaticAbility) -> bool {
+    pub fn has_keyword(&self, kw: KeywordAbility) -> bool {
         self.definition
             .rules_text
             .iter()
@@ -60,7 +60,7 @@ impl PermanentState {
     /// Returns the Bushido parameter N if this permanent has Bushido N, otherwise None.
     pub fn bushido_n(&self) -> Option<u32> {
         self.definition.rules_text.iter().find_map(|span| {
-            if let RulesText::Active(Rule::Static(StaticAbility::BushidoN(n))) = span {
+            if let RulesText::Active(Rule::Static(KeywordAbility::BushidoN(n))) = span {
                 Some(*n)
             } else {
                 None
@@ -76,7 +76,7 @@ impl PermanentState {
             .rules_text
             .iter()
             .filter_map(|span| {
-                if let RulesText::Active(Rule::Static(StaticAbility::ToxicN(n))) = span {
+                if let RulesText::Active(Rule::Static(KeywordAbility::ToxicN(n))) = span {
                     Some(*n)
                 } else {
                     None
@@ -135,14 +135,14 @@ impl PermanentState {
     pub fn can_attack(&self, controllers_most_recent_turn: u32) -> bool {
         self.is_creature()
             && !self.tapped
-            && !self.has_keyword(StaticAbility::Defender)
+            && !self.has_keyword(KeywordAbility::Defender)
             && (!self.summoning_sick(controllers_most_recent_turn)
-                || self.has_keyword(StaticAbility::Haste))
+                || self.has_keyword(KeywordAbility::Haste))
     }
 
     /// CR 509.1a — a creature can block if untapped and not Decayed.
     pub fn can_block(&self) -> bool {
-        self.is_creature() && !self.tapped && !self.has_keyword(StaticAbility::Decayed)
+        self.is_creature() && !self.tapped && !self.has_keyword(KeywordAbility::Decayed)
     }
 
     pub fn counter_count(&self, kind: &CounterKind) -> u32 {
@@ -199,9 +199,9 @@ mod tests {
 
     #[test]
     fn summoning_sick_creature_with_haste_can_attack() {
-        use crate::types::{Rule, RulesText, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::KeywordAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::Haste))];
+        def.rules_text = vec![RulesText::Active(Rule::Static(KeywordAbility::Haste))];
         let perm = PermanentState::new(&def); // controller_since_turn = u32::MAX → sick
         assert!(perm.can_attack(1)); // sick but has Haste
     }
@@ -272,9 +272,9 @@ mod tests {
 
     #[test]
     fn bushido_n_returns_some_for_bushido_creature() {
-        use crate::types::{Rule, RulesText, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::KeywordAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::BushidoN(3)))];
+        def.rules_text = vec![RulesText::Active(Rule::Static(KeywordAbility::BushidoN(3)))];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.bushido_n(), Some(3));
     }
@@ -389,9 +389,9 @@ mod tests {
 
     #[test]
     fn toxic_n_returns_some_for_toxic_creature() {
-        use crate::types::{Rule, RulesText, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::KeywordAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
-        def.rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::ToxicN(3)))];
+        def.rules_text = vec![RulesText::Active(Rule::Static(KeywordAbility::ToxicN(3)))];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.toxic_n(), Some(3));
     }
@@ -405,11 +405,11 @@ mod tests {
     #[test]
     fn toxic_n_sums_multiple_toxic_abilities() {
         // CR 702.164b: total toxic value is the sum of all N values.
-        use crate::types::{Rule, RulesText, ability::StaticAbility};
+        use crate::types::{Rule, RulesText, ability::KeywordAbility};
         let mut def = test_db().get("Grizzly Bears").unwrap().clone();
         def.rules_text = vec![
-            RulesText::Active(Rule::Static(StaticAbility::ToxicN(2))),
-            RulesText::Active(Rule::Static(StaticAbility::ToxicN(1))),
+            RulesText::Active(Rule::Static(KeywordAbility::ToxicN(2))),
+            RulesText::Active(Rule::Static(KeywordAbility::ToxicN(1))),
         ];
         let perm = PermanentState::new(&def);
         assert_eq!(perm.toxic_n(), Some(3));

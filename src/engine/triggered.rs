@@ -1,4 +1,4 @@
-use crate::types::ability::{Rule, StaticAbility, TriggerEvent, TriggeredAbility};
+use crate::types::ability::{KeywordAbility, Rule, TriggerEvent, TriggeredAbility};
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
 use crate::types::{
@@ -538,9 +538,9 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
             });
         }
 
-        // TRANSITIONAL SHIM — StaticAbility::Evolve until parser emits TriggeredAbility spans.
-        // When StaticAbility::Evolve is removed from the parser, remove this entire block.
-        // IMPORTANT: If a card carries both StaticAbility::Evolve AND a TriggeredAbility Evolve span,
+        // TRANSITIONAL SHIM — KeywordAbility::Evolve until parser emits TriggeredAbility spans.
+        // When KeywordAbility::Evolve is removed from the parser, remove this entire block.
+        // IMPORTANT: If a card carries both KeywordAbility::Evolve AND a TriggeredAbility Evolve span,
         // it will double-fire. Remove this shim before that migration begins.
         if let GameEvent::EntersTheBattlefield {
             subject_id: entering_id,
@@ -551,7 +551,7 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                 && state
                     .battlefield
                     .get(&source_id)
-                    .map(|p| p.has_keyword(StaticAbility::Evolve))
+                    .map(|p| p.has_keyword(KeywordAbility::Evolve))
                     .unwrap_or(false)
             {
                 let entering_controller = state.objects.get(&entering_id).map(|o| o.controller);
@@ -603,9 +603,9 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
             }
         }
 
-        // TRANSITIONAL SHIM — StaticAbility::Persist / StaticAbility::Undying.
+        // TRANSITIONAL SHIM — KeywordAbility::Persist / KeywordAbility::Undying.
         // When the parser emits TriggeredAbility spans for these keywords, remove this block.
-        // IMPORTANT: If a card carries both StaticAbility::Persist AND a TriggeredAbility Persist
+        // IMPORTANT: If a card carries both KeywordAbility::Persist AND a TriggeredAbility Persist
         // span, it will double-fire. Remove this shim before that migration begins.
         if let GameEvent::Dies {
             subject_id: dying_id,
@@ -618,13 +618,13 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                 let has_persist = rules_text.iter().any(|span| {
                     matches!(
                         span,
-                        RulesText::Active(Rule::Static(StaticAbility::Persist))
+                        RulesText::Active(Rule::Static(KeywordAbility::Persist))
                     )
                 });
                 let has_undying = rules_text.iter().any(|span| {
                     matches!(
                         span,
-                        RulesText::Active(Rule::Static(StaticAbility::Undying))
+                        RulesText::Active(Rule::Static(KeywordAbility::Undying))
                     )
                 });
 
@@ -752,7 +752,7 @@ pub fn flanking_triggered_ability() -> TriggeredAbility {
             },
         },
         condition: Some(TriggerCondition::SubjectLacksKeyword(
-            StaticAbility::Flanking,
+            KeywordAbility::Flanking,
         )),
         target_mode: TriggerTargetMode::Subject,
         effect: vec![EffectStep::BoostPermanentPT(PTDelta {
@@ -916,7 +916,7 @@ mod tests {
         owner: PlayerId,
         power: i32,
         toughness: i32,
-        keywords: Vec<StaticAbility>,
+        keywords: Vec<KeywordAbility>,
     ) -> ObjectId {
         use crate::types::RulesText;
         use crate::types::ability::Rule;
@@ -974,7 +974,7 @@ mod tests {
         owner: PlayerId,
         power: i32,
         toughness: i32,
-        keywords: Vec<StaticAbility>,
+        keywords: Vec<KeywordAbility>,
     ) -> ObjectId {
         use crate::types::RulesText;
         use crate::types::ability::Rule;
@@ -1138,12 +1138,12 @@ mod tests {
     fn evolve_triggers_when_creature_with_greater_power_enters() {
         // CR 702.100b: Evolve fires if entering creature has greater power.
         use crate::types::CounterKind;
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         use crate::types::effect::EffectTarget;
         use crate::types::stack::StackPayload;
         let mut gs = two_player_state();
         let evolve_id =
-            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 3, 2, vec![]);
 
         let triggers = collect_triggers_for_event(
@@ -1177,11 +1177,11 @@ mod tests {
     #[test]
     fn evolve_triggers_when_creature_with_greater_toughness_enters() {
         // CR 702.100b: Also triggers on greater toughness.
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         use crate::types::effect::EffectTarget;
         let mut gs = two_player_state();
         let evolve_id =
-            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 3, vec![]);
 
         let triggers = collect_triggers_for_event(
@@ -1203,10 +1203,10 @@ mod tests {
     #[test]
     fn evolve_does_not_trigger_when_equal_power_and_toughness_enters() {
         // CR 702.100b: "greater power or greater toughness" — equal doesn't qualify.
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = two_player_state();
         let _evolve_id =
-            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![]);
 
         let triggers = collect_triggers_for_event(
@@ -1222,10 +1222,10 @@ mod tests {
     #[test]
     fn evolve_does_not_trigger_for_opponent_creature_etb() {
         // CR 702.100b: Only triggers on creatures entering under YOUR control.
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = two_player_state();
         let _evolve_id =
-            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(1), 5, 5, vec![]);
 
         let triggers = collect_triggers_for_event(
@@ -1245,10 +1245,10 @@ mod tests {
     #[test]
     fn evolve_does_not_trigger_on_itself() {
         // An Evolve creature ETBing should not trigger its own Evolve.
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = two_player_state();
         let evolve_id =
-            enter_creature_on_battlefield(&mut gs, PlayerId(0), 5, 5, vec![StaticAbility::Evolve]);
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 5, 5, vec![KeywordAbility::Evolve]);
 
         let triggers = collect_triggers_for_event(
             &mut gs,
@@ -1711,9 +1711,9 @@ mod tests {
 
         let mut gs = two_player_state();
         let flanking_span_a = RulesText::Active(Rule::Triggered(flanking_triggered_ability()));
-        let flanking_span_b = RulesText::Active(Rule::Static(StaticAbility::Flanking));
+        let flanking_span_b = RulesText::Active(Rule::Static(KeywordAbility::Flanking));
         let attacker_id = triggered_attacker(&mut gs, PlayerId(0), 2, 2, vec![flanking_span_a]);
-        // Blocker also has Flanking (as StaticAbility so has_keyword check fires).
+        // Blocker also has Flanking (as KeywordAbility so has_keyword check fires).
         let blocker_id = triggered_blocker(&mut gs, PlayerId(1), 2, 2, vec![flanking_span_b]);
 
         gs.combat.attackers = vec![attacker_id];
@@ -2150,8 +2150,8 @@ mod tests {
 
     #[test]
     fn persist_trigger_fires_on_death_when_no_minus_counter() {
-        // CR 702.79: StaticAbility::Persist shim fires when no -1/-1 counter present.
-        use crate::types::ability::{Rule, StaticAbility};
+        // CR 702.79: KeywordAbility::Persist shim fires when no -1/-1 counter present.
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::effect::EffectStep;
         use crate::types::stack::StackPayload;
         use crate::types::zone::{Zone, ZoneOwner};
@@ -2167,7 +2167,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Persist".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Persist))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Persist))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -2209,7 +2209,7 @@ mod tests {
     #[test]
     fn persist_trigger_suppressed_when_minus_counter_present() {
         // CR 702.79: Persist does not fire when the dying creature already has a -1/-1 counter.
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::{CounterKind, GameEvent, RulesText};
 
         let mut gs = two_player_state();
@@ -2222,7 +2222,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Persist".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Persist))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Persist))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -2246,8 +2246,8 @@ mod tests {
 
     #[test]
     fn undying_trigger_fires_on_death_when_no_plus_counter() {
-        // CR 702.93: StaticAbility::Undying shim fires when no +1/+1 counter present.
-        use crate::types::ability::{Rule, StaticAbility};
+        // CR 702.93: KeywordAbility::Undying shim fires when no +1/+1 counter present.
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::effect::EffectStep;
         use crate::types::stack::StackPayload;
         use crate::types::zone::{Zone, ZoneOwner};
@@ -2263,7 +2263,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Undying".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Undying))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Undying))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(1),
@@ -2304,7 +2304,7 @@ mod tests {
     #[test]
     fn undying_trigger_suppressed_when_plus_counter_present() {
         // CR 702.93: Undying does not fire when the dying creature already has a +1/+1 counter.
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::{CounterKind, GameEvent, RulesText};
 
         let mut gs = two_player_state();
@@ -2317,7 +2317,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Undying".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Undying))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Undying))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(1),
@@ -2344,7 +2344,7 @@ mod tests {
         use crate::types::GameEvent;
         let mut gs = two_player_state();
         let evolve_id =
-            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Evolve]);
+            enter_creature_on_battlefield(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Evolve]);
         let entering_id = enter_creature_on_battlefield(&mut gs, PlayerId(0), 3, 2, vec![]);
 
         let triggers = collect_triggers_for_event(

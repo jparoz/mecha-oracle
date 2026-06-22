@@ -1,6 +1,6 @@
 use super::combat::deal_combat_damage;
 use super::state_based_actions::move_to_graveyard;
-use crate::types::ability::StaticAbility;
+use crate::types::ability::KeywordAbility;
 use crate::types::{CombatState, GameState, ObjectId, PTDelta, PlayerId, Step, Zone};
 
 /// Apply the automatic rules for the start of the current step/phase.
@@ -52,7 +52,7 @@ fn end_of_combat_step(mut state: GameState) -> GameState {
             state
                 .battlefield
                 .get(&id)
-                .map(|p| p.has_keyword(StaticAbility::Decayed))
+                .map(|p| p.has_keyword(KeywordAbility::Decayed))
                 .unwrap_or(false)
         })
         .copied()
@@ -498,7 +498,7 @@ mod tests {
     #[test]
     fn decayed_attacker_sacrificed_at_end_of_combat() {
         use crate::types::card::{CardType, TypeLine};
-        use crate::types::{CardDefinition, Rule, RulesText, ability::StaticAbility};
+        use crate::types::{CardDefinition, Rule, RulesText, ability::KeywordAbility};
         let mut gs = make_state();
         gs.step = Step::EndOfCombat;
         let id = gs.alloc_id();
@@ -511,7 +511,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Decayed))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Decayed))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),

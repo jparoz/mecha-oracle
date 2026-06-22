@@ -14,8 +14,8 @@ pub mod zone;
 
 pub use ability::{
     ActivatedAbility, AnnotationKind, CardFilter, CastFilter, ContinuousEffect, ControllerFilter,
-    Cost, CostComponent, DamageTargetKind, GameEvent, IgnoredKind, LandwalkKind, PermanentFilter,
-    Rule, RulesText, SpellEffect, SpellFilter, StaticAbility, TargetFilter, TextAnnotation,
+    Cost, CostComponent, DamageTargetKind, GameEvent, IgnoredKind, KeywordAbility, LandwalkKind,
+    PermanentFilter, Rule, RulesText, SpellAbility, SpellFilter, TargetFilter, TextAnnotation,
     TriggerCondition, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,
     TurnOwner,
 };

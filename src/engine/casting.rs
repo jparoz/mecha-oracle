@@ -1,5 +1,5 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
-use crate::types::ability::StaticAbility;
+use crate::types::ability::KeywordAbility;
 use crate::types::card::CardType;
 use crate::types::{GameState, ObjectId, PermanentState, PlayerId, Step, Zone};
 
@@ -86,7 +86,7 @@ fn is_instant_speed(obj: &crate::types::CardObject) -> bool {
         .type_line
         .card_types
         .contains(&CardType::Instant)
-        || obj.has_keyword(StaticAbility::Flash)
+        || obj.has_keyword(KeywordAbility::Flash)
 }
 
 /// Cast any spell from hand — creatures, instants, sorceries, artifacts, enchantments.
@@ -116,7 +116,7 @@ pub fn cast_spell(
                     .rules_text
                     .iter()
                     .filter_map(|span| match span {
-                        RulesText::Active(Rule::SpellEffect(sa)) => {
+                        RulesText::Active(Rule::SpellAbility(sa)) => {
                             Some(sa.target_requirements.clone())
                         }
                         _ => None,
@@ -261,7 +261,7 @@ pub fn cast_spell(
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::ability::StaticAbility;
+    use crate::types::ability::KeywordAbility;
     use crate::types::card::{CardDefinition, CardType, TypeLine};
     use crate::types::effect::EffectStep;
     use crate::types::mana::{ManaCost, ManaPip};
@@ -269,7 +269,7 @@ mod tests {
     use crate::types::{Rule, RulesText};
 
     fn make_instant_def(name: &str, cost_pips: Vec<ManaPip>) -> CardDefinition {
-        use crate::types::ability::SpellEffect;
+        use crate::types::ability::SpellAbility;
         CardDefinition {
             name: name.into(),
             mana_cost: Some(ManaCost { pips: cost_pips }),
@@ -279,7 +279,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],
@@ -302,7 +302,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Flash".into(),
-            rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Flash))],
+            rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Flash))],
             text_annotations: vec![],
             power: Some(2),
             toughness: Some(2),
@@ -695,7 +695,7 @@ mod tests {
 
     #[test]
     fn cast_targeted_spell_without_target_returns_wrong_number() {
-        use crate::types::ability::{SpellEffect, TargetFilter};
+        use crate::types::ability::{SpellAbility, TargetFilter};
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 1;
         let targeted_instant_def = CardDefinition {
@@ -709,7 +709,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
@@ -725,7 +725,7 @@ mod tests {
 
     #[test]
     fn cast_targeted_spell_with_illegal_target_returns_illegal_target() {
-        use crate::types::ability::{SpellEffect, TargetFilter};
+        use crate::types::ability::{SpellAbility, TargetFilter};
         use crate::types::effect::EffectTarget;
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 1;
@@ -740,7 +740,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
@@ -764,7 +764,7 @@ mod tests {
     #[test]
     fn cast_targeted_spell_with_valid_target_succeeds() {
         use crate::types::PermanentState;
-        use crate::types::ability::{SpellEffect, TargetFilter};
+        use crate::types::ability::{SpellAbility, TargetFilter};
         use crate::types::effect::EffectTarget;
         let mut gs = make_state();
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 1;
@@ -801,7 +801,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
@@ -907,7 +907,7 @@ mod tests {
     }
 
     fn make_targeted_instant_def() -> CardDefinition {
-        use crate::types::ability::{SpellEffect, TargetFilter};
+        use crate::types::ability::{SpellAbility, TargetFilter};
         CardDefinition {
             name: "Shock".into(),
             mana_cost: Some(ManaCost {
@@ -919,7 +919,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets -1/-1 until end of turn.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![],
             }))],
@@ -1149,7 +1149,7 @@ mod tests {
     // --- Counterspell integration tests (CR 701.5, CR 608.2b) ---
 
     fn make_counterspell_def() -> CardDefinition {
-        use crate::types::ability::{SpellEffect, SpellFilter, TargetFilter};
+        use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
         use crate::types::mana::ManaColor;
         CardDefinition {
             name: "Counterspell".into(),
@@ -1162,7 +1162,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Counter target spell.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![TargetFilter::Spell(SpellFilter::any())],
                 steps: vec![EffectStep::CounterSpell],
             }))],
@@ -1174,7 +1174,7 @@ mod tests {
     }
 
     fn make_negate_def() -> CardDefinition {
-        use crate::types::ability::{SpellEffect, SpellFilter, TargetFilter};
+        use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
         use crate::types::mana::ManaColor;
         CardDefinition {
             name: "Negate".into(),
@@ -1187,7 +1187,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Counter target noncreature spell.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![TargetFilter::Spell(SpellFilter::noncreature())],
                 steps: vec![EffectStep::CounterSpell],
             }))],
@@ -1244,7 +1244,7 @@ mod tests {
     #[test]
     fn negate_counters_opponent_noncreature_spell() {
         use crate::engine::stack::pass_priority;
-        use crate::types::ability::SpellEffect;
+        use crate::types::ability::SpellAbility;
         use crate::types::effect::EffectTarget;
         use crate::types::mana::ManaColor;
 
@@ -1261,7 +1261,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Draw a card.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![],
                 steps: vec![EffectStep::DrawCard(1)],
             }))],

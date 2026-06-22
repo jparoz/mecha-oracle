@@ -260,7 +260,7 @@ fn giant_growth_fizzles_when_target_leaves() {
 // CR 601.2c: if a declared target is not legal, the spell cannot be cast.
 #[test]
 fn cant_cast_giant_growth_targeting_shroud_creature() {
-    use mecha_oracle::types::ability::StaticAbility;
+    use mecha_oracle::types::ability::KeywordAbility;
     use mecha_oracle::types::card::{CardType, TypeLine};
     use mecha_oracle::types::{CardDefinition, Rule, RulesText};
 
@@ -285,7 +285,7 @@ fn cant_cast_giant_growth_targeting_shroud_creature() {
             subtypes: vec![],
         },
         oracle_text: "Shroud".into(),
-        rules_text: vec![RulesText::Active(Rule::Static(StaticAbility::Shroud))],
+        rules_text: vec![RulesText::Active(Rule::Static(KeywordAbility::Shroud))],
         text_annotations: vec![],
         power: Some(1),
         toughness: Some(1),

@@ -68,17 +68,17 @@ pub(crate) fn inject_source_flags(
     effect: crate::types::effect::Effect,
     source_rules_text: &[crate::types::RulesText],
 ) -> crate::types::effect::Effect {
-    use crate::types::ability::StaticAbility;
+    use crate::types::ability::KeywordAbility;
     use crate::types::effect::{DamageStep, EffectStep};
 
     effect
         .into_iter()
         .map(|step| match step {
             EffectStep::DealDamage(s) => EffectStep::DealDamage(DamageStep {
-                lifelink: has_damage_kw(source_rules_text, &StaticAbility::Lifelink),
-                deathtouch: has_damage_kw(source_rules_text, &StaticAbility::Deathtouch),
-                wither: has_damage_kw(source_rules_text, &StaticAbility::Wither),
-                infect: has_damage_kw(source_rules_text, &StaticAbility::Infect),
+                lifelink: has_damage_kw(source_rules_text, &KeywordAbility::Lifelink),
+                deathtouch: has_damage_kw(source_rules_text, &KeywordAbility::Deathtouch),
+                wither: has_damage_kw(source_rules_text, &KeywordAbility::Wither),
+                infect: has_damage_kw(source_rules_text, &KeywordAbility::Infect),
                 ..s
             }),
             other => other,
@@ -88,7 +88,7 @@ pub(crate) fn inject_source_flags(
 
 fn has_damage_kw(
     rules_text: &[crate::types::RulesText],
-    kw: &crate::types::ability::StaticAbility,
+    kw: &crate::types::ability::KeywordAbility,
 ) -> bool {
     use crate::types::RulesText;
     use crate::types::ability::Rule;
@@ -447,7 +447,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                             .iter()
                             .filter_map(|span| match span {
                                 crate::types::RulesText::Active(
-                                    crate::types::Rule::SpellEffect(spell_ability),
+                                    crate::types::Rule::SpellAbility(spell_ability),
                                 ) => Some(spell_ability.steps.clone()),
                                 _ => None,
                             })
@@ -796,7 +796,7 @@ mod tests {
         owner: PlayerId,
         steps: Vec<EffectStep>,
     ) -> ObjectId {
-        use crate::types::ability::SpellEffect;
+        use crate::types::ability::SpellAbility;
         let def = CardDefinition {
             name: "Test Instant".into(),
             mana_cost: Some(ManaCost {
@@ -808,7 +808,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![],
                 steps,
             }))],
@@ -828,7 +828,7 @@ mod tests {
         owner: PlayerId,
         steps: Vec<EffectStep>,
     ) -> ObjectId {
-        use crate::types::ability::SpellEffect;
+        use crate::types::ability::SpellAbility;
         let def = CardDefinition {
             name: "Test Sorcery".into(),
             mana_cost: Some(ManaCost {
@@ -840,7 +840,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: String::new(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![],
                 steps,
             }))],
@@ -1182,7 +1182,7 @@ mod tests {
     #[test]
     fn targeted_spell_fizzles_when_target_leaves_before_resolution() {
         use crate::types::PTDelta;
-        use crate::types::ability::{SpellEffect, TargetFilter};
+        use crate::types::ability::{SpellAbility, TargetFilter};
         use crate::types::effect::EffectTarget;
 
         let mut gs = make_state();
@@ -1221,7 +1221,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Target creature gets +3/+3 until end of turn.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps: vec![EffectStep::BoostPermanentPT(PTDelta {
                     power: 3,
@@ -2019,10 +2019,10 @@ mod tests {
     fn inject_source_flags_sets_lifelink_from_abilities() {
         use crate::engine::stack::inject_source_flags;
         use crate::types::RulesText;
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::effect::{DamageStep, EffectStep};
 
-        let rules_text = vec![RulesText::Active(Rule::Static(StaticAbility::Lifelink))];
+        let rules_text = vec![RulesText::Active(Rule::Static(KeywordAbility::Lifelink))];
         let effect = vec![EffectStep::DealDamage(DamageStep {
             amount: 2,
             ..Default::default()
@@ -2044,12 +2044,12 @@ mod tests {
     fn inject_source_flags_sets_wither_and_infect() {
         use crate::engine::stack::inject_source_flags;
         use crate::types::RulesText;
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::effect::{DamageStep, EffectStep};
 
         let rules_text = vec![
-            RulesText::Active(Rule::Static(StaticAbility::Wither)),
-            RulesText::Active(Rule::Static(StaticAbility::Infect)),
+            RulesText::Active(Rule::Static(KeywordAbility::Wither)),
+            RulesText::Active(Rule::Static(KeywordAbility::Infect)),
         ];
         let effect = vec![EffectStep::DealDamage(DamageStep {
             amount: 1,
@@ -2096,7 +2096,7 @@ mod tests {
 
     #[test]
     fn counter_spell_step_counters_targeted_stack_spell() {
-        use crate::types::ability::{SpellEffect, SpellFilter, TargetFilter};
+        use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
         use crate::types::effect::EffectTarget;
         use crate::types::mana::ManaColor;
 
@@ -2148,7 +2148,7 @@ mod tests {
                 subtypes: vec![],
             },
             oracle_text: "Counter target spell.".into(),
-            rules_text: vec![RulesText::Active(Rule::SpellEffect(SpellEffect {
+            rules_text: vec![RulesText::Active(Rule::SpellAbility(SpellAbility {
                 target_requirements: vec![TargetFilter::Spell(SpellFilter::any())],
                 steps: vec![EffectStep::CounterSpell],
             }))],

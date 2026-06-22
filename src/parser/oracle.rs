@@ -4,7 +4,7 @@ use crate::types::effect::{Effect, EffectStep};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip, ManaPool};
 use crate::types::{
     IgnoredKind, LandwalkKind, Rule, RulesText,
-    ability::{ActivatedAbility, StaticAbility},
+    ability::{ActivatedAbility, KeywordAbility},
 };
 
 // ── Private helpers ──────────────────────────────────────────────────────────
@@ -421,7 +421,7 @@ fn match_keyword(kw: &str) -> RulesText {
     // ── Fully-implemented keywords ────────────────────────────────────────────
     macro_rules! active {
         ($variant:ident) => {
-            RulesText::Active(Rule::Static(StaticAbility::$variant))
+            RulesText::Active(Rule::Static(KeywordAbility::$variant))
         };
     }
     match s {
@@ -463,14 +463,14 @@ fn match_keyword(kw: &str) -> RulesText {
     if let Some(rest) = s.strip_prefix("bushido ")
         && let Some(n) = parse_number_word(rest.trim())
     {
-        return RulesText::Active(Rule::Static(StaticAbility::BushidoN(n)));
+        return RulesText::Active(Rule::Static(KeywordAbility::BushidoN(n)));
     }
 
     // CR 702.164 Toxic N
     if let Some(rest) = s.strip_prefix("toxic ")
         && let Ok(n) = rest.trim().parse::<u32>()
     {
-        return RulesText::Active(Rule::Static(StaticAbility::ToxicN(n)));
+        return RulesText::Active(Rule::Static(KeywordAbility::ToxicN(n)));
     }
 
     // Plain cycling (not type-cycling variants like mountaincycling).
@@ -483,17 +483,17 @@ fn match_keyword(kw: &str) -> RulesText {
 
     // Fear (CR 702.36)
     if s == "fear" {
-        return RulesText::Active(Rule::Static(StaticAbility::Fear));
+        return RulesText::Active(Rule::Static(KeywordAbility::Fear));
     }
 
     // Intimidate (CR 702.13)
     if s == "intimidate" {
-        return RulesText::Active(Rule::Static(StaticAbility::Intimidate));
+        return RulesText::Active(Rule::Static(KeywordAbility::Intimidate));
     }
 
     // Battle Cry (CR 702.91)
     if s == "battle cry" {
-        return RulesText::Active(Rule::Static(StaticAbility::BattleCry));
+        return RulesText::Active(Rule::Static(KeywordAbility::BattleCry));
     }
 
     // Ward {cost} (CR 702.21a) — mana cost form e.g. "Ward {2}"
@@ -530,7 +530,7 @@ fn match_keyword(kw: &str) -> RulesText {
             _ => None,
         };
         if let Some(c) = color {
-            return RulesText::Active(Rule::Static(StaticAbility::ProtectionFromColor(c)));
+            return RulesText::Active(Rule::Static(KeywordAbility::ProtectionFromColor(c)));
         }
         // Non-color protections remain ParsedUnimplemented
         return ParsedUnimplemented(kw.to_string());
@@ -551,7 +551,7 @@ fn match_keyword(kw: &str) -> RulesText {
                 "plains" => "Plains",
                 other => {
                     let mut chars = other.chars();
-                    return RulesText::Active(Rule::Static(StaticAbility::Landwalk(
+                    return RulesText::Active(Rule::Static(KeywordAbility::Landwalk(
                         LandwalkKind::LandType(
                             chars
                                 .next()
@@ -564,7 +564,7 @@ fn match_keyword(kw: &str) -> RulesText {
             };
             LandwalkKind::LandType(type_name.to_string())
         };
-        return RulesText::Active(Rule::Static(StaticAbility::Landwalk(kind)));
+        return RulesText::Active(Rule::Static(KeywordAbility::Landwalk(kind)));
     }
 
     // ── CR 702 recognised-but-unimplemented keywords ──────────────────────────
@@ -586,7 +586,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         s,
         // 702.3 Defender is implemented; listed here for documentation completeness.
         // 702.11 hexproof — implemented
-        // 702.13 intimidate — promoted to StaticAbility::Intimidate
+        // 702.13 intimidate — promoted to KeywordAbility::Intimidate
         // 702.18 shroud — implemented
         // 702.22
         "banding" |
@@ -594,7 +594,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "flanking" |
         // 702.26
         "phasing" |
-        // 702.36 fear — promoted to StaticAbility::Fear
+        // 702.36 fear — promoted to KeywordAbility::Fear
         // 702.39
         "provoke" |
         // 702.40
@@ -619,7 +619,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "conspire" |
         // 702.79
         "persist" |
-        // 702.80 wither — promoted to StaticAbility::Wither
+        // 702.80 wither — promoted to KeywordAbility::Wither
         // 702.81
         "retrace" |
         // 702.83
@@ -630,8 +630,8 @@ fn is_cr702_keyword(s: &str) -> bool {
         "rebound" |
         // 702.89
         "umbra armor" |
-        // 702.90 infect — promoted to StaticAbility::Infect
-        // 702.91 battle cry — promoted to StaticAbility::BattleCry
+        // 702.90 infect — promoted to KeywordAbility::Infect
+        // 702.91 battle cry — promoted to KeywordAbility::BattleCry
         // 702.92
         "living weapon" |
         // 702.93
@@ -642,7 +642,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "unleash" |
         // 702.99
         "cipher" |
-        // 702.100 evolve — promoted to StaticAbility::Evolve
+        // 702.100 evolve — promoted to KeywordAbility::Evolve
         // 702.101
         "extort" |
         // 702.102
@@ -691,7 +691,7 @@ fn is_cr702_keyword(s: &str) -> bool {
         "daybound" | "nightbound" |
         // 702.147 decayed — implemented
         // "decayed" |
-        // 702.149 training — promoted to StaticAbility::Training
+        // 702.149 training — promoted to KeywordAbility::Training
         // 702.150
         "compleated" |
         // 702.154
@@ -905,7 +905,7 @@ fn is_cr702_keyword(s: &str) -> bool {
     s.starts_with("prototype") ||
     // 702.162 More Than Meets the Eye [cost]
     s.starts_with("more than meets the eye") ||
-    // 702.164 Toxic N — promoted to StaticAbility::ToxicN
+    // 702.164 Toxic N — promoted to KeywordAbility::ToxicN
     // 702.165 Backup N
     s.starts_with("backup ") ||
     // 702.167 Craft with [description] [cost]
@@ -927,7 +927,7 @@ fn is_cr702_keyword(s: &str) -> bool {
     // 702.185 Warp [cost]
     s.starts_with("warp") ||
     // ── Suffix / compound patterns ────────────────────────────────────────────
-    // 702.14 Landwalk — fully handled above (promoted to StaticAbility::Landwalk)
+    // 702.14 Landwalk — fully handled above (promoted to KeywordAbility::Landwalk)
     // 702.29 Typecycling: mountaincycling {2}, basic landcycling {2}, etc.
     // Split on '{' so cost is stripped before checking the suffix.
     kw_part.ends_with("cycling") ||
@@ -1282,8 +1282,8 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<RulesText>, Vec<Text
 ///     "counter target blue spell"
 ///   - mana-value suffix: "counter target spell with mana value 4 or greater"
 ///     "counter target spell with mana value 3 or less"
-fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellEffect> {
-    use crate::types::ability::{SpellEffect, SpellFilter, TargetFilter};
+fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellAbility> {
+    use crate::types::ability::{SpellAbility, SpellFilter, TargetFilter};
     use crate::types::effect::EffectStep;
     use crate::types::mana::ManaColor;
 
@@ -1379,7 +1379,7 @@ fn try_parse_counter(lc: &str) -> Option<crate::types::ability::SpellEffect> {
         steps.extend(parse_spell_effect(rest));
     }
 
-    Some(SpellEffect {
+    Some(SpellAbility {
         target_requirements: vec![TargetFilter::Spell(filter)],
         steps,
     })
@@ -1445,8 +1445,8 @@ fn parse_unless_suffix(s: &str) -> (&str, Option<crate::types::ability::Cost>) {
 }
 
 /// Parses "put [a|N] [+1/+1|-1/-1] counter[s] on target [creature|player]" (CR 122.1).
-fn try_parse_add_counter_on_target(lc: &str) -> Option<crate::types::ability::SpellEffect> {
-    use crate::types::ability::{SpellEffect, TargetFilter};
+fn try_parse_add_counter_on_target(lc: &str) -> Option<crate::types::ability::SpellAbility> {
+    use crate::types::ability::{SpellAbility, TargetFilter};
     use crate::types::counter::CounterKind;
     use crate::types::effect::EffectStep;
 
@@ -1506,21 +1506,21 @@ fn try_parse_add_counter_on_target(lc: &str) -> Option<crate::types::ability::Sp
         return None;
     };
 
-    Some(SpellEffect {
+    Some(SpellAbility {
         target_requirements: vec![filter],
         steps: vec![EffectStep::AddCounter { kind, count }],
     })
 }
 
-/// Detects targeting patterns in a spell paragraph and returns a SpellEffect.
+/// Detects targeting patterns in a spell paragraph and returns a SpellAbility.
 ///
 /// Pattern A (target at front): "Target creature ..." → Creature filter; strip prefix.
 /// Pattern B (card name damage): "CardName deals N damage to any target" → Any filter.
 ///
 /// All prefix/suffix lengths are computed on the lowercase form then applied at the
 /// same byte offset on the original because every prefix/suffix is pure ASCII.
-fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::ability::SpellEffect {
-    use crate::types::ability::{SpellEffect, TargetFilter};
+fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::ability::SpellAbility {
+    use crate::types::ability::{SpellAbility, TargetFilter};
     let lc = paragraph.trim_end_matches('.').to_lowercase();
 
     // Pattern A — "target creature " prefix
@@ -1529,7 +1529,7 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
         if lc.starts_with(PREFIX) {
             let effective = paragraph[PREFIX.len()..].trim_end_matches('.');
             let steps = parse_spell_effect(effective);
-            return SpellEffect {
+            return SpellAbility {
                 target_requirements: vec![TargetFilter::Creature],
                 steps,
             };
@@ -1541,7 +1541,7 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
         if lc.starts_with(PREFIX) {
             let effective = paragraph[PREFIX.len()..].trim_end_matches('.');
             let steps = parse_spell_effect(effective);
-            return SpellEffect {
+            return SpellAbility {
                 target_requirements: vec![TargetFilter::Player],
                 steps,
             };
@@ -1555,14 +1555,14 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
             let rest_lc = &lc[prefix.len()..];
             if let Some(damage_part) = rest_lc.strip_suffix(" to any target") {
                 let steps = parse_spell_effect(damage_part);
-                return SpellEffect {
+                return SpellAbility {
                     target_requirements: vec![TargetFilter::Any],
                     steps,
                 };
             }
             if let Some(damage_part) = rest_lc.strip_suffix(" to target creature") {
                 let steps = parse_spell_effect(damage_part);
-                return SpellEffect {
+                return SpellAbility {
                     target_requirements: vec![TargetFilter::Creature],
                     steps,
                 };
@@ -1578,7 +1578,7 @@ fn parse_spell_paragraph(paragraph: &str, card_name: &str) -> crate::types::abil
         return spell_ability;
     }
     // No targeting pattern found — untargeted spell
-    SpellEffect {
+    SpellAbility {
         target_requirements: vec![],
         steps: parse_spell_effect(paragraph),
     }
@@ -1669,7 +1669,7 @@ fn annotate_spell_paragraph(
 }
 
 /// Parse the oracle text of an instant or sorcery.
-/// Each paragraph becomes one SpellEffect span containing parsed and
+/// Each paragraph becomes one SpellAbility span containing parsed and
 /// unimplemented effect steps in written order (CR 609).
 pub fn parse_instant_or_sorcery(
     text: &str,
@@ -1684,7 +1684,7 @@ pub fn parse_instant_or_sorcery(
             continue;
         }
         let spell_ability = parse_spell_paragraph(paragraph, card_name);
-        spans.push(RulesText::Active(Rule::SpellEffect(spell_ability)));
+        spans.push(RulesText::Active(Rule::SpellAbility(spell_ability)));
         annotate_spell_paragraph(paragraph, text, &mut annotations);
     }
     (spans, annotations)
@@ -1693,7 +1693,7 @@ pub fn parse_instant_or_sorcery(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ability::StaticAbility;
+    use crate::types::ability::KeywordAbility;
 
     fn parse_perm(text: &str, name: &str) -> Vec<RulesText> {
         parse_permanent(text, name).0
@@ -1702,7 +1702,7 @@ mod tests {
         parse_instant_or_sorcery(text, name).0
     }
 
-    fn active(kw: StaticAbility) -> RulesText {
+    fn active(kw: KeywordAbility) -> RulesText {
         RulesText::Active(Rule::Static(kw))
     }
     fn reminder(text: &str) -> RulesText {
@@ -1740,7 +1740,7 @@ mod tests {
     fn single_keyword() {
         assert_eq!(
             parse_perm("Flying", ""),
-            vec![active(StaticAbility::Flying)]
+            vec![active(KeywordAbility::Flying)]
         );
     }
 
@@ -1749,8 +1749,8 @@ mod tests {
         assert_eq!(
             parse_perm("Flying, vigilance", ""),
             vec![
-                active(StaticAbility::Flying),
-                active(StaticAbility::Vigilance)
+                active(KeywordAbility::Flying),
+                active(KeywordAbility::Vigilance)
             ]
         );
     }
@@ -1760,8 +1760,8 @@ mod tests {
         assert_eq!(
             parse_perm("Trample\nLifelink", ""),
             vec![
-                active(StaticAbility::Trample),
-                active(StaticAbility::Lifelink)
+                active(KeywordAbility::Trample),
+                active(KeywordAbility::Lifelink)
             ]
         );
     }
@@ -1770,7 +1770,7 @@ mod tests {
     fn two_word_keyword() {
         assert_eq!(
             parse_perm("First strike", ""),
-            vec![active(StaticAbility::FirstStrike)]
+            vec![active(KeywordAbility::FirstStrike)]
         );
     }
 
@@ -1782,7 +1782,7 @@ mod tests {
                 "",
             ),
             vec![
-                active(StaticAbility::Deathtouch),
+                active(KeywordAbility::Deathtouch),
                 reminder(
                     "(Any amount of damage this deals to a creature is enough to destroy it.)"
                 ),
@@ -1853,16 +1853,16 @@ mod tests {
     #[test]
     fn landwalk_variants_parse_as_static_ability() {
         use crate::types::LandwalkKind;
-        // Landwalk is now promoted to StaticAbility::Landwalk
+        // Landwalk is now promoted to KeywordAbility::Landwalk
         assert_eq!(
             parse_perm("Islandwalk", ""),
-            vec![active(StaticAbility::Landwalk(LandwalkKind::LandType(
+            vec![active(KeywordAbility::Landwalk(LandwalkKind::LandType(
                 "Island".to_string()
             )))]
         );
         assert_eq!(
             parse_perm("Nonbasic landwalk", ""),
-            vec![active(StaticAbility::Landwalk(LandwalkKind::Nonbasic))]
+            vec![active(KeywordAbility::Landwalk(LandwalkKind::Nonbasic))]
         );
     }
 
@@ -2135,7 +2135,7 @@ mod tests {
         assert_eq!(
             result,
             vec![
-                active(StaticAbility::Flying),
+                active(KeywordAbility::Flying),
                 ability_word("Landfall \u{2014}"),
                 unparsed("Whenever a land you control enters, you gain 1 life."),
             ]
@@ -2366,8 +2366,8 @@ mod tests {
     // ── parse_instant_or_sorcery ─────────────────────────────────────────────────
 
     fn spell_effect(steps: Vec<EffectStep>) -> RulesText {
-        use crate::types::ability::SpellEffect;
-        RulesText::Active(Rule::SpellEffect(SpellEffect {
+        use crate::types::ability::SpellAbility;
+        RulesText::Active(Rule::SpellAbility(SpellAbility {
             target_requirements: vec![],
             steps,
         }))
@@ -2430,8 +2430,8 @@ mod tests {
         use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target spell.", "");
         assert_eq!(result.len(), 1);
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect, got {:?}", result[0]);
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility, got {:?}", result[0]);
         };
         assert_eq!(
             sa.target_requirements,
@@ -2445,8 +2445,8 @@ mod tests {
         use crate::types::ability::{SpellFilter, TargetFilter};
         use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target noncreature spell.", "");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect");
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility");
         };
         assert_eq!(
             sa.target_requirements,
@@ -2460,8 +2460,8 @@ mod tests {
         use crate::types::ability::{SpellFilter, TargetFilter};
         use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target creature spell.", "");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect");
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility");
         };
         assert_eq!(
             sa.target_requirements,
@@ -2475,8 +2475,8 @@ mod tests {
         use crate::types::ability::{SpellFilter, TargetFilter};
         use crate::types::effect::EffectStep;
         let result = parse_spell("Counter target instant or sorcery spell.", "");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect");
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility");
         };
         assert_eq!(
             sa.target_requirements,
@@ -2521,8 +2521,8 @@ mod tests {
             "Giant Growth",
         );
         assert_eq!(result.len(), 1);
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect, got {:?}", result[0]);
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
         assert_eq!(
@@ -2543,8 +2543,8 @@ mod tests {
             "Lightning Bolt",
         );
         assert_eq!(result.len(), 1);
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect, got {:?}", result[0]);
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Any]);
         assert_eq!(
@@ -2560,8 +2560,8 @@ mod tests {
     fn parse_draw_a_card_spell_is_untargeted() {
         let result = parse_spell("Draw a card.", "Opt");
         assert_eq!(result.len(), 1);
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect");
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility");
         };
         assert!(sa.target_requirements.is_empty());
     }
@@ -2573,8 +2573,8 @@ mod tests {
         use crate::types::effect::EffectStep;
         let result = parse_spell("Put a +1/+1 counter on target creature.", "Battlegrowth");
         assert_eq!(result.len(), 1);
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect, got {:?}", result[0]);
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
         assert_eq!(
@@ -2596,8 +2596,8 @@ mod tests {
         use crate::types::effect::EffectStep;
         let result = parse_spell("Put two +1/+1 counters on target creature.", "");
         assert_eq!(result.len(), 1);
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect, got {:?}", result[0]);
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
         assert_eq!(
@@ -2619,8 +2619,8 @@ mod tests {
         use crate::types::effect::EffectStep;
         let result = parse_spell("Put a -1/-1 counter on target creature.", "");
         assert_eq!(result.len(), 1);
-        let RulesText::Active(Rule::SpellEffect(sa)) = &result[0] else {
-            panic!("expected SpellEffect, got {:?}", result[0]);
+        let RulesText::Active(Rule::SpellAbility(sa)) = &result[0] else {
+            panic!("expected SpellAbility, got {:?}", result[0]);
         };
         assert_eq!(sa.target_requirements, vec![TargetFilter::Creature]);
         assert_eq!(
@@ -2640,54 +2640,54 @@ mod tests {
         let result = parse_perm("Flash", "");
         assert_eq!(
             result,
-            vec![RulesText::Active(Rule::Static(StaticAbility::Flash))]
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Flash))]
         );
     }
 
     #[test]
     fn parse_exalted_keyword() {
         let spans = parse_perm("Exalted", "");
-        assert_eq!(spans, vec![active(StaticAbility::Exalted)]);
+        assert_eq!(spans, vec![active(KeywordAbility::Exalted)]);
     }
 
     #[test]
     fn parse_flanking_keyword() {
         let spans = parse_perm("Flanking", "");
-        assert_eq!(spans, vec![active(StaticAbility::Flanking)]);
+        assert_eq!(spans, vec![active(KeywordAbility::Flanking)]);
     }
 
     #[test]
     fn parse_bushido_n_keyword() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let spans = parse_perm("Bushido 2", "");
         assert_eq!(
             spans,
-            vec![RulesText::Active(Rule::Static(StaticAbility::BushidoN(2)))]
+            vec![RulesText::Active(Rule::Static(KeywordAbility::BushidoN(2)))]
         );
     }
 
     #[test]
     fn parse_wither_keyword() {
         let spans = parse_perm("Wither", "");
-        assert_eq!(spans, vec![active(StaticAbility::Wither)]);
+        assert_eq!(spans, vec![active(KeywordAbility::Wither)]);
     }
 
     #[test]
     fn parse_infect_keyword() {
         let spans = parse_perm("Infect", "");
-        assert_eq!(spans, vec![active(StaticAbility::Infect)]);
+        assert_eq!(spans, vec![active(KeywordAbility::Infect)]);
     }
 
     #[test]
     fn parse_evolve_keyword() {
         let spans = parse_perm("Evolve", "");
-        assert_eq!(spans, vec![active(StaticAbility::Evolve)]);
+        assert_eq!(spans, vec![active(KeywordAbility::Evolve)]);
     }
 
     #[test]
     fn parse_training_keyword() {
         let spans = parse_perm("Training", "");
-        assert_eq!(spans, vec![active(StaticAbility::Training)]);
+        assert_eq!(spans, vec![active(KeywordAbility::Training)]);
     }
 
     #[test]
@@ -2695,20 +2695,20 @@ mod tests {
         let spans = parse_perm("Toxic 3", "");
         assert_eq!(
             spans,
-            vec![RulesText::Active(Rule::Static(StaticAbility::ToxicN(3)))]
+            vec![RulesText::Active(Rule::Static(KeywordAbility::ToxicN(3)))]
         );
     }
 
     #[test]
     fn parse_melee_keyword() {
         let spans = parse_perm("Melee", "");
-        assert_eq!(spans, vec![active(StaticAbility::Melee)]);
+        assert_eq!(spans, vec![active(KeywordAbility::Melee)]);
     }
 
     #[test]
     fn parse_prowess_keyword() {
         let spans = parse_perm("Prowess", "");
-        assert_eq!(spans, vec![active(StaticAbility::Prowess)]);
+        assert_eq!(spans, vec![active(KeywordAbility::Prowess)]);
     }
 
     #[test]
@@ -2769,19 +2769,19 @@ mod tests {
 
     #[test]
     fn parse_shroud_keyword() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         assert_eq!(
             parse_perm("Shroud", ""),
-            vec![active(StaticAbility::Shroud)]
+            vec![active(KeywordAbility::Shroud)]
         );
     }
 
     #[test]
     fn parse_hexproof_keyword() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         assert_eq!(
             parse_perm("Hexproof", ""),
-            vec![active(StaticAbility::Hexproof)]
+            vec![active(KeywordAbility::Hexproof)]
         );
     }
 
@@ -2888,7 +2888,7 @@ mod tests {
         let (spans, _) = parse_permanent("Fear", "Test");
         assert_eq!(
             spans,
-            vec![RulesText::Active(Rule::Static(StaticAbility::Fear))]
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Fear))]
         );
     }
 
@@ -2897,7 +2897,7 @@ mod tests {
         let (spans, _) = parse_permanent("Intimidate", "Test");
         assert_eq!(
             spans,
-            vec![RulesText::Active(Rule::Static(StaticAbility::Intimidate))]
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Intimidate))]
         );
     }
 
@@ -2906,7 +2906,7 @@ mod tests {
         let (spans, _) = parse_permanent("Battle cry", "Test");
         assert_eq!(
             spans,
-            vec![RulesText::Active(Rule::Static(StaticAbility::BattleCry))]
+            vec![RulesText::Active(Rule::Static(KeywordAbility::BattleCry))]
         );
     }
 
@@ -2969,7 +2969,7 @@ mod tests {
         let (spans, _) = parse_permanent("Islandwalk", "Test");
         assert_eq!(
             spans,
-            vec![RulesText::Active(Rule::Static(StaticAbility::Landwalk(
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Landwalk(
                 LandwalkKind::LandType("Island".to_string())
             )))]
         );
@@ -2981,7 +2981,7 @@ mod tests {
         let (spans, _) = parse_permanent("Swampwalk", "Test");
         assert_eq!(
             spans,
-            vec![RulesText::Active(Rule::Static(StaticAbility::Landwalk(
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Landwalk(
                 LandwalkKind::LandType("Swamp".to_string())
             )))]
         );
@@ -2993,7 +2993,7 @@ mod tests {
         let (spans, _) = parse_permanent("Nonbasic landwalk", "Test");
         assert_eq!(
             spans,
-            vec![RulesText::Active(Rule::Static(StaticAbility::Landwalk(
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Landwalk(
                 LandwalkKind::Nonbasic
             )))]
         );
@@ -3006,7 +3006,7 @@ mod tests {
         assert_eq!(
             spans,
             vec![RulesText::Active(Rule::Static(
-                StaticAbility::ProtectionFromColor(ManaColor::Blue)
+                KeywordAbility::ProtectionFromColor(ManaColor::Blue)
             ))]
         );
     }
@@ -3025,7 +3025,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let text = "Counter target spell with mana value 4 or greater.";
         let (spans, _) = parse_instant_or_sorcery(text, "Disdainful Stroke");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &spans[0] else {
+        let RulesText::Active(Rule::SpellAbility(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
@@ -3043,7 +3043,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let text = "Counter target spell with mana value 3 or less.";
         let (spans, _) = parse_instant_or_sorcery(text, "Test");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &spans[0] else {
+        let RulesText::Active(Rule::SpellAbility(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
@@ -3061,7 +3061,7 @@ mod tests {
         use crate::types::mana::ManaColor;
         let text = "Counter target red or green spell.";
         let (spans, _) = parse_instant_or_sorcery(text, "Flashfreeze");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &spans[0] else {
+        let RulesText::Active(Rule::SpellAbility(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps, vec![EffectStep::CounterSpell]);
@@ -3078,7 +3078,7 @@ mod tests {
         use crate::types::mana::ManaColor;
         let text = "Counter target blue spell.";
         let (spans, _) = parse_instant_or_sorcery(text, "Test");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &spans[0] else {
+        let RulesText::Active(Rule::SpellAbility(sa)) = &spans[0] else {
             panic!()
         };
         let TargetFilter::Spell(f) = &sa.target_requirements[0] else {
@@ -3096,7 +3096,7 @@ mod tests {
         use crate::types::mana::{ManaCost, ManaPip};
         let text = "Counter target spell unless its controller pays {3}.";
         let (spans, _) = parse_instant_or_sorcery(text, "Mana Leak");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &spans[0] else {
+        let RulesText::Active(Rule::SpellAbility(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps.len(), 1);
@@ -3125,7 +3125,7 @@ mod tests {
         use crate::types::mana::{ManaCost, ManaPip};
         let text = "Counter target spell unless its controller pays {2}.";
         let (spans, _) = parse_instant_or_sorcery(text, "Quench");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &spans[0] else {
+        let RulesText::Active(Rule::SpellAbility(sa)) = &spans[0] else {
             panic!()
         };
         let EffectStep::Payment { cost, .. } = &sa.steps[0] else {
@@ -3145,7 +3145,7 @@ mod tests {
         use crate::types::effect::EffectStep;
         let text = "Counter target spell unless its controller pays 3 life.";
         let (spans, _) = parse_instant_or_sorcery(text, "Test");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &spans[0] else {
+        let RulesText::Active(Rule::SpellAbility(sa)) = &spans[0] else {
             panic!()
         };
         let EffectStep::Payment { cost, .. } = &sa.steps[0] else {
@@ -3163,7 +3163,7 @@ mod tests {
             (Look at the top two cards of your library, then put any number of them \
             on the bottom and the rest on top in any order.)";
         let (spans, annotations) = parse_instant_or_sorcery(text, "Condescend");
-        let RulesText::Active(Rule::SpellEffect(sa)) = &spans[0] else {
+        let RulesText::Active(Rule::SpellAbility(sa)) = &spans[0] else {
             panic!()
         };
         assert_eq!(sa.steps.len(), 2);

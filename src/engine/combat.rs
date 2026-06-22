@@ -1,5 +1,5 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
-use crate::types::ability::StaticAbility;
+use crate::types::ability::KeywordAbility;
 use crate::types::{GameEvent, GameState, ObjectId, PlayerId, Step};
 use std::collections::HashMap;
 
@@ -26,7 +26,7 @@ pub fn declare_attackers(
             .battlefield
             .get(&id)
             .ok_or(EngineError::CardNotFound)?;
-        if perm.summoning_sick(cmt) && !perm.has_keyword(StaticAbility::Haste) {
+        if perm.summoning_sick(cmt) && !perm.has_keyword(KeywordAbility::Haste) {
             return Err(EngineError::SummoningSick);
         }
         if perm.tapped {
@@ -40,7 +40,7 @@ pub fn declare_attackers(
             .objects
             .get(&id)
             .unwrap()
-            .has_keyword(StaticAbility::Vigilance)
+            .has_keyword(KeywordAbility::Vigilance)
         {
             state.battlefield.get_mut(&id).unwrap().tapped = true;
         }
@@ -130,7 +130,7 @@ pub fn declare_blockers(
         if state
             .objects
             .get(&attacker_id)
-            .map(|a| a.has_keyword(StaticAbility::Menace))
+            .map(|a| a.has_keyword(KeywordAbility::Menace))
             .unwrap_or(false)
         {
             let num_blockers = state
@@ -216,26 +216,26 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
         return false;
     }
     // CR 702.9b: flying
-    if attacker_obj.has_keyword(StaticAbility::Flying)
-        && !blocker_obj.has_keyword(StaticAbility::Flying)
-        && !blocker_obj.has_keyword(StaticAbility::Reach)
+    if attacker_obj.has_keyword(KeywordAbility::Flying)
+        && !blocker_obj.has_keyword(KeywordAbility::Flying)
+        && !blocker_obj.has_keyword(KeywordAbility::Reach)
     {
         return false;
     }
     // CR 702.28b: shadow
-    if attacker_obj.has_keyword(StaticAbility::Shadow)
-        != blocker_obj.has_keyword(StaticAbility::Shadow)
+    if attacker_obj.has_keyword(KeywordAbility::Shadow)
+        != blocker_obj.has_keyword(KeywordAbility::Shadow)
     {
         return false;
     }
     // CR 702.31b: horsemanship
-    if attacker_obj.has_keyword(StaticAbility::Horsemanship)
-        && !blocker_obj.has_keyword(StaticAbility::Horsemanship)
+    if attacker_obj.has_keyword(KeywordAbility::Horsemanship)
+        && !blocker_obj.has_keyword(KeywordAbility::Horsemanship)
     {
         return false;
     }
     // CR 702.118b: skulk
-    if attacker_obj.has_keyword(StaticAbility::Skulk) {
+    if attacker_obj.has_keyword(KeywordAbility::Skulk) {
         let atk_cont = super::continuous_pt_bonus(state, attacker_id);
         let attacker_power = state
             .battlefield
@@ -253,7 +253,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
         }
     }
     // CR 702.36b: Fear — can't be blocked except by artifact or black creatures
-    if attacker_obj.has_keyword(StaticAbility::Fear) {
+    if attacker_obj.has_keyword(KeywordAbility::Fear) {
         let blocker_is_artifact = blocker_obj
             .definition
             .type_line
@@ -268,7 +268,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
         }
     }
     // CR 702.13b: Intimidate — can't be blocked except by artifact or same-color creature
-    if attacker_obj.has_keyword(StaticAbility::Intimidate) {
+    if attacker_obj.has_keyword(KeywordAbility::Intimidate) {
         let blocker_is_artifact = blocker_obj
             .definition
             .type_line
@@ -283,7 +283,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     }
     // CR 702.14c: Landwalk — can't be blocked if defending player controls matching land
     {
-        use crate::types::ability::{LandwalkKind, Rule, StaticAbility as SA};
+        use crate::types::ability::{KeywordAbility as SA, LandwalkKind, Rule};
         let defending_player = state.opponent_of(state.active_player);
         for span in &attacker_obj.definition.rules_text {
             if let crate::types::RulesText::Active(Rule::Static(SA::Landwalk(kind))) = span {
@@ -317,7 +317,7 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     }
     // CR 702.16f: Protection — can't be blocked by creatures with the protected quality
     {
-        use crate::types::ability::{Rule, StaticAbility as SA};
+        use crate::types::ability::{KeywordAbility as SA, Rule};
         let blocker_colors = &blocker_obj.definition.colors;
         for span in &attacker_obj.definition.rules_text {
             if let crate::types::RulesText::Active(Rule::Static(SA::ProtectionFromColor(c))) = span
@@ -354,8 +354,8 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                 .objects
                 .get(&id)
                 .map(|o| {
-                    o.has_keyword(StaticAbility::FirstStrike)
-                        || o.has_keyword(StaticAbility::DoubleStrike)
+                    o.has_keyword(KeywordAbility::FirstStrike)
+                        || o.has_keyword(KeywordAbility::DoubleStrike)
                 })
                 .unwrap_or(false)
         });
@@ -373,10 +373,10 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             return false;
         };
         if first_round {
-            obj.has_keyword(StaticAbility::FirstStrike)
-                || obj.has_keyword(StaticAbility::DoubleStrike)
+            obj.has_keyword(KeywordAbility::FirstStrike)
+                || obj.has_keyword(KeywordAbility::DoubleStrike)
         } else if second_round {
-            !obj.has_keyword(StaticAbility::FirstStrike)
+            !obj.has_keyword(KeywordAbility::FirstStrike)
         } else {
             true
         }
@@ -420,11 +420,11 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                 .unwrap_or(0);
             (
                 power,
-                obj.has_keyword(StaticAbility::Trample),
-                obj.has_keyword(StaticAbility::Deathtouch),
-                obj.has_keyword(StaticAbility::Lifelink),
-                obj.has_keyword(StaticAbility::Wither),
-                obj.has_keyword(StaticAbility::Infect),
+                obj.has_keyword(KeywordAbility::Trample),
+                obj.has_keyword(KeywordAbility::Deathtouch),
+                obj.has_keyword(KeywordAbility::Lifelink),
+                obj.has_keyword(KeywordAbility::Wither),
+                obj.has_keyword(KeywordAbility::Infect),
                 obj.controller,
             )
         };
@@ -543,10 +543,10 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                     .unwrap_or(0);
                 (
                     power,
-                    obj.has_keyword(StaticAbility::Wither),
-                    obj.has_keyword(StaticAbility::Infect),
-                    obj.has_keyword(StaticAbility::Deathtouch),
-                    obj.has_keyword(StaticAbility::Lifelink),
+                    obj.has_keyword(KeywordAbility::Wither),
+                    obj.has_keyword(KeywordAbility::Infect),
+                    obj.has_keyword(KeywordAbility::Deathtouch),
+                    obj.has_keyword(KeywordAbility::Lifelink),
                     obj.controller,
                 )
             };
@@ -674,7 +674,7 @@ mod tests {
         owner: PlayerId,
         power: i32,
         toughness: i32,
-        keywords: Vec<crate::types::ability::StaticAbility>,
+        keywords: Vec<crate::types::ability::KeywordAbility>,
     ) -> ObjectId {
         use crate::types::{
             CardDefinition, Rule, RulesText,
@@ -774,18 +774,18 @@ mod tests {
 
     #[test]
     fn vigilant_attacker_does_not_tap() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Vigilance]);
+        let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Vigilance]);
         let gs = declare_attackers(gs, PlayerId(0), &[id]).unwrap();
         assert!(!gs.battlefield[&id].tapped); // vigilance: does not tap when attacking
     }
 
     #[test]
     fn haste_creature_can_attack_while_summoning_sick() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Haste]);
+        let id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Haste]);
         gs.battlefield.get_mut(&id).unwrap().controller_since_turn = u32::MAX; // still sick
         // Should be able to declare it as attacker
         let gs = declare_attackers(gs, PlayerId(0), &[id]).unwrap();
@@ -919,9 +919,9 @@ mod tests {
 
     #[test]
     fn non_flier_cannot_block_flier() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Flying]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]); // no flying/reach
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
@@ -933,10 +933,10 @@ mod tests {
 
     #[test]
     fn flier_can_block_flier() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
-        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Flying]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Flying]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![KeywordAbility::Flying]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
         assert!(declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).is_ok());
@@ -944,10 +944,10 @@ mod tests {
 
     #[test]
     fn reach_creature_can_block_flier() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
-        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Reach]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Flying]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![KeywordAbility::Reach]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
         assert!(declare_blockers(gs, PlayerId(1), &[(blocker, attacker)]).is_ok());
@@ -955,9 +955,9 @@ mod tests {
 
     #[test]
     fn menace_requires_two_or_more_blockers() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Menace]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Menace]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
@@ -970,9 +970,9 @@ mod tests {
 
     #[test]
     fn menace_allows_two_blockers() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 4, 4, vec![StaticAbility::Menace]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 4, 4, vec![KeywordAbility::Menace]);
         let blocker1 = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         let blocker2 = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
@@ -989,9 +989,9 @@ mod tests {
 
     #[test]
     fn menace_allows_zero_blockers() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Menace]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Menace]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
         // No blockers declared — legal (creature is unblocked)
@@ -1004,10 +1004,15 @@ mod tests {
         // Round 1: first striker deals 3 (lethal to 2/2). 2/2 can't deal back.
         // Round 2: 2/2 is dead, no damage back to first striker.
         use crate::engine::turn::advance_step;
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker =
-            keyword_creature(&mut gs, PlayerId(0), 3, 2, vec![StaticAbility::FirstStrike]);
+        let attacker = keyword_creature(
+            &mut gs,
+            PlayerId(0),
+            3,
+            2,
+            vec![KeywordAbility::FirstStrike],
+        );
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
@@ -1038,14 +1043,14 @@ mod tests {
         // Round 1: double striker deals 2. Round 2: double striker deals another 2.
         // 3/3 deals 3 in round 2. 3/3 has 4 damage total (lethal), double striker has 3 (lethal).
         use crate::engine::turn::advance_step;
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
         let attacker = keyword_creature(
             &mut gs,
             PlayerId(0),
             2,
             2,
-            vec![StaticAbility::DoubleStrike],
+            vec![KeywordAbility::DoubleStrike],
         );
         let blocker = keyword_creature(&mut gs, PlayerId(1), 3, 3, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
@@ -1099,9 +1104,9 @@ mod tests {
     #[test]
     fn trample_sends_excess_to_player() {
         // 5/5 Trample vs 2/2 blocker: 2 to blocker (lethal), 3 tramples through
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 5, 5, vec![StaticAbility::Trample]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 5, 5, vec![KeywordAbility::Trample]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
@@ -1118,14 +1123,14 @@ mod tests {
     fn trample_deathtouch_one_damage_is_lethal_per_blocker() {
         // 5/5 Trample + Deathtouch vs 4/4 blocker: 1 damage is lethal (deathtouch),
         // 4 tramples through to defending player
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
         let attacker = keyword_creature(
             &mut gs,
             PlayerId(0),
             5,
             5,
-            vec![StaticAbility::Trample, StaticAbility::Deathtouch],
+            vec![KeywordAbility::Trample, KeywordAbility::Deathtouch],
         );
         let blocker = keyword_creature(&mut gs, PlayerId(1), 4, 4, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
@@ -1142,9 +1147,9 @@ mod tests {
     #[test]
     fn lifelink_attacker_gains_life_from_combat_damage() {
         // 3/3 Lifelink unblocked: controller gains 3 life
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 3, 3, vec![StaticAbility::Lifelink]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 3, 3, vec![KeywordAbility::Lifelink]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
         gs = declare_blockers(gs, PlayerId(1), &[]).unwrap();
@@ -1159,10 +1164,10 @@ mod tests {
     #[test]
     fn deathtouch_marks_target_for_sba() {
         // 1/1 Deathtouch vs 4/4: deathtouch creature deals 1 damage, flag set on 4/4
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
         let attacker =
-            keyword_creature(&mut gs, PlayerId(0), 1, 1, vec![StaticAbility::Deathtouch]);
+            keyword_creature(&mut gs, PlayerId(0), 1, 1, vec![KeywordAbility::Deathtouch]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 4, 4, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
@@ -1318,9 +1323,9 @@ mod tests {
 
     #[test]
     fn skulk_cannot_be_blocked_by_greater_power() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 1, 3, vec![StaticAbility::Skulk]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 1, 3, vec![KeywordAbility::Skulk]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
@@ -1333,9 +1338,9 @@ mod tests {
 
     #[test]
     fn skulk_can_be_blocked_by_equal_or_lesser_power() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 3, vec![StaticAbility::Skulk]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 3, vec![KeywordAbility::Skulk]);
         let equal_blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
@@ -1344,10 +1349,10 @@ mod tests {
 
     #[test]
     fn decayed_creature_cannot_block() {
-        use crate::types::ability::StaticAbility;
+        use crate::types::ability::KeywordAbility;
         let mut gs = make_combat_state();
         let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![]);
-        let decayed = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Decayed]);
+        let decayed = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![KeywordAbility::Decayed]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         gs.step = Step::DeclareBlockers;
         assert!(matches!(
@@ -1368,7 +1373,7 @@ mod tests {
     #[test]
     fn can_block_attacker_ground_cannot_block_flier() {
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Flying]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(!can_block_attacker(&gs, blocker, attacker));
@@ -1377,8 +1382,8 @@ mod tests {
     #[test]
     fn can_block_attacker_reach_can_block_flier() {
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Flying]);
-        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Reach]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Flying]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![KeywordAbility::Reach]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(can_block_attacker(&gs, blocker, attacker));
     }
@@ -1386,7 +1391,7 @@ mod tests {
     #[test]
     fn can_block_attacker_non_shadow_cannot_block_shadow() {
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Shadow]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Shadow]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(!can_block_attacker(&gs, blocker, attacker));
@@ -1396,7 +1401,7 @@ mod tests {
     fn can_block_attacker_shadow_cannot_block_non_shadow() {
         let mut gs = make_combat_state();
         let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![]);
-        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Shadow]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![KeywordAbility::Shadow]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(!can_block_attacker(&gs, blocker, attacker));
     }
@@ -1404,8 +1409,8 @@ mod tests {
     #[test]
     fn can_block_attacker_shadow_can_block_shadow() {
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Shadow]);
-        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Shadow]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Shadow]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![KeywordAbility::Shadow]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(can_block_attacker(&gs, blocker, attacker));
     }
@@ -1418,7 +1423,7 @@ mod tests {
             PlayerId(0),
             2,
             2,
-            vec![StaticAbility::Horsemanship],
+            vec![KeywordAbility::Horsemanship],
         );
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
@@ -1428,7 +1433,7 @@ mod tests {
     #[test]
     fn can_block_attacker_skulk_not_blockable_by_greater_power() {
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 1, 1, vec![StaticAbility::Skulk]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 1, 1, vec![KeywordAbility::Skulk]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(!can_block_attacker(&gs, blocker, attacker));
@@ -1437,7 +1442,7 @@ mod tests {
     #[test]
     fn can_block_attacker_skulk_blockable_by_equal_power() {
         let mut gs = make_combat_state();
-        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Skulk]);
+        let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Skulk]);
         let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(can_block_attacker(&gs, blocker, attacker));
@@ -1447,7 +1452,7 @@ mod tests {
     fn can_block_attacker_decayed_cannot_block() {
         let mut gs = make_combat_state();
         let attacker = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![]);
-        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Decayed]);
+        let blocker = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![KeywordAbility::Decayed]);
         gs = declare_attackers(gs, PlayerId(0), &[attacker]).unwrap();
         assert!(!can_block_attacker(&gs, blocker, attacker));
     }
@@ -1504,13 +1509,13 @@ mod tests {
     #[test]
     fn fear_blocks_non_artifact_non_black_creature() {
         use crate::types::RulesText;
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Fear))],
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Fear))],
             vec![ManaColor::Black],
         );
         gs.combat.attackers = vec![attacker];
@@ -1524,13 +1529,13 @@ mod tests {
     #[test]
     fn fear_allows_black_creature_to_block() {
         use crate::types::RulesText;
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Fear))],
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Fear))],
             vec![],
         );
         gs.combat.attackers = vec![attacker];
@@ -1543,13 +1548,13 @@ mod tests {
     #[test]
     fn intimidate_blocks_different_color_non_artifact() {
         use crate::types::RulesText;
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Intimidate))],
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Intimidate))],
             vec![ManaColor::Red],
         );
         gs.combat.attackers = vec![attacker];
@@ -1563,13 +1568,13 @@ mod tests {
     #[test]
     fn intimidate_allows_same_color_blocker() {
         use crate::types::RulesText;
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Intimidate))],
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Intimidate))],
             vec![ManaColor::Red],
         );
         gs.combat.attackers = vec![attacker];
@@ -1586,13 +1591,13 @@ mod tests {
     #[test]
     fn islandwalk_unblockable_when_defender_controls_island() {
         use crate::types::RulesText;
-        use crate::types::ability::{LandwalkKind, Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, LandwalkKind, Rule};
         use crate::types::card::{CardDefinition, CardType, Supertype, TypeLine};
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Landwalk(
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Landwalk(
                 LandwalkKind::LandType("Island".to_string()),
             )))],
             vec![],
@@ -1627,12 +1632,12 @@ mod tests {
     #[test]
     fn islandwalk_blockable_when_no_island_on_battlefield() {
         use crate::types::RulesText;
-        use crate::types::ability::{LandwalkKind, Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, LandwalkKind, Rule};
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
-            vec![RulesText::Active(Rule::Static(StaticAbility::Landwalk(
+            vec![RulesText::Active(Rule::Static(KeywordAbility::Landwalk(
                 LandwalkKind::LandType("Island".to_string()),
             )))],
             vec![],
@@ -1646,14 +1651,14 @@ mod tests {
     #[test]
     fn protection_from_red_blocks_red_blocker() {
         use crate::types::RulesText;
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
             vec![RulesText::Active(Rule::Static(
-                StaticAbility::ProtectionFromColor(ManaColor::Red),
+                KeywordAbility::ProtectionFromColor(ManaColor::Red),
             ))],
             vec![],
         );
@@ -1667,14 +1672,14 @@ mod tests {
     #[test]
     fn protection_from_red_allows_blue_blocker() {
         use crate::types::RulesText;
-        use crate::types::ability::{Rule, StaticAbility};
+        use crate::types::ability::{KeywordAbility, Rule};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
             vec![RulesText::Active(Rule::Static(
-                StaticAbility::ProtectionFromColor(ManaColor::Red),
+                KeywordAbility::ProtectionFromColor(ManaColor::Red),
             ))],
             vec![],
         );
@@ -1690,7 +1695,8 @@ mod tests {
         // CR 702.80a: Wither routes creature damage as -1/-1 counters.
         use crate::types::CounterKind;
         let mut gs = make_combat_state();
-        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Wither]);
+        let attacker_id =
+            keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Wither]);
         let blocker_id = keyword_creature(&mut gs, PlayerId(1), 3, 3, vec![]);
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
@@ -1717,7 +1723,8 @@ mod tests {
         // CR 702.80a: Wither only changes creature damage; player damage is still life loss.
         use crate::types::CounterKind;
         let mut gs = make_combat_state();
-        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Wither]);
+        let attacker_id =
+            keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Wither]);
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![])].into();
 
@@ -1736,7 +1743,8 @@ mod tests {
         // CR 702.90a: Infect → -1/-1 to creatures, poison to players.
         use crate::types::CounterKind;
         let mut gs = make_combat_state();
-        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 3, 3, vec![StaticAbility::Infect]);
+        let attacker_id =
+            keyword_creature(&mut gs, PlayerId(0), 3, 3, vec![KeywordAbility::Infect]);
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![])].into(); // unblocked → hits player
 
@@ -1755,7 +1763,8 @@ mod tests {
     fn infect_blocked_deals_minus_counters_not_marked_damage() {
         use crate::types::CounterKind;
         let mut gs = make_combat_state();
-        let attacker_id = keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::Infect]);
+        let attacker_id =
+            keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::Infect]);
         let blocker_id = keyword_creature(&mut gs, PlayerId(1), 3, 3, vec![]);
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
@@ -1779,7 +1788,7 @@ mod tests {
         use crate::types::CounterKind;
         let mut gs = make_combat_state();
         let attacker_id =
-            keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![StaticAbility::ToxicN(2)]);
+            keyword_creature(&mut gs, PlayerId(0), 2, 2, vec![KeywordAbility::ToxicN(2)]);
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![])].into();
 
@@ -1805,7 +1814,7 @@ mod tests {
             PlayerId(0),
             3,
             3,
-            vec![StaticAbility::Infect, StaticAbility::ToxicN(2)],
+            vec![KeywordAbility::Infect, KeywordAbility::ToxicN(2)],
         );
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![])].into();
@@ -1826,7 +1835,7 @@ mod tests {
             PlayerId(0),
             2,
             2,
-            vec![StaticAbility::Wither, StaticAbility::Lifelink],
+            vec![KeywordAbility::Wither, KeywordAbility::Lifelink],
         );
         let blocker_id = keyword_creature(&mut gs, PlayerId(1), 3, 3, vec![]);
         gs.combat.attackers = vec![attacker_id];
@@ -1847,7 +1856,7 @@ mod tests {
         use crate::types::CounterKind;
         let mut gs = make_combat_state();
         let attacker_id = keyword_creature(&mut gs, PlayerId(0), 3, 3, vec![]);
-        let blocker_id = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![StaticAbility::Wither]);
+        let blocker_id = keyword_creature(&mut gs, PlayerId(1), 2, 2, vec![KeywordAbility::Wither]);
         gs.combat.attackers = vec![attacker_id];
         gs.combat.blocking_map = [(attacker_id, vec![blocker_id])].into();
 
@@ -1978,7 +1987,7 @@ mod tests {
             },
             oracle_text: String::new(),
             rules_text: vec![
-                RulesText::Active(Rule::Static(StaticAbility::Trample)),
+                RulesText::Active(Rule::Static(KeywordAbility::Trample)),
                 ability_span,
             ],
             text_annotations: vec![],

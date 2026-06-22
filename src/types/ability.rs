@@ -14,7 +14,7 @@ pub enum LandwalkKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StaticAbility {
+pub enum KeywordAbility {
     Flying,
     Reach,
     Trample,
@@ -106,7 +106,7 @@ pub enum TriggerCondition {
     EnteringCreatureHasGreaterPower,            // CR 702.100a Evolve (power)
     EnteringCreatureHasGreaterToughness,        // CR 702.100a Evolve (toughness)
     EnteringCreatureHasGreaterPowerOrToughness, // CR 702.100a Evolve (either)
-    SubjectLacksKeyword(StaticAbility),         // CR 702.25b Flanking
+    SubjectLacksKeyword(KeywordAbility),        // CR 702.25b Flanking
     SubjectLacksCounter(CounterKind),           // CR 702.79 Persist / CR 702.93 Undying
 }
 
@@ -277,7 +277,7 @@ pub struct ContinuousEffect {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardFilter;
 
-impl StaticAbility {
+impl KeywordAbility {
     pub fn display_name(&self) -> String {
         match self {
             Self::Flying => "Flying".to_string(),
@@ -428,7 +428,7 @@ pub enum TargetFilter {
 /// The resolving text of an instant or sorcery (CR 113.3a).
 /// Wraps effect steps and any targeting requirements.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SpellEffect {
+pub struct SpellAbility {
     pub target_requirements: Vec<TargetFilter>, // empty for untargeted spells
     pub steps: Effect,
 }
@@ -466,10 +466,10 @@ pub struct TextAnnotation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Rule {
-    Static(StaticAbility),
+    Static(KeywordAbility),
     Triggered(TriggeredAbility),
     Activated(ActivatedAbility),
-    SpellEffect(SpellEffect),
+    SpellAbility(SpellAbility),
     Cycling(ManaCost),
     Continuous(ContinuousEffect), // CR 611.3b
 }
@@ -495,8 +495,8 @@ mod tests {
 
     #[test]
     fn rules_text_variants_are_comparable() {
-        let a = RulesText::Active(Rule::Static(StaticAbility::Flying));
-        let b = RulesText::Active(Rule::Static(StaticAbility::Flying));
+        let a = RulesText::Active(Rule::Static(KeywordAbility::Flying));
+        let b = RulesText::Active(Rule::Static(KeywordAbility::Flying));
         assert_eq!(a, b);
 
         let c = RulesText::Ignored(IgnoredKind::ReminderText, "(reminder)".into());
@@ -509,11 +509,11 @@ mod tests {
 
     #[test]
     fn display_name_canonical_casing() {
-        assert_eq!(StaticAbility::Flying.display_name(), "Flying");
-        assert_eq!(StaticAbility::FirstStrike.display_name(), "First strike");
-        assert_eq!(StaticAbility::DoubleStrike.display_name(), "Double strike");
+        assert_eq!(KeywordAbility::Flying.display_name(), "Flying");
+        assert_eq!(KeywordAbility::FirstStrike.display_name(), "First strike");
+        assert_eq!(KeywordAbility::DoubleStrike.display_name(), "Double strike");
         assert_eq!(
-            StaticAbility::Indestructible.display_name(),
+            KeywordAbility::Indestructible.display_name(),
             "Indestructible"
         );
     }
@@ -543,11 +543,11 @@ mod tests {
 
     #[test]
     fn display_name_new_keywords() {
-        assert_eq!(StaticAbility::Exalted.display_name(), "Exalted");
-        assert_eq!(StaticAbility::Flanking.display_name(), "Flanking");
-        assert_eq!(StaticAbility::BushidoN(2).display_name(), "Bushido 2");
-        assert_eq!(StaticAbility::Melee.display_name(), "Melee");
-        assert_eq!(StaticAbility::Prowess.display_name(), "Prowess");
+        assert_eq!(KeywordAbility::Exalted.display_name(), "Exalted");
+        assert_eq!(KeywordAbility::Flanking.display_name(), "Flanking");
+        assert_eq!(KeywordAbility::BushidoN(2).display_name(), "Bushido 2");
+        assert_eq!(KeywordAbility::Melee.display_name(), "Melee");
+        assert_eq!(KeywordAbility::Prowess.display_name(), "Prowess");
     }
 
     #[test]
@@ -577,19 +577,19 @@ mod tests {
     #[test]
     fn new_static_ability_display_names() {
         use crate::types::mana::ManaColor;
-        assert_eq!(StaticAbility::Fear.display_name(), "Fear");
-        assert_eq!(StaticAbility::Intimidate.display_name(), "Intimidate");
-        assert_eq!(StaticAbility::BattleCry.display_name(), "Battle cry");
+        assert_eq!(KeywordAbility::Fear.display_name(), "Fear");
+        assert_eq!(KeywordAbility::Intimidate.display_name(), "Intimidate");
+        assert_eq!(KeywordAbility::BattleCry.display_name(), "Battle cry");
         assert_eq!(
-            StaticAbility::Landwalk(LandwalkKind::LandType("Island".to_string())).display_name(),
+            KeywordAbility::Landwalk(LandwalkKind::LandType("Island".to_string())).display_name(),
             "Islandwalk"
         );
         assert_eq!(
-            StaticAbility::Landwalk(LandwalkKind::Nonbasic).display_name(),
+            KeywordAbility::Landwalk(LandwalkKind::Nonbasic).display_name(),
             "Nonbasic landwalk"
         );
         assert_eq!(
-            StaticAbility::ProtectionFromColor(ManaColor::Blue).display_name(),
+            KeywordAbility::ProtectionFromColor(ManaColor::Blue).display_name(),
             "Protection from blue"
         );
     }
@@ -685,11 +685,11 @@ mod tests {
 
     #[test]
     fn display_name_counter_keywords() {
-        assert_eq!(StaticAbility::Wither.display_name(), "Wither");
-        assert_eq!(StaticAbility::Infect.display_name(), "Infect");
-        assert_eq!(StaticAbility::ToxicN(2).display_name(), "Toxic 2");
-        assert_eq!(StaticAbility::Evolve.display_name(), "Evolve");
-        assert_eq!(StaticAbility::Training.display_name(), "Training");
+        assert_eq!(KeywordAbility::Wither.display_name(), "Wither");
+        assert_eq!(KeywordAbility::Infect.display_name(), "Infect");
+        assert_eq!(KeywordAbility::ToxicN(2).display_name(), "Toxic 2");
+        assert_eq!(KeywordAbility::Evolve.display_name(), "Evolve");
+        assert_eq!(KeywordAbility::Training.display_name(), "Training");
     }
 
     #[test]
@@ -719,8 +719,8 @@ mod tests {
 
     #[test]
     fn display_name_persist_undying() {
-        assert_eq!(StaticAbility::Persist.display_name(), "Persist");
-        assert_eq!(StaticAbility::Undying.display_name(), "Undying");
+        assert_eq!(KeywordAbility::Persist.display_name(), "Persist");
+        assert_eq!(KeywordAbility::Undying.display_name(), "Undying");
     }
 
     #[test]

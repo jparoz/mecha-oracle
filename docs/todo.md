@@ -2,8 +2,6 @@
 - Can we run dead code analysis on library re-exports? That is, check that all library exports are actually used in the binary?
 - Players should discard to hand size at the cleanup step (see CR 402.2)
 - `can_pay_cost_components` (costs.rs) always returns true for mana (by design), so the serve.rs UI action filter will show X-cost activated abilities as available regardless of pool size. When X-cost activated abilities are added, thread `x_value` into `can_pay_cost_components` and the serve.rs call site (line 606).
-- SpellEffect actually should be called SpellAbility, that's what it's called when there's text which happens when an instant or sorcery is resolving. (CR 113.3.)
-- `StaticAbility` (types/ability.rs) is misnamed — per CR 113.3, many of its variants are triggered abilities, not static abilities: Exalted (CR 702.83a), Flanking (CR 702.25a), BushidoN (CR 702.45a), Melee (CR 702.121a), Prowess (CR 702.108a), BattleCry (CR 702.91a), Evolve (CR 702.100a), Training (CR 702.149a), Persist (CR 702.79a), Undying (CR 702.93a). Decayed (CR 702.147a) is a mix of static ("can't block") and triggered ("sacrifice at end of combat"). The enum should be renamed to `KeywordAbility` or similar to reflect that it stores CR 702 keyword markers regardless of rules category.
 
 
 # Parsed but unimplemented keyword abilities
@@ -20,7 +18,7 @@ Keywords below are parsed and shown cyan+underlined in the UI but have no rules 
 - **Damage prevention (D in DEBT)**: prevent all damage from sources with protected quality — requires a "protection check" in the combat damage path and the DealDamage effect step.
 - **Enchant/Equip prevention (E in DEBT)**: can't be enchanted or equipped by things with protected quality — requires aura attachment rules (future work).
 - **Protection from non-color qualities**: protection from artifacts, from instants, from a specific creature type, from a card name (e.g. "protection from Eldrazi") — each needs a richer `ProtectionQuality` enum beyond just `ManaColor`.
-- **Protection from everything** (CR 702.16e): shorthand for all qualities — needs `StaticAbility::ProtectionFromAll`.
+- **Protection from everything** (CR 702.16e): shorthand for all qualities — needs `KeywordAbility::ProtectionFromAll`.
 - **Hexproof from color** (CR 702.11e, e.g. "hexproof from black") — related, but a separate keyword; currently ParsedUnimplemented.
 
 ---
