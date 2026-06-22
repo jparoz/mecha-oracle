@@ -12,7 +12,7 @@ use mecha_oracle::engine::costs::{
     can_pay_cost_components, decline_pending_cost, pay_pending_cost,
 };
 use mecha_oracle::engine::cycling::cycle_card;
-use mecha_oracle::engine::mana::{reset_mana, tap_land_for_mana};
+use mecha_oracle::engine::mana::reset_mana;
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
@@ -952,9 +952,6 @@ fn build_game_view(state: &GameState) -> GameView {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ActionRequest {
-    TapLand {
-        object_id: u64,
-    },
     PlayLand {
         object_id: u64,
     },
@@ -1059,9 +1056,6 @@ fn apply_step_start_loop(mut state: GameState) -> GameState {
 
 fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState, String> {
     match action {
-        ActionRequest::TapLand { object_id } => {
-            tap_land_for_mana(state, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
-        }
         ActionRequest::PlayLand { object_id } => {
             let player = state.priority_player;
             play_land(state, player, ObjectId(object_id)).map_err(|e| format!("{e:?}"))
@@ -1618,11 +1612,14 @@ mod tests {
             .unwrap();
         gs = play_land(gs, PlayerId(0), land_id).unwrap();
 
-        // Tap it for mana via the action dispatcher.
+        // Tap it for mana via the action dispatcher (Forest has one activated ability at index 0).
         gs = dispatch_action(
             gs,
-            ActionRequest::TapLand {
+            ActionRequest::ActivateAbility {
                 object_id: land_id.0,
+                ability_index: 0,
+                x_value: None,
+                targets: vec![],
             },
         )
         .unwrap();
@@ -1646,7 +1643,7 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_tap_land_adds_mana_to_pool() {
+    fn activate_land_ability_adds_mana_to_pool() {
         use mecha_oracle::engine::casting::play_land;
         let config = vec![
             vec![
@@ -1673,15 +1670,146 @@ mod tests {
             .unwrap();
         gs = play_land(gs, PlayerId(0), land_id).unwrap();
 
-        let tap_result = dispatch_action(
+        let result = dispatch_action(
             gs,
-            ActionRequest::TapLand {
+            ActionRequest::ActivateAbility {
                 object_id: land_id.0,
+                ability_index: 0,
+                x_value: None,
+                targets: vec![],
             },
         );
-        assert!(tap_result.is_ok());
-        let gs2 = tap_result.unwrap();
+        assert!(result.is_ok());
+        let gs2 = result.unwrap();
         assert_eq!(gs2.get_player(PlayerId(0)).unwrap().mana_pool.green, 1);
+    }
+
+    #[test]
+    fn dual_land_shows_two_mana_actions_in_view() {
+        // Savannah (Land — Forest Plains) must offer both {T}: Add {G} and {T}: Add {W}
+        // as separate activate_ability actions so the player can choose which color to add.
+        use mecha_oracle::engine::casting::play_land;
+        let db = test_db();
+        let config = vec![
+            (0..10)
+                .map(|i| {
+                    if i == 0 {
+                        "Savannah".to_string()
+                    } else {
+                        "Forest".to_string()
+                    }
+                })
+                .collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let savannah_id = gs.hands[&PlayerId(0)]
+            .iter()
+            .find(|id| gs.objects[*id].definition.name == "Savannah")
+            .copied()
+            .unwrap();
+        gs = play_land(gs, PlayerId(0), savannah_id).unwrap();
+
+        let view = build_game_view(&gs);
+        let savannah_view = view
+            .p1
+            .lands
+            .iter()
+            .find(|c| c.name == "Savannah")
+            .expect("Savannah must appear in lands");
+
+        let mana_actions: Vec<_> = savannah_view
+            .actions
+            .iter()
+            .filter(|a| {
+                matches!(&a.kind, ActionItemKind::Server { action } if
+                    action["type"] == "activate_ability"
+                )
+            })
+            .collect();
+
+        assert_eq!(
+            mana_actions.len(),
+            2,
+            "untapped Savannah must show exactly two mana actions (one per subtype), got: {:?}",
+            mana_actions.iter().map(|a| &a.label).collect::<Vec<_>>()
+        );
+
+        let labels: Vec<_> = mana_actions.iter().map(|a| a.label.as_str()).collect();
+        assert!(
+            labels.iter().any(|l| l.contains("{G}")),
+            "one action must add Green mana"
+        );
+        assert!(
+            labels.iter().any(|l| l.contains("{W}")),
+            "one action must add White mana"
+        );
+    }
+
+    #[test]
+    fn dual_land_activate_white_ability_adds_white_mana() {
+        use mecha_oracle::engine::casting::play_land;
+        let db = test_db();
+        let config = vec![
+            (0..10)
+                .map(|i| {
+                    if i == 0 {
+                        "Savannah".to_string()
+                    } else {
+                        "Forest".to_string()
+                    }
+                })
+                .collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+
+        let savannah_id = gs.hands[&PlayerId(0)]
+            .iter()
+            .find(|id| gs.objects[*id].definition.name == "Savannah")
+            .copied()
+            .unwrap();
+        gs = play_land(gs, PlayerId(0), savannah_id).unwrap();
+
+        // Find the White-mana action (ability_index 1 for Plains subtype)
+        let view = build_game_view(&gs);
+        let savannah_view = view.p1.lands.iter().find(|c| c.name == "Savannah").unwrap();
+        let white_action = savannah_view
+            .actions
+            .iter()
+            .find(|a| {
+                matches!(&a.kind, ActionItemKind::Server { action } if
+                    action["type"] == "activate_ability" && a.label.contains("{W}")
+                )
+            })
+            .expect("must find white mana action");
+
+        let ability_index = match &white_action.kind {
+            ActionItemKind::Server { action } => action["ability_index"].as_u64().unwrap() as usize,
+            _ => panic!("expected Server action"),
+        };
+
+        gs = dispatch_action(
+            gs,
+            ActionRequest::ActivateAbility {
+                object_id: savannah_id.0,
+                ability_index,
+                x_value: None,
+                targets: vec![],
+            },
+        )
+        .unwrap();
+
+        let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
+        assert_eq!(
+            pool.white, 1,
+            "activating White ability should add White mana"
+        );
+        assert_eq!(
+            pool.green, 0,
+            "activating White ability should not add Green mana"
+        );
     }
 
     #[test]

@@ -162,7 +162,6 @@ function describeAction(action) {
   const ap = currentState.active_player; // 0 or 1
   const apLabel = ap + 1;               // display: 1 or 2
   switch (action.type) {
-    case 'tap_land':       return `<span class="who">P${apLabel}</span> tapped a land for mana`;
     case 'play_land':      return `<span class="who">P${apLabel}</span> played a land`;
     case 'cast_spell': {
       // Instants and Flash creatures can be cast by any player with priority

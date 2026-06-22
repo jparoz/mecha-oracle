@@ -172,6 +172,50 @@ mod tests {
     }
 
     #[test]
+    fn dual_land_gets_two_intrinsic_mana_abilities() {
+        use crate::cards::test_helpers::test_db;
+        use crate::types::ability::{CostComponent, Rule, RulesText};
+        use crate::types::effect::EffectStep;
+
+        let db = test_db();
+        let savannah_def = db.get("Savannah").unwrap().clone();
+        let obj = CardObject::new(ObjectId(1), savannah_def, PlayerId(0), Zone::Battlefield);
+
+        let mana_abilities: Vec<_> = obj
+            .definition
+            .rules_text
+            .iter()
+            .filter_map(|span| match span {
+                RulesText::Active(Rule::Activated(a)) => Some(a),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            mana_abilities.len(),
+            2,
+            "Savannah should have exactly two intrinsic mana abilities (one per basic land subtype)"
+        );
+        assert!(
+            mana_abilities
+                .iter()
+                .all(|a| a.cost.contains(&CostComponent::Tap))
+        );
+        assert!(
+            mana_abilities
+                .iter()
+                .any(|a| matches!(&a.effect[0], EffectStep::AddMana(p) if p.green == 1)),
+            "one ability should add Green mana"
+        );
+        assert!(
+            mana_abilities
+                .iter()
+                .any(|a| matches!(&a.effect[0], EffectStep::AddMana(p) if p.white == 1)),
+            "one ability should add White mana"
+        );
+    }
+
+    #[test]
     fn non_land_gets_no_intrinsic_ability() {
         use crate::cards::test_helpers::test_db;
         use crate::types::ability::{Rule, RulesText};

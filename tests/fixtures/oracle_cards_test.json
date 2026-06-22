@@ -26,7 +26,7 @@
     },
     "mana_cost": "",
     "cmc": 0.0,
-    "type_line": "Basic Land \u2014 Forest",
+    "type_line": "Basic Land — Forest",
     "oracle_text": "({T}: Add {G}.)",
     "colors": [],
     "color_identity": [
@@ -42,7 +42,7 @@
         "id": "f20c89d9-71c9-45f5-a9cb-6e253b0a7cca",
         "component": "combo_piece",
         "name": "Forest",
-        "type_line": "Basic Land \u2014 Forest",
+        "type_line": "Basic Land — Forest",
         "uri": "https://api.scryfall.com/cards/f20c89d9-71c9-45f5-a9cb-6e253b0a7cca"
       },
       {
@@ -50,7 +50,7 @@
         "id": "aed8ae06-ae54-4a16-8830-6547164ce6ae",
         "component": "combo_piece",
         "name": "Gilt-Leaf Alchemist",
-        "type_line": "Creature \u2014 Elf Druid",
+        "type_line": "Creature — Elf Druid",
         "uri": "https://api.scryfall.com/cards/aed8ae06-ae54-4a16-8830-6547164ce6ae"
       }
     ],
@@ -165,7 +165,7 @@
     },
     "mana_cost": "{1}{G}",
     "cmc": 2.0,
-    "type_line": "Creature \u2014 Bear",
+    "type_line": "Creature — Bear",
     "oracle_text": "",
     "power": "2",
     "toughness": "2",
@@ -228,7 +228,7 @@
     "collector_number": "268",
     "digital": false,
     "rarity": "common",
-    "flavor_text": "\"We cannot forget that among all of Dominaria's wonders, a system of life exists, with prey and predators that will never fight wars nor vie for ancient power.\"\n\u2014Jolrael, empress of beasts",
+    "flavor_text": "\"We cannot forget that among all of Dominaria's wonders, a system of life exists, with prey and predators that will never fight wars nor vie for ancient power.\"\n—Jolrael, empress of beasts",
     "card_back_id": "0aeebaf5-8c7d-4636-9e82-8c27447861f7",
     "artist": "D. J. Cleland-Hura",
     "artist_ids": [
@@ -292,7 +292,7 @@
     },
     "mana_cost": "{3}{R}",
     "cmc": 4.0,
-    "type_line": "Creature \u2014 Giant",
+    "type_line": "Creature — Giant",
     "oracle_text": "",
     "power": "3",
     "toughness": "3",
@@ -388,8 +388,7 @@
       "cardmarket": "https://www.cardmarket.com/en/Magic/Products?idProduct=16376&referrer=scryfall&utm_campaign=card_prices&utm_medium=text&utm_source=scryfall",
       "cardhoarder": "https://www.cardhoarder.com/cards/27040?affiliate_id=scryfall&ref=card-profile&utm_campaign=affiliate&utm_medium=card&utm_source=scryfall"
     }
-  }
-  ,
+  },
   {
     "object": "card",
     "layout": "normal",
@@ -429,8 +428,7 @@
     "oracle_text": "First strike",
     "power": "3",
     "toughness": "2"
-  }
-  ,
+  },
   {
     "object": "card",
     "layout": "normal",
@@ -440,8 +438,7 @@
     "oracle_text": "Landfall — Whenever a land you control enters, you gain 2 life.",
     "power": "2",
     "toughness": "2"
-  }
-  ,
+  },
   {
     "object": "card",
     "layout": "normal",
@@ -473,8 +470,12 @@
     "oracle_text": "When this enters, draw a card.",
     "power": "1",
     "toughness": "1",
-    "colors": ["G"],
-    "color_identity": ["G"],
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
     "keywords": []
   },
   {
@@ -510,8 +511,39 @@
     "oracle_text": "",
     "power": "1",
     "toughness": "1",
-    "colors": ["G"],
-    "color_identity": ["G"],
+    "colors": [
+      "G"
+    ],
+    "color_identity": [
+      "G"
+    ],
     "keywords": []
+  },
+  {
+    "object": "card",
+    "name": "Savannah",
+    "lang": "en",
+    "layout": "normal",
+    "type_line": "Land — Forest Plains",
+    "oracle_text": "({T}: Add {G} or {W}.)",
+    "colors": [],
+    "color_identity": [
+      "G",
+      "W"
+    ],
+    "mana_cost": ""
+  },
+  {
+    "object": "card",
+    "name": "Plains",
+    "lang": "en",
+    "layout": "normal",
+    "type_line": "Basic Land — Plains",
+    "oracle_text": "({T}: Add {W}.)",
+    "colors": [],
+    "color_identity": [
+      "W"
+    ],
+    "mana_cost": ""
   }
 ]
