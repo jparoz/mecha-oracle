@@ -1290,6 +1290,127 @@ mod tests {
         );
     }
 
+    #[test]
+    fn aura_goes_to_graveyard_when_target_gone_before_resolution() {
+        // CR 303.4g: if an aura is on the stack and its target is no longer legal
+        // at resolution, the aura goes to the owner's graveyard instead of the battlefield.
+        // Crucially, it must never enter the battlefield — so any ETB triggers on the aura
+        // must NOT fire.
+        use crate::engine::stack::resolve_top;
+        use crate::types::ability::{TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility};
+        use crate::types::mana::ManaColor;
+        use crate::types::permanent::PTDelta;
+        use crate::types::{ContinuousEffect, PermanentFilter, TriggerEvent};
+        let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
+
+        // Put a creature on the battlefield as the target.
+        let creature_def = CardDefinition {
+            name: "Vanilla Bear".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Green, ManaPip::Green],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Bear".into()],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![ManaColor::Green],
+        };
+        let bear_id = place_on_battlefield(&mut gs, creature_def, PlayerId(0));
+
+        // Aura with an ETB trigger (draw a card). Per CR 303.4g, if the aura's target
+        // is gone, this trigger must NOT fire because the aura never enters the battlefield.
+        let aura_def = CardDefinition {
+            name: "Cursed Flesh".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Black],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec!["Aura".into()],
+            },
+            oracle_text:
+                "Enchant creature\nEnchanted creature gets +2/+1.\nWhen this enters, draw a card."
+                    .into(),
+            rules_text: vec![
+                RulesText::Active(Rule::Aura {
+                    enchant: crate::types::ability::TargetFilter::Creature,
+                    grants: ContinuousEffect {
+                        subject_filter: PermanentFilter::default(),
+                        pt_modification: Some(PTDelta {
+                            power: 2,
+                            toughness: 1,
+                        }),
+                    },
+                }),
+                RulesText::Active(Rule::Triggered(TriggeredAbility {
+                    trigger: TriggerEvent::EntersTheBattlefield {
+                        subject: TriggerSubjectFilter {
+                            is_self: Some(true),
+                            ..Default::default()
+                        },
+                    },
+                    condition: None,
+                    target_mode: TriggerTargetMode::None,
+                    effect: vec![EffectStep::DrawCard(1)],
+                })),
+            ],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![ManaColor::Black],
+        };
+        let aura_id = put_in_hand(&mut gs, PlayerId(0), aura_def);
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.black = 1;
+        let hand_size = gs.hands[&PlayerId(0)].len();
+
+        let mut gs = cast_spell(
+            gs,
+            PlayerId(0),
+            aura_id,
+            vec![crate::types::effect::EffectTarget::Object { id: bear_id }],
+            None,
+        )
+        .unwrap();
+        assert_eq!(gs.stack.len(), 1);
+
+        // Simulate the bear leaving the battlefield before the aura resolves.
+        gs.battlefield.remove(&bear_id);
+        if let Some(obj) = gs.objects.get_mut(&bear_id) {
+            obj.zone = Zone::Graveyard;
+        }
+        gs.graveyards.get_mut(&PlayerId(0)).unwrap().push(bear_id);
+
+        let gs = resolve_top(gs);
+
+        assert!(
+            !gs.battlefield.contains_key(&aura_id),
+            "aura should NOT enter the battlefield when its target is gone"
+        );
+        assert!(
+            gs.graveyards[&PlayerId(0)].contains(&aura_id),
+            "aura should be in its owner's graveyard"
+        );
+        assert_eq!(gs.objects[&aura_id].zone, Zone::Graveyard);
+        // The ETB trigger must not have fired — stack should be empty and hand size unchanged.
+        assert!(
+            gs.stack.is_empty(),
+            "ETB trigger must not fire when aura goes directly to graveyard"
+        );
+        assert_eq!(
+            gs.hands[&PlayerId(0)].len(),
+            hand_size - 1, // aura was cast from hand; nothing drawn
+            "no card should be drawn — ETB trigger must not have fired"
+        );
+    }
+
     // --- Counterspell integration tests (CR 701.5, CR 608.2b) ---
 
     fn make_counterspell_def() -> CardDefinition {

@@ -426,6 +426,34 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                 .unwrap_or(false);
 
             if is_permanent {
+                // CR 303.4g: if this is an aura spell and its target is no longer legal
+                // (target left the battlefield in response), the aura goes directly to the
+                // owner's graveyard instead of entering the battlefield. This prevents ETB
+                // triggers on the aura from firing incorrectly.
+                let is_aura = state
+                    .objects
+                    .get(&card_id)
+                    .map(|o| {
+                        o.definition.rules_text.iter().any(|span| {
+                            matches!(
+                                span,
+                                crate::types::RulesText::Active(crate::types::Rule::Aura { .. })
+                            )
+                        })
+                    })
+                    .unwrap_or(false);
+                if is_aura && !crate::engine::targeting::targets_still_legal(&state, &targets) {
+                    if let Some(obj) = state.objects.get_mut(&card_id) {
+                        obj.zone = Zone::Graveyard;
+                    }
+                    if let Some(gy) = state.graveyards.get_mut(&controller) {
+                        gy.push(card_id);
+                    }
+                    state.consecutive_passes = 0;
+                    state.priority_player = state.active_player;
+                    return apply_sbas_and_push_triggers(state);
+                }
+
                 // CR 608.3: permanent spells resolve by entering the battlefield.
                 let def = state.objects.get(&card_id).map(|o| o.definition.clone());
                 if let Some(obj) = state.objects.get_mut(&card_id) {
@@ -450,22 +478,8 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     state.stack_objects.insert(id, trigger);
                 }
 
-                // CR 303.4: An Aura enters the battlefield attached to an object or player.
-                // Attach to the target declared at cast time. If the target is no longer on the
-                // battlefield, leave attached_to = None; the 704.5m SBA will handle it.
-                let has_aura_rule = state
-                    .objects
-                    .get(&card_id)
-                    .map(|o| {
-                        o.definition.rules_text.iter().any(|span| {
-                            matches!(
-                                span,
-                                crate::types::RulesText::Active(crate::types::Rule::Aura { .. })
-                            )
-                        })
-                    })
-                    .unwrap_or(false);
-                if has_aura_rule
+                // CR 303.4: An Aura enters the battlefield attached to the target declared at cast time.
+                if is_aura
                     && let Some(crate::types::effect::EffectTarget::Object { id: host_id }) =
                         targets.first()
                 {
@@ -475,8 +489,6 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     {
                         perm.attached_to = Some(host_id);
                     }
-                    // If host_id is not on battlefield: aura enters unattached; 704.5m SBA
-                    // fires immediately after and moves it to the graveyard.
                 }
             } else {
                 // CR 608.2b: instant/sorcery — execute effects, then move to graveyard.

@@ -1,5 +1,4 @@
 # General issues
-- CR 303.4g: when an aura spell's target is gone at resolution, the aura should go directly to the graveyard (skipping ETB) rather than entering unattached and relying on 704.5m SBA. Currently it enters the battlefield briefly, which would trigger ETB abilities incorrectly. No practical impact until aura ETB triggers are implemented.
 - Can we run dead code analysis on library re-exports? That is, check that all library exports are actually used in the binary?
 - Players should discard to hand size at the cleanup step (see CR 402.2)
 - `can_pay_cost_components` (costs.rs) always returns true for mana (by design), so the serve.rs UI action filter will show X-cost activated abilities as available regardless of pool size. When X-cost activated abilities are added, thread `x_value` into `can_pay_cost_components` and the serve.rs call site (line 606).
