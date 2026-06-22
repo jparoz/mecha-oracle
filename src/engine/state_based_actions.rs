@@ -26,8 +26,8 @@ enum Sba {
     PlayerLoses(PlayerId),
     MoveToGraveyard(ObjectId),
     CancelCounters(ObjectId, u32),
-    AuraToGraveyard(ObjectId), // CR 704.5m / 704.5n
-    DetachEquipment(ObjectId), // CR 704.5r
+    AuraToGraveyard(ObjectId), // CR 704.5m
+    DetachEquipment(ObjectId), // CR 704.5n
 }
 
 fn find_sbas(state: &GameState) -> Vec<Sba> {
@@ -86,7 +86,7 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     use crate::types::ability::{Rule, RulesText};
 
     // CR 704.5m: Aura on battlefield not attached to anything → graveyard.
-    // CR 704.5n: Aura attached to something that no longer satisfies the enchant restriction → graveyard.
+    // CR 704.5m: Aura attached to something that no longer satisfies the enchant restriction → graveyard.
     for (&id, perm) in &state.battlefield {
         let enchant = perm.definition.rules_text.iter().find_map(|span| {
             if let RulesText::Active(Rule::Aura { enchant, .. }) = span {
@@ -99,7 +99,7 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
             let should_die = match perm.attached_to {
                 None => true, // 704.5m: not attached
                 Some(host_id) => {
-                    // 704.5n: host no longer satisfies enchant restriction
+                    // 704.5m: host no longer satisfies enchant restriction
                     let target = crate::types::effect::EffectTarget::Object { id: host_id };
                     let controller = state
                         .objects
@@ -122,7 +122,7 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
         }
     }
 
-    // CR 704.5r: Equipment attached to a permanent that isn't a creature → detach.
+    // CR 704.5n: Equipment attached to a permanent that isn't a creature → detach.
     for (&id, perm) in &state.battlefield {
         let has_equip = perm
             .definition
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn aura_attached_to_nonexistent_permanent_goes_to_graveyard() {
-        // CR 704.5n: host has left the battlefield.
+        // CR 704.5m: host has left the battlefield.
         use crate::types::ability::TargetFilter;
         let mut gs = make_state();
         let aura_id =
