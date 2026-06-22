@@ -69,6 +69,11 @@ pub fn continuous_pt_bonus(state: &GameState, target_id: ObjectId) -> PTDelta {
             {
                 let filter = &effect.subject_filter;
 
+                // If object_ids is non-empty, only match if the target is one of those IDs.
+                if !filter.object_ids.is_empty() && !filter.object_ids.contains(&target_id) {
+                    continue;
+                }
+
                 let controller_ok = match filter.controller {
                     ControllerFilter::Any => true,
                     ControllerFilter::You => src_obj.controller == target_controller,
@@ -102,12 +107,32 @@ pub fn continuous_pt_bonus(state: &GameState, target_id: ObjectId) -> PTDelta {
         }
     }
 
+    // Second pass: attached sources (Rule::Aura and Rule::Equip).
+    // CR 611.1: a continuous effect from an attached permanent applies to its host.
+    for src_perm in state.battlefield.values() {
+        if src_perm.attached_to != Some(target_id) {
+            continue;
+        }
+        for span in &src_perm.definition.rules_text {
+            let grants = match span {
+                RulesText::Active(Rule::Aura { grants, .. }) => grants,
+                RulesText::Active(Rule::Equip { grants, .. }) => grants,
+                _ => continue,
+            };
+            if let Some(delta) = grants.pt_modification {
+                bonus.power += delta.power;
+                bonus.toughness += delta.toughness;
+            }
+        }
+    }
+
     bonus
 }
 
 #[cfg(test)]
 mod tests {
     use super::continuous_pt_bonus;
+    use crate::cards::test_helpers::test_db;
     use crate::types::{
         CardDefinition, CardObject, CardType, ContinuousEffect, ControllerFilter, GameState,
         ObjectId, PTDelta, PermanentFilter, PermanentState, Player, PlayerId, Rule, RulesText,
@@ -139,7 +164,6 @@ mod tests {
     }
 
     fn grizzly_bears_def() -> CardDefinition {
-        use crate::cards::test_helpers::test_db;
         test_db().get("grizzly bears").unwrap().clone()
     }
 
@@ -267,5 +291,185 @@ mod tests {
                 toughness: 0
             }
         );
+    }
+
+    fn make_attachment_def(card_type: CardType, rule: Rule) -> CardDefinition {
+        CardDefinition {
+            name: "Test Attachment".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![card_type],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![RulesText::Active(rule)],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        }
+    }
+
+    #[test]
+    fn equipment_grants_pt_to_attached_creature() {
+        // Bonesplitter: +2/+0 to attached creature.
+        use crate::types::ability::CostComponent;
+        use crate::types::mana::{ManaCost, ManaPip};
+
+        let mut gs = two_player_state();
+
+        // Target creature: a 2/2 Bear
+        let bear_id = add_permanent(
+            &mut gs,
+            PlayerId(0),
+            test_db().get("Grizzly Bears").unwrap().clone(),
+            Zone::Battlefield,
+        );
+
+        // Equipment: +2/+0
+        let equip_def = make_attachment_def(
+            CardType::Artifact,
+            Rule::Equip {
+                cost: vec![CostComponent::Mana(ManaCost {
+                    pips: vec![ManaPip::Generic(1)],
+                })],
+                grants: ContinuousEffect {
+                    subject_filter: PermanentFilter::default(),
+                    pt_modification: Some(PTDelta {
+                        power: 2,
+                        toughness: 0,
+                    }),
+                },
+            },
+        );
+        let equip_id = add_permanent(&mut gs, PlayerId(0), equip_def, Zone::Battlefield);
+
+        // Attach
+        gs.battlefield.get_mut(&equip_id).unwrap().attached_to = Some(bear_id);
+
+        let bonus = continuous_pt_bonus(&gs, bear_id);
+        assert_eq!(bonus.power, 2);
+        assert_eq!(bonus.toughness, 0);
+    }
+
+    #[test]
+    fn aura_grants_pt_to_enchanted_creature() {
+        // Unholy Strength: +2/+1 to enchanted creature.
+        use crate::types::ability::TargetFilter;
+
+        let mut gs = two_player_state();
+
+        let bear_id = add_permanent(
+            &mut gs,
+            PlayerId(0),
+            test_db().get("Grizzly Bears").unwrap().clone(),
+            Zone::Battlefield,
+        );
+
+        let aura_def = make_attachment_def(
+            CardType::Enchantment,
+            Rule::Aura {
+                enchant: TargetFilter::Creature,
+                grants: ContinuousEffect {
+                    subject_filter: PermanentFilter::default(),
+                    pt_modification: Some(PTDelta {
+                        power: 2,
+                        toughness: 1,
+                    }),
+                },
+            },
+        );
+        let aura_id = add_permanent(&mut gs, PlayerId(0), aura_def, Zone::Battlefield);
+        gs.battlefield.get_mut(&aura_id).unwrap().attached_to = Some(bear_id);
+
+        let bonus = continuous_pt_bonus(&gs, bear_id);
+        assert_eq!(bonus.power, 2);
+        assert_eq!(bonus.toughness, 1);
+    }
+
+    #[test]
+    fn detached_equipment_does_not_grant_pt() {
+        use crate::types::ability::CostComponent;
+        use crate::types::mana::{ManaCost, ManaPip};
+
+        let mut gs = two_player_state();
+        let bear_id = add_permanent(
+            &mut gs,
+            PlayerId(0),
+            test_db().get("Grizzly Bears").unwrap().clone(),
+            Zone::Battlefield,
+        );
+        let equip_def = make_attachment_def(
+            CardType::Artifact,
+            Rule::Equip {
+                cost: vec![CostComponent::Mana(ManaCost {
+                    pips: vec![ManaPip::Generic(1)],
+                })],
+                grants: ContinuousEffect {
+                    subject_filter: PermanentFilter::default(),
+                    pt_modification: Some(PTDelta {
+                        power: 2,
+                        toughness: 0,
+                    }),
+                },
+            },
+        );
+        // Not attached — attached_to remains None
+        add_permanent(&mut gs, PlayerId(0), equip_def, Zone::Battlefield);
+
+        let bonus = continuous_pt_bonus(&gs, bear_id);
+        assert_eq!(bonus.power, 0);
+        assert_eq!(bonus.toughness, 0);
+    }
+
+    #[test]
+    fn object_ids_filter_restricts_to_specific_id() {
+        // A Rule::Continuous with object_ids = [bear_id] should only apply to bear_id,
+        // not to another creature on the battlefield.
+        let mut gs = two_player_state();
+        let bear_id = add_permanent(
+            &mut gs,
+            PlayerId(0),
+            test_db().get("Grizzly Bears").unwrap().clone(),
+            Zone::Battlefield,
+        );
+        let giant_id = add_permanent(
+            &mut gs,
+            PlayerId(0),
+            test_db().get("Hill Giant").unwrap().clone(),
+            Zone::Battlefield,
+        );
+
+        // A "continuous" source on the battlefield whose filter targets only bear_id.
+        let source_def = CardDefinition {
+            name: "Targeted Boost".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![RulesText::Active(Rule::Continuous(ContinuousEffect {
+                subject_filter: PermanentFilter {
+                    object_ids: vec![bear_id],
+                    ..Default::default()
+                },
+                pt_modification: Some(PTDelta {
+                    power: 3,
+                    toughness: 0,
+                }),
+            }))],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        };
+        add_permanent(&mut gs, PlayerId(0), source_def, Zone::Battlefield);
+
+        // Bear gets +3/+0; Hill Giant gets nothing.
+        assert_eq!(continuous_pt_bonus(&gs, bear_id).power, 3);
+        assert_eq!(continuous_pt_bonus(&gs, giant_id).power, 0);
     }
 }
