@@ -26,6 +26,8 @@ enum Sba {
     PlayerLoses(PlayerId),
     MoveToGraveyard(ObjectId),
     CancelCounters(ObjectId, u32),
+    AuraToGraveyard(ObjectId), // CR 704.5m / 704.5n
+    DetachEquipment(ObjectId), // CR 704.5r
 }
 
 fn find_sbas(state: &GameState) -> Vec<Sba> {
@@ -81,6 +83,65 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
         }
     }
 
+    use crate::types::ability::{Rule, RulesText};
+
+    // CR 704.5m: Aura on battlefield not attached to anything → graveyard.
+    // CR 704.5n: Aura attached to something that no longer satisfies the enchant restriction → graveyard.
+    for (&id, perm) in &state.battlefield {
+        let enchant = perm.definition.rules_text.iter().find_map(|span| {
+            if let RulesText::Active(Rule::Aura { enchant, .. }) = span {
+                Some(enchant.clone())
+            } else {
+                None
+            }
+        });
+        if let Some(enchant) = enchant {
+            let should_die = match perm.attached_to {
+                None => true, // 704.5m: not attached
+                Some(host_id) => {
+                    // 704.5n: host no longer satisfies enchant restriction
+                    let target = crate::types::effect::EffectTarget::Object { id: host_id };
+                    let controller = state
+                        .objects
+                        .get(&id)
+                        .map(|o| o.controller)
+                        .unwrap_or(PlayerId(0));
+                    let colors = state
+                        .objects
+                        .get(&id)
+                        .map(|o| o.definition.colors.clone())
+                        .unwrap_or_default();
+                    !crate::engine::targeting::is_legal_target(
+                        state, &target, &enchant, controller, &colors,
+                    )
+                }
+            };
+            if should_die {
+                sbas.push(Sba::AuraToGraveyard(id));
+            }
+        }
+    }
+
+    // CR 704.5r: Equipment attached to a permanent that isn't a creature → detach.
+    for (&id, perm) in &state.battlefield {
+        let has_equip = perm
+            .definition
+            .rules_text
+            .iter()
+            .any(|span| matches!(span, RulesText::Active(Rule::Equip { .. })));
+        if has_equip && let Some(host_id) = perm.attached_to {
+            let host_is_creature = state
+                .objects
+                .get(&host_id)
+                .map(|o| o.is_creature())
+                .unwrap_or(false);
+            let host_on_battlefield = state.battlefield.contains_key(&host_id);
+            if !host_on_battlefield || !host_is_creature {
+                sbas.push(Sba::DetachEquipment(id));
+            }
+        }
+    }
+
     sbas
 }
 
@@ -126,6 +187,14 @@ fn apply_sbas(
                     );
                 }
             }
+            Sba::AuraToGraveyard(id) => {
+                state = move_to_graveyard(state, id);
+            }
+            Sba::DetachEquipment(id) => {
+                if let Some(perm) = state.battlefield.get_mut(&id) {
+                    perm.attached_to = None;
+                }
+            }
         }
     }
     (state, triggers)
@@ -168,6 +237,207 @@ mod tests {
         state.battlefield.insert(id, perm);
         state.add_object(obj);
         id
+    }
+
+    fn make_aura(enchant: crate::types::ability::TargetFilter) -> crate::types::CardDefinition {
+        use crate::types::permanent::PTDelta;
+        use crate::types::{
+            CardDefinition, CardType, ContinuousEffect, PermanentFilter, Rule, RulesText, TypeLine,
+        };
+        CardDefinition {
+            name: "Test Aura".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec!["Aura".into()],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![RulesText::Active(Rule::Aura {
+                enchant,
+                grants: ContinuousEffect {
+                    subject_filter: PermanentFilter::default(),
+                    pt_modification: Some(PTDelta {
+                        power: 1,
+                        toughness: 0,
+                    }),
+                },
+            })],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        }
+    }
+
+    fn make_equipment() -> crate::types::CardDefinition {
+        use crate::types::ability::CostComponent;
+        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::permanent::PTDelta;
+        use crate::types::{
+            CardDefinition, CardType, ContinuousEffect, PermanentFilter, Rule, RulesText, TypeLine,
+        };
+        CardDefinition {
+            name: "Test Equipment".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Artifact],
+                subtypes: vec!["Equipment".into()],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![RulesText::Active(Rule::Equip {
+                cost: vec![CostComponent::Mana(ManaCost {
+                    pips: vec![ManaPip::Generic(1)],
+                })],
+                grants: ContinuousEffect {
+                    subject_filter: PermanentFilter::default(),
+                    pt_modification: Some(PTDelta {
+                        power: 2,
+                        toughness: 0,
+                    }),
+                },
+            })],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![],
+        }
+    }
+
+    #[test]
+    fn aura_not_attached_to_anything_goes_to_graveyard() {
+        // CR 704.5m: Aura on battlefield with attached_to = None → graveyard.
+        use crate::types::ability::TargetFilter;
+        let mut gs = make_state();
+        let aura_id =
+            add_creature_to_battlefield(&mut gs, PlayerId(0), make_aura(TargetFilter::Creature));
+        // attached_to is None by default (not attached to anything)
+        assert!(gs.battlefield[&aura_id].attached_to.is_none());
+
+        let (gs, _) = check_and_apply_sbas(gs);
+
+        assert!(
+            !gs.battlefield.contains_key(&aura_id),
+            "aura should have gone to graveyard"
+        );
+        assert!(gs.graveyards[&PlayerId(0)].contains(&aura_id));
+    }
+
+    #[test]
+    fn aura_attached_to_nonexistent_permanent_goes_to_graveyard() {
+        // CR 704.5n: host has left the battlefield.
+        use crate::types::ability::TargetFilter;
+        let mut gs = make_state();
+        let aura_id =
+            add_creature_to_battlefield(&mut gs, PlayerId(0), make_aura(TargetFilter::Creature));
+        let phantom_id = ObjectId(999); // does not exist on the battlefield
+        gs.battlefield.get_mut(&aura_id).unwrap().attached_to = Some(phantom_id);
+
+        let (gs, _) = check_and_apply_sbas(gs);
+
+        assert!(!gs.battlefield.contains_key(&aura_id));
+        assert!(gs.graveyards[&PlayerId(0)].contains(&aura_id));
+    }
+
+    #[test]
+    fn aura_attached_to_valid_creature_survives() {
+        use crate::types::ability::TargetFilter;
+        let db = test_db();
+        let mut gs = make_state();
+        let bear_id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let aura_id =
+            add_creature_to_battlefield(&mut gs, PlayerId(0), make_aura(TargetFilter::Creature));
+        gs.battlefield.get_mut(&aura_id).unwrap().attached_to = Some(bear_id);
+
+        let (gs, _) = check_and_apply_sbas(gs);
+
+        assert!(
+            gs.battlefield.contains_key(&aura_id),
+            "aura on a legal creature should survive"
+        );
+    }
+
+    #[test]
+    fn equipment_attached_to_non_creature_becomes_detached() {
+        // CR 704.5r: Equipment attached to something that's no longer a creature → unattach, stays on bf.
+        let db = test_db();
+        let mut gs = make_state();
+        let land_id = {
+            let id = gs.alloc_id();
+            let obj = crate::types::CardObject::new(
+                id,
+                db.get("Forest").unwrap().clone(),
+                PlayerId(0),
+                crate::types::Zone::Battlefield,
+            );
+            let perm = PermanentState::new(&obj.definition);
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        let equip_id = {
+            let id = gs.alloc_id();
+            let obj = crate::types::CardObject::new(
+                id,
+                make_equipment(),
+                PlayerId(0),
+                crate::types::Zone::Battlefield,
+            );
+            let perm = PermanentState::new(&obj.definition);
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        gs.battlefield.get_mut(&equip_id).unwrap().attached_to = Some(land_id);
+
+        let (gs, _) = check_and_apply_sbas(gs);
+
+        assert!(
+            gs.battlefield.contains_key(&equip_id),
+            "equipment stays on battlefield"
+        );
+        assert!(
+            gs.battlefield[&equip_id].attached_to.is_none(),
+            "equipment is detached"
+        );
+    }
+
+    #[test]
+    fn equipment_attached_to_creature_stays_attached() {
+        let db = test_db();
+        let mut gs = make_state();
+        let bear_id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let equip_id = {
+            let id = gs.alloc_id();
+            let obj = crate::types::CardObject::new(
+                id,
+                make_equipment(),
+                PlayerId(0),
+                crate::types::Zone::Battlefield,
+            );
+            let perm = PermanentState::new(&obj.definition);
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        gs.battlefield.get_mut(&equip_id).unwrap().attached_to = Some(bear_id);
+
+        let (gs, _) = check_and_apply_sbas(gs);
+
+        assert_eq!(
+            gs.battlefield[&equip_id].attached_to,
+            Some(bear_id),
+            "equipment should stay attached to a creature"
+        );
     }
 
     #[test]
