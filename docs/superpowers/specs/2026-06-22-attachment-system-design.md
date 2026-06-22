@@ -145,7 +145,7 @@ ActionRequest::ActivateEquip {
 
 `compute_battlefield_actions` adds `ActivateEquip` actions for equipment that can pay their cost, during the player's main phase with an empty stack.
 
-### 5c. State-Based Actions (CR 704.5m, 704.5n, 704.5r)
+### 5c. State-Based Actions (CR 704.5m, 704.5n)
 
 Three new SBAs added to `engine/state_based_actions.rs::find_sbas`:
 
@@ -153,7 +153,7 @@ Three new SBAs added to `engine/state_based_actions.rs::find_sbas`:
 enum Sba {
     // ... existing ...
     AuraToGraveyard(ObjectId),   // CR 704.5m / 704.5n
-    DetachEquipment(ObjectId),   // CR 704.5r
+    DetachEquipment(ObjectId),   // CR 704.5n
 }
 ```
 
@@ -164,7 +164,7 @@ For each permanent P with `Rule::Aura` where `P.attached_to.is_none()`: push `Au
 For each permanent P with `Rule::Aura { enchant, .. }` where `P.attached_to == Some(host_id)`:
 - If `host_id` is not on the battlefield, or does not satisfy `enchant` as a target filter (using `targeting::is_legal_target`): push `AuraToGraveyard(P_id)`.
 
-**CR 704.5r — Equipment attached to a non-creature:**
+**CR 704.5n — Equipment attached to a non-creature:**
 For each permanent P with `Rule::Equip` where `P.attached_to == Some(host_id)`:
 - If `host_id` is not on the battlefield or is not a creature: push `DetachEquipment(P_id)`.
 

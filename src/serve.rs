@@ -608,6 +608,12 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
         });
         if let Some(enchant_filter) = aura_enchant_filter {
             let spell_colors = obj.definition.colors.clone();
+            let cost_label = obj
+                .definition
+                .mana_cost
+                .as_ref()
+                .map(format_mana_cost_braced)
+                .unwrap_or_default();
             for target in legal_targets(state, &enchant_filter, pid, &spell_colors) {
                 let EffectTarget::Object { id: target_obj_id } = target else {
                     continue;
@@ -623,6 +629,7 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                             "type": "cast_spell",
                             "object_id": obj.id.0,
                             "targets": [target_val],
+                            "cost_label": cost_label,
                         }),
                     },
                 });
@@ -737,7 +744,7 @@ fn compute_battlefield_actions(
         }
     }
 
-    // Equip actions: CR 301.5d — sorcery speed, main phase, empty stack, controller only.
+    // Equip actions: CR 702.6a — sorcery speed, main phase, empty stack, controller only.
     if state.priority_player == pid
         && state.active_player == pid
         && matches!(state.step(), Step::PreCombatMain | Step::PostCombatMain)
@@ -3465,7 +3472,7 @@ mod tests {
 
     #[test]
     fn equip_actions_not_shown_outside_main_phase() {
-        // Equip is sorcery-speed only (CR 301.5d) — no equip actions during DeclareAttackers.
+        // Equip is sorcery-speed only (CR 702.6a) — no equip actions during DeclareAttackers.
         use mecha_oracle::types::{CardObject, Zone};
         let db = test_db();
         let config = vec![
@@ -3516,7 +3523,7 @@ mod tests {
             .collect();
         assert!(
             equip_actions.is_empty(),
-            "equip action should not appear outside main phase (CR 301.5d)"
+            "equip action should not appear outside main phase (CR 702.6a)"
         );
     }
 
