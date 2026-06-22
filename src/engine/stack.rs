@@ -450,9 +450,9 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     state.stack_objects.insert(id, trigger);
                 }
 
-                // CR 303.4a / 303.4c: if this permanent is an Aura, attach it to its declared
-                // target. If the target is no longer on the battlefield, leave attached_to = None;
-                // the 704.5m SBA will move it to the graveyard on the next SBA check.
+                // CR 303.4: An Aura enters the battlefield attached to an object or player.
+                // Attach to the target declared at cast time. If the target is no longer on the
+                // battlefield, leave attached_to = None; the 704.5m SBA will handle it.
                 let has_aura_rule = state
                     .objects
                     .get(&card_id)
