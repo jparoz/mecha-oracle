@@ -59,6 +59,11 @@ pub enum EffectStep {
         on_declined: Effect,
     },
     Unimplemented(String), // parsed but not yet executable; skipped at resolution
+    // CR 702.6a: attaches the source equipment to the first target of the stack object.
+    // `source_id` is the equipment's ObjectId, captured at activation time.
+    Attach {
+        source_id: ObjectId,
+    },
 }
 
 pub type Effect = Vec<EffectStep>;
@@ -118,5 +123,19 @@ mod tests {
             to_player: ZoneOwner::CardOwner,
         };
         assert!(matches!(step, EffectStep::MoveZone { .. }));
+    }
+
+    #[test]
+    fn attach_step_construction() {
+        use crate::types::ids::ObjectId;
+        let step = EffectStep::Attach {
+            source_id: ObjectId(5),
+        };
+        assert!(matches!(
+            step,
+            EffectStep::Attach {
+                source_id: ObjectId(5)
+            }
+        ));
     }
 }

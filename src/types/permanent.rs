@@ -1,6 +1,7 @@
 use super::ability::{KeywordAbility, Rule, RulesText};
 use super::card::CardDefinition;
 use super::counter::CounterKind;
+use super::ids::ObjectId;
 use std::collections::HashMap;
 
 /// Temporary power/toughness modification accumulated from until-end-of-turn effects
@@ -33,6 +34,8 @@ pub struct PermanentState {
     pub pt_boost_until_eot: PTDelta,
     /// Counters on this permanent (CR 122).
     pub counters: HashMap<CounterKind, u32>,
+    /// CR 303.4b / 301.5b: which permanent this is currently attached to (aura or equipment).
+    pub attached_to: Option<ObjectId>,
 }
 
 impl PermanentState {
@@ -47,6 +50,7 @@ impl PermanentState {
             damaged_by_deathtouch: false,
             pt_boost_until_eot: PTDelta::default(),
             counters: HashMap::new(),
+            attached_to: None,
         }
     }
 
@@ -172,6 +176,12 @@ mod tests {
     fn grizzly_bears_perm() -> PermanentState {
         let db = test_db();
         PermanentState::new(db.get("Grizzly Bears").unwrap())
+    }
+
+    #[test]
+    fn attached_to_initialises_to_none() {
+        let perm = grizzly_bears_perm();
+        assert!(perm.attached_to.is_none());
     }
 
     #[test]

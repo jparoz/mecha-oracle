@@ -359,6 +359,8 @@ pub(crate) fn execute_effect_steps(
                 }
             }
             EffectStep::Unimplemented(_) => {}
+            // Attachment logic is implemented in a later task; stub here keeps the match exhaustive.
+            EffectStep::Attach { .. } => {}
         }
     }
     state

@@ -252,6 +252,9 @@ pub struct PermanentFilter {
     pub card_types: Vec<CardType>,
     pub subtypes: Vec<String>,
     pub colors: Vec<ManaColor>,
+    /// If non-empty, only match permanents whose ObjectId is in this list.
+    /// Used for effects targeting a specific object. Empty = no ID constraint.
+    pub object_ids: Vec<ObjectId>,
 }
 
 impl Default for PermanentFilter {
@@ -261,6 +264,7 @@ impl Default for PermanentFilter {
             card_types: vec![],
             subtypes: vec![],
             colors: vec![],
+            object_ids: vec![],
         }
     }
 }
@@ -472,6 +476,20 @@ pub enum Rule {
     SpellAbility(SpellAbility),
     Cycling(ManaCost),
     Continuous(ContinuousEffect), // CR 611.3b
+    // CR 303.4: an Aura enchants the object matching `enchant`.
+    // `enchant` is the target requirement at cast time and for SBA legality checks.
+    // `grants` is applied to the attached permanent while on the battlefield.
+    Aura {
+        enchant: TargetFilter,
+        grants: ContinuousEffect,
+    },
+    // CR 301.5: an Equipment with an Equip activated ability.
+    // `cost` is paid at sorcery speed to attach/re-attach.
+    // `grants` is applied to the equipped creature.
+    Equip {
+        cost: Cost,
+        grants: ContinuousEffect,
+    },
 }
 
 /// A classified entry in a card's rules text (CR 207.1).
@@ -740,6 +758,47 @@ mod tests {
         assert!(f.card_types.is_empty());
         assert!(f.subtypes.is_empty());
         assert!(f.colors.is_empty());
+    }
+
+    #[test]
+    fn permanent_filter_default_has_empty_object_ids() {
+        let f = PermanentFilter::default();
+        assert!(f.object_ids.is_empty());
+    }
+
+    #[test]
+    fn rule_aura_construction() {
+        use crate::types::permanent::PTDelta;
+        let rule = Rule::Aura {
+            enchant: TargetFilter::Creature,
+            grants: ContinuousEffect {
+                subject_filter: PermanentFilter::default(),
+                pt_modification: Some(PTDelta {
+                    power: 2,
+                    toughness: 1,
+                }),
+            },
+        };
+        assert!(matches!(rule, Rule::Aura { .. }));
+    }
+
+    #[test]
+    fn rule_equip_construction() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        use crate::types::permanent::PTDelta;
+        let rule = Rule::Equip {
+            cost: vec![CostComponent::Mana(ManaCost {
+                pips: vec![ManaPip::Generic(1)],
+            })],
+            grants: ContinuousEffect {
+                subject_filter: PermanentFilter::default(),
+                pt_modification: Some(PTDelta {
+                    power: 2,
+                    toughness: 0,
+                }),
+            },
+        };
+        assert!(matches!(rule, Rule::Equip { .. }));
     }
 
     #[test]

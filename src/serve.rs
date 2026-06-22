@@ -450,6 +450,7 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
             }
             EffectStep::Payment { .. } => "Pay cost".to_string(),
             EffectStep::Unimplemented(s) => s.clone(),
+            EffectStep::Attach { .. } => "Attach equipment".to_string(),
         })
         .collect();
     format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))
