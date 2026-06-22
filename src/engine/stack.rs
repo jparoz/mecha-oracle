@@ -359,8 +359,19 @@ pub(crate) fn execute_effect_steps(
                 }
             }
             EffectStep::Unimplemented(_) => {}
-            // Attachment logic is implemented in a later task; stub here keeps the match exhaustive.
-            EffectStep::Attach { .. } => {}
+            // CR 301.5d: attach the equipment (source_id) to the first target.
+            // Both source and target must still be on the battlefield (LKI — CR 608.2b).
+            EffectStep::Attach { source_id } => {
+                if let Some(EffectTarget::Object { id: target_id }) = targets.first() {
+                    let target_id = *target_id;
+                    if state.battlefield.contains_key(source_id)
+                        && state.battlefield.contains_key(&target_id)
+                        && let Some(perm) = state.battlefield.get_mut(source_id)
+                    {
+                        perm.attached_to = Some(target_id);
+                    }
+                }
+            }
         }
     }
     state

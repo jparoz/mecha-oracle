@@ -3,6 +3,7 @@ pub mod casting;
 pub mod combat;
 pub mod costs;
 pub mod cycling;
+pub mod equip;
 pub mod mana;
 pub mod stack;
 pub mod state_based_actions;
