@@ -449,6 +449,35 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     state.stack.push(id);
                     state.stack_objects.insert(id, trigger);
                 }
+
+                // CR 303.4a / 303.4c: if this permanent is an Aura, attach it to its declared
+                // target. If the target is no longer on the battlefield, leave attached_to = None;
+                // the 704.5m SBA will move it to the graveyard on the next SBA check.
+                let has_aura_rule = state
+                    .objects
+                    .get(&card_id)
+                    .map(|o| {
+                        o.definition.rules_text.iter().any(|span| {
+                            matches!(
+                                span,
+                                crate::types::RulesText::Active(crate::types::Rule::Aura { .. })
+                            )
+                        })
+                    })
+                    .unwrap_or(false);
+                if has_aura_rule
+                    && let Some(crate::types::effect::EffectTarget::Object { id: host_id }) =
+                        targets.first()
+                {
+                    let host_id = *host_id;
+                    if state.battlefield.contains_key(&host_id)
+                        && let Some(perm) = state.battlefield.get_mut(&card_id)
+                    {
+                        perm.attached_to = Some(host_id);
+                    }
+                    // If host_id is not on battlefield: aura enters unattached; 704.5m SBA
+                    // fires immediately after and moves it to the graveyard.
+                }
             } else {
                 // CR 608.2b: instant/sorcery — execute effects, then move to graveyard.
                 let steps: Vec<EffectStep> = state

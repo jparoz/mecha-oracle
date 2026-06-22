@@ -119,6 +119,10 @@ pub fn cast_spell(
                         RulesText::Active(Rule::SpellAbility(sa)) => {
                             Some(sa.target_requirements.clone())
                         }
+                        // CR 303.4a: an Aura's enchant restriction is its target requirement at cast time.
+                        RulesText::Active(Rule::Aura { enchant, .. }) => {
+                            Some(vec![enchant.clone()])
+                        }
                         _ => None,
                     })
                     .flatten()
@@ -464,6 +468,25 @@ mod tests {
         ]);
         gs.step = Step::PreCombatMain;
         gs
+    }
+
+    fn two_player_state() -> GameState {
+        make_state()
+    }
+
+    fn place_on_battlefield(
+        state: &mut GameState,
+        def: crate::types::CardDefinition,
+        owner: PlayerId,
+    ) -> ObjectId {
+        use crate::types::PermanentState;
+        let id = state.alloc_id();
+        let obj = CardObject::new(id, def, owner, Zone::Battlefield);
+        let mut perm = PermanentState::new(&obj.definition);
+        perm.controller_since_turn = 0;
+        state.battlefield.insert(id, perm);
+        state.add_object(obj);
+        id
     }
 
     fn put_in_hand(
@@ -1144,6 +1167,127 @@ mod tests {
         let gs = cast_spell(gs, PlayerId(0), id, vec![], Some(3)).unwrap();
         let stack_id = *gs.stack.last().unwrap();
         assert_eq!(gs.stack_objects[&stack_id].x_value, Some(3));
+    }
+
+    // --- Aura casting tests (CR 303.4a) ---
+
+    fn make_unholy_strength() -> CardDefinition {
+        use crate::types::permanent::PTDelta;
+        use crate::types::{
+            ContinuousEffect, PermanentFilter, Rule, RulesText, ability::TargetFilter,
+        };
+        CardDefinition {
+            name: "Unholy Strength".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Black],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Enchantment],
+                subtypes: vec!["Aura".into()],
+            },
+            oracle_text: "Enchant creature\nEnchanted creature gets +2/+1.".into(),
+            rules_text: vec![RulesText::Active(Rule::Aura {
+                enchant: TargetFilter::Creature,
+                grants: ContinuousEffect {
+                    subject_filter: PermanentFilter::default(),
+                    pt_modification: Some(PTDelta {
+                        power: 2,
+                        toughness: 1,
+                    }),
+                },
+            })],
+            text_annotations: vec![],
+            power: None,
+            toughness: None,
+            colors: vec![crate::types::mana::ManaColor::Black],
+        }
+    }
+
+    #[test]
+    fn cast_aura_without_target_fails() {
+        let db = test_db();
+        let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
+        let aura_id = put_in_hand(&mut gs, PlayerId(0), make_unholy_strength());
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.black = 1;
+
+        // No target declared → wrong number of targets
+        assert!(matches!(
+            cast_spell(gs, PlayerId(0), aura_id, vec![], None),
+            Err(crate::engine::EngineError::WrongNumberOfTargets)
+        ));
+        let _ = db; // silence unused warning
+    }
+
+    #[test]
+    fn cast_aura_on_non_creature_fails() {
+        let db = test_db();
+        let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
+        let aura_id = put_in_hand(&mut gs, PlayerId(0), make_unholy_strength());
+        let land_id = {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(
+                id,
+                db.get("Forest").unwrap().clone(),
+                PlayerId(0),
+                Zone::Battlefield,
+            );
+            let perm = crate::types::PermanentState::new(&obj.definition);
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.black = 1;
+
+        assert!(matches!(
+            cast_spell(
+                gs,
+                PlayerId(0),
+                aura_id,
+                vec![crate::types::effect::EffectTarget::Object { id: land_id }],
+                None
+            ),
+            Err(crate::engine::EngineError::IllegalTarget)
+        ));
+    }
+
+    #[test]
+    fn cast_aura_on_creature_succeeds_and_enters_attached() {
+        use crate::engine::stack::resolve_top;
+        let db = test_db();
+        let mut gs = two_player_state();
+        gs.step = crate::types::Step::PreCombatMain;
+        let bear_id = place_on_battlefield(
+            &mut gs,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(0),
+        );
+        let aura_id = put_in_hand(&mut gs, PlayerId(0), make_unholy_strength());
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.black = 1;
+
+        let gs = cast_spell(
+            gs,
+            PlayerId(0),
+            aura_id,
+            vec![crate::types::effect::EffectTarget::Object { id: bear_id }],
+            None,
+        )
+        .unwrap();
+        assert_eq!(gs.stack.len(), 1);
+
+        let gs = resolve_top(gs);
+
+        assert!(
+            gs.battlefield.contains_key(&aura_id),
+            "aura should be on battlefield"
+        );
+        assert_eq!(
+            gs.battlefield[&aura_id].attached_to,
+            Some(bear_id),
+            "aura should be attached to the bear"
+        );
     }
 
     // --- Counterspell integration tests (CR 701.5, CR 608.2b) ---
