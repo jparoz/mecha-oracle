@@ -5,7 +5,7 @@ use crate::types::effect::{EffectStep, EffectTarget};
 use crate::types::stack::{StackObject, StackPayload};
 use crate::types::{GameState, ObjectId, PlayerId, Step, Zone};
 
-/// CR 301.5d: Equip — pay the equip cost as a sorcery, targeting a creature you control;
+/// CR 702.6a: Equip — pay the equip cost as a sorcery, targeting a creature you control;
 /// on resolution the equipment attaches to that creature.
 pub fn activate_equip(
     mut state: GameState,
@@ -17,7 +17,7 @@ pub fn activate_equip(
         return Err(EngineError::NotYourPriority);
     }
 
-    // CR 301.5d: equip only as a sorcery (active player, main phase, empty stack).
+    // CR 702.6a: equip only as a sorcery (active player, main phase, empty stack).
     if state.active_player != player_id {
         return Err(EngineError::CannotCastNow);
     }
@@ -114,7 +114,7 @@ pub fn activate_equip(
 mod tests {
     use super::*;
     use crate::cards::test_helpers::test_db;
-    use crate::types::ability::{CostComponent, TargetFilter};
+    use crate::types::ability::CostComponent;
     use crate::types::mana::{ManaCost, ManaPip};
     use crate::types::permanent::PTDelta;
     use crate::types::{
@@ -314,9 +314,34 @@ mod tests {
     }
 
     #[test]
-    #[allow(unused_variables)]
-    fn equip_target_filter_is_unused_but_compiles() {
-        // Ensure TargetFilter is importable (it's in the use block); just a compile-time check.
-        let _filter = TargetFilter::Creature;
+    fn equip_fails_equipment_not_on_battlefield() {
+        // Equipment ID doesn't exist on the battlefield → error
+        let (gs, _, bear_id) = setup_equip_state();
+        let bad_id = ObjectId(99);
+        let result = activate_equip(gs, bad_id, bear_id, PlayerId(0));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn equip_fails_cannot_afford_cost() {
+        // Empty mana pool → should fail cost check
+        let (mut gs, equip_id, bear_id) = setup_equip_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool = Default::default();
+        let result = activate_equip(gs, equip_id, bear_id, PlayerId(0));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn equip_fails_opponents_creature() {
+        // Target creature controlled by opponent → error
+        let (mut gs, equip_id, _) = setup_equip_state();
+        let db = test_db();
+        let opp_bear_id = place_on_battlefield(
+            &mut gs,
+            db.get("Grizzly Bears").unwrap().clone(),
+            PlayerId(1),
+        );
+        let result = activate_equip(gs, equip_id, opp_bear_id, PlayerId(0));
+        assert!(matches!(result, Err(EngineError::NotYourCard)));
     }
 }

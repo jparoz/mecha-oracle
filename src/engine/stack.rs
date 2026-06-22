@@ -359,7 +359,7 @@ pub(crate) fn execute_effect_steps(
                 }
             }
             EffectStep::Unimplemented(_) => {}
-            // CR 301.5d: attach the equipment (source_id) to the first target.
+            // CR 702.6a: attach the equipment (source_id) to the first target.
             // Both source and target must still be on the battlefield (LKI — CR 608.2b).
             EffectStep::Attach { source_id } => {
                 if let Some(EffectTarget::Object { id: target_id }) = targets.first() {
