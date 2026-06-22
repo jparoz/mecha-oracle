@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn equipment_attached_to_non_creature_becomes_detached() {
-        // CR 704.5r: Equipment attached to something that's no longer a creature → unattach, stays on bf.
+        // CR 704.5n: Equipment attached to something that's no longer a creature → unattach, stays on bf.
         let db = test_db();
         let mut gs = make_state();
         let land_id = {
