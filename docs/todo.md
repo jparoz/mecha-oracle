@@ -11,15 +11,7 @@ Keywords below are parsed and shown cyan+underlined in the UI but have no rules 
 
 ## ✅ Unblocked — implementable now
 
-*(Ward, Landwalk, Battle Cry, Fear, Intimidate, Protection from color — all implemented.)*
-
-### Protection from X — partial (blocking + targeting by color only)
-
-- **Damage prevention (D in DEBT)**: prevent all damage from sources with protected quality — requires a "protection check" in the combat damage path and the DealDamage effect step.
-- **Enchant/Equip prevention (E in DEBT)**: can't be enchanted or equipped by things with protected quality — requires aura attachment rules (future work).
-- **Protection from non-color qualities**: protection from artifacts, from instants, from a specific creature type, from a card name (e.g. "protection from Eldrazi") — each needs a richer `ProtectionQuality` enum beyond just `ManaColor`.
-- **Protection from everything** (CR 702.16e): shorthand for all qualities — needs `KeywordAbility::ProtectionFromAll`.
-- **Hexproof from color** (CR 702.11e, e.g. "hexproof from black") — related, but a separate keyword; currently ParsedUnimplemented.
+*(Ward, Landwalk, Battle Cry, Fear, Intimidate, Protection from color, Hexproof from color, and all Protection from X variants — all implemented.)*
 
 ---
 
