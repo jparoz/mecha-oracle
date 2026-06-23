@@ -567,9 +567,18 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
         } else {
             // Targeted spell: one action per legal target
             let spell_colors = obj.definition.colors.clone();
+            let spell_card_types = obj.definition.type_line.card_types.clone();
+            let spell_subtypes = obj.definition.type_line.subtypes.clone();
             let mut seen = std::collections::HashSet::new();
             for filter in &target_filters {
-                for target in legal_targets(state, filter, pid, &spell_colors) {
+                for target in legal_targets(
+                    state,
+                    filter,
+                    pid,
+                    &spell_colors,
+                    &spell_card_types,
+                    &spell_subtypes,
+                ) {
                     let key = match &target {
                         EffectTarget::Object { id } => format!("o{}", id.0),
                         EffectTarget::Player { id } => format!("p{}", id.0),
@@ -608,13 +617,22 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
         });
         if let Some(enchant_filter) = aura_enchant_filter {
             let spell_colors = obj.definition.colors.clone();
+            let spell_card_types = obj.definition.type_line.card_types.clone();
+            let spell_subtypes = obj.definition.type_line.subtypes.clone();
             let cost_label = obj
                 .definition
                 .mana_cost
                 .as_ref()
                 .map(format_mana_cost_braced)
                 .unwrap_or_default();
-            for target in legal_targets(state, &enchant_filter, pid, &spell_colors) {
+            for target in legal_targets(
+                state,
+                &enchant_filter,
+                pid,
+                &spell_colors,
+                &spell_card_types,
+                &spell_subtypes,
+            ) {
                 let EffectTarget::Object { id: target_obj_id } = target else {
                     continue;
                 };

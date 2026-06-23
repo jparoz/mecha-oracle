@@ -106,13 +106,25 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
                         .get(&id)
                         .map(|o| o.controller)
                         .unwrap_or(PlayerId(0));
-                    let colors = state
+                    let (colors, card_types, subtypes) = state
                         .objects
                         .get(&id)
-                        .map(|o| o.definition.colors.clone())
+                        .map(|o| {
+                            (
+                                o.definition.colors.clone(),
+                                o.definition.type_line.card_types.clone(),
+                                o.definition.type_line.subtypes.clone(),
+                            )
+                        })
                         .unwrap_or_default();
                     !crate::engine::targeting::is_legal_target(
-                        state, &target, &enchant, controller, &colors,
+                        state,
+                        &target,
+                        &enchant,
+                        controller,
+                        &colors,
+                        &card_types,
+                        &subtypes,
                     )
                 }
             };

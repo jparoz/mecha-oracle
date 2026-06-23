@@ -132,13 +132,31 @@ pub fn cast_spell(
         if target_requirements.len() != declared_targets.len() {
             return Err(EngineError::WrongNumberOfTargets);
         }
-        let spell_colors: Vec<crate::types::mana::ManaColor> = state
+        let (spell_colors, spell_card_types, spell_subtypes): (
+            Vec<crate::types::mana::ManaColor>,
+            Vec<crate::types::card::CardType>,
+            Vec<String>,
+        ) = state
             .objects
             .get(&object_id)
-            .map(|o| o.definition.colors.clone())
+            .map(|o| {
+                (
+                    o.definition.colors.clone(),
+                    o.definition.type_line.card_types.clone(),
+                    o.definition.type_line.subtypes.clone(),
+                )
+            })
             .unwrap_or_default();
         for (filter, target) in target_requirements.iter().zip(declared_targets.iter()) {
-            if !is_legal_target(&state, target, filter, player_id, &spell_colors) {
+            if !is_legal_target(
+                &state,
+                target,
+                filter,
+                player_id,
+                &spell_colors,
+                &spell_card_types,
+                &spell_subtypes,
+            ) {
                 return Err(EngineError::IllegalTarget);
             }
         }
