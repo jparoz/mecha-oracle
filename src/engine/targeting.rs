@@ -11,7 +11,7 @@ use crate::types::{GameState, PlayerId, RulesText, Zone};
 
 // CR 115.4: a target is legal if it exists in the targeted zone, satisfies the
 // filter, and is not protected by Shroud (CR 702.18) or Hexproof (CR 702.11).
-// CR 702.16c: protection prevents targeting by sources of the protected quality.
+// CR 702.16b: protection prevents targeting by sources of the protected quality.
 pub fn is_legal_target(
     state: &GameState,
     target: &EffectTarget,
@@ -61,7 +61,7 @@ pub fn is_legal_target(
                     return false;
                 }
             }
-            // CR 702.16c: protection prevents targeting by sources of protected quality
+            // CR 702.16b: protection prevents targeting by sources of protected quality
             for span in &obj.definition.rules_text {
                 if let RulesText::Active(Rule::Static(KeywordAbility::ProtectionFrom(q))) = span
                     && crate::types::ability::source_matches_quality(
