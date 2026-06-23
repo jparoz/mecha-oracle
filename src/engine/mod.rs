@@ -130,9 +130,29 @@ pub fn continuous_pt_bonus(state: &GameState, target_id: ObjectId) -> PTDelta {
     bonus
 }
 
+// CR 702.16c/d/e: returns true if target_obj has ProtectionFrom any quality
+// satisfied by the given source characteristics.
+#[allow(dead_code)] // will be used by Task 3 callers
+pub(crate) fn has_protection_from(
+    target_obj: &crate::types::CardObject,
+    source_colors: &[crate::types::mana::ManaColor],
+    source_card_types: &[crate::types::card::CardType],
+    source_subtypes: &[String],
+) -> bool {
+    use crate::types::RulesText;
+    use crate::types::ability::{KeywordAbility, Rule, source_matches_quality};
+    target_obj.definition.rules_text.iter().any(|span| {
+        if let RulesText::Active(Rule::Static(KeywordAbility::ProtectionFrom(q))) = span {
+            source_matches_quality(q, source_colors, source_card_types, source_subtypes)
+        } else {
+            false
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::continuous_pt_bonus;
+    use super::{continuous_pt_bonus, has_protection_from};
     use crate::cards::test_helpers::test_db;
     use crate::types::{
         CardDefinition, CardObject, CardType, ContinuousEffect, ControllerFilter, GameState,
@@ -472,5 +492,61 @@ mod tests {
         // Bear gets +3/+0; Hill Giant gets nothing.
         assert_eq!(continuous_pt_bonus(&gs, bear_id).power, 3);
         assert_eq!(continuous_pt_bonus(&gs, giant_id).power, 0);
+    }
+
+    #[test]
+    fn has_protection_from_color_returns_true_for_matching_color() {
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule, RulesText};
+        use crate::types::mana::ManaColor;
+
+        let mut gs = two_player_state();
+        let def = CardDefinition {
+            name: "Protected".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![RulesText::Active(Rule::Static(
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Blue)),
+            ))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = add_permanent(&mut gs, PlayerId(0), def, Zone::Battlefield);
+        let obj = gs.objects.get(&id).unwrap();
+        assert!(has_protection_from(obj, &[ManaColor::Blue], &[], &[]));
+        assert!(!has_protection_from(obj, &[ManaColor::Red], &[], &[]));
+    }
+
+    #[test]
+    fn has_protection_from_everything_always_true() {
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule, RulesText};
+
+        let mut gs = two_player_state();
+        let def = CardDefinition {
+            name: "Protected".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![RulesText::Active(Rule::Static(
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Everything),
+            ))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let id = add_permanent(&mut gs, PlayerId(0), def, Zone::Battlefield);
+        let obj = gs.objects.get(&id).unwrap();
+        assert!(has_protection_from(obj, &[], &[], &[]));
     }
 }
