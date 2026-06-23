@@ -432,9 +432,6 @@ fn parse_protection_quality(s: &str) -> Option<crate::types::ability::Protection
         "enchantments" | "enchantment" => Some(ProtectionQuality::CardType(CardType::Enchantment)),
         "sorceries" | "sorcery" => Some(ProtectionQuality::CardType(CardType::Sorcery)),
         "lands" | "land" => Some(ProtectionQuality::CardType(CardType::Land)),
-        "planeswalkers" | "planeswalker" => {
-            Some(ProtectionQuality::CardType(CardType::Planeswalker))
-        }
         other => {
             // "[subtype] creatures" / "[subtype] creature" → CreatureType
             let subtype = other
@@ -793,8 +790,6 @@ fn is_cr702_keyword(s: &str) -> bool {
     s.starts_with("enchant ") || s == "enchant" ||
     // 702.6 Equip [cost] / Equip [quality] creature [cost]
     s.starts_with("equip") ||
-    // 702.11 Hexproof from [quality]
-    s.starts_with("hexproof from ") ||
     // 702.16 Protection from [quality] — colour handled above (ProtectionFrom), others ParsedUnimplemented
     // 702.21 Ward [cost] — mana cost form handled above; bare "ward" or unknown forms fall through here
     s == "ward" ||
