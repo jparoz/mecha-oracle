@@ -386,14 +386,39 @@ pub(crate) fn execute_effect_steps(
             EffectStep::Unimplemented(_) => {}
             // CR 702.6a: attach the equipment (source_id) to the first target.
             // Both source and target must still be on the battlefield (LKI — CR 608.2b).
+            // CR 702.16d: skip if target has protection from the equipment's quality.
             EffectStep::Attach { source_id } => {
                 if let Some(EffectTarget::Object { id: target_id }) = targets.first() {
                     let target_id = *target_id;
                     if state.battlefield.contains_key(source_id)
                         && state.battlefield.contains_key(&target_id)
-                        && let Some(perm) = state.battlefield.get_mut(source_id)
                     {
-                        perm.attached_to = Some(target_id);
+                        let (equip_colors, equip_types, equip_subtypes) = state
+                            .objects
+                            .get(source_id)
+                            .map(|o| {
+                                (
+                                    o.definition.colors.clone(),
+                                    o.definition.type_line.card_types.clone(),
+                                    o.definition.type_line.subtypes.clone(),
+                                )
+                            })
+                            .unwrap_or_default();
+                        let protected = state
+                            .objects
+                            .get(&target_id)
+                            .map(|o| {
+                                crate::engine::has_protection_from(
+                                    o,
+                                    &equip_colors,
+                                    &equip_types,
+                                    &equip_subtypes,
+                                )
+                            })
+                            .unwrap_or(false);
+                        if !protected && let Some(perm) = state.battlefield.get_mut(source_id) {
+                            perm.attached_to = Some(target_id);
+                        }
                     }
                 }
             }
@@ -503,16 +528,40 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     state.stack_objects.insert(id, trigger);
                 }
 
-                // CR 303.4: An Aura enters the battlefield attached to the target declared at cast time.
+                // CR 303.4 / 702.16c: attach aura only if host doesn't have protection from it.
+                // If protected, the aura stays on battlefield unattached; SBA 704.5m removes it.
                 if is_aura
                     && let Some(crate::types::effect::EffectTarget::Object { id: host_id }) =
                         targets.first()
                 {
                     let host_id = *host_id;
-                    if state.battlefield.contains_key(&host_id)
-                        && let Some(perm) = state.battlefield.get_mut(&card_id)
-                    {
-                        perm.attached_to = Some(host_id);
+                    if state.battlefield.contains_key(&host_id) {
+                        let (aura_colors, aura_types, aura_subtypes) = state
+                            .objects
+                            .get(&card_id)
+                            .map(|o| {
+                                (
+                                    o.definition.colors.clone(),
+                                    o.definition.type_line.card_types.clone(),
+                                    o.definition.type_line.subtypes.clone(),
+                                )
+                            })
+                            .unwrap_or_default();
+                        let host_protected = state
+                            .objects
+                            .get(&host_id)
+                            .map(|o| {
+                                crate::engine::has_protection_from(
+                                    o,
+                                    &aura_colors,
+                                    &aura_types,
+                                    &aura_subtypes,
+                                )
+                            })
+                            .unwrap_or(false);
+                        if !host_protected && let Some(perm) = state.battlefield.get_mut(&card_id) {
+                            perm.attached_to = Some(host_id);
+                        }
                     }
                 }
             } else {

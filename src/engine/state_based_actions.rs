@@ -150,6 +150,29 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
             let host_on_battlefield = state.battlefield.contains_key(&host_id);
             if !host_on_battlefield || !host_is_creature {
                 sbas.push(Sba::DetachEquipment(id));
+            } else {
+                // CR 702.16d: equipment whose quality matches the host's protection becomes unattached.
+                let (equip_colors, equip_types, equip_subtypes) = state
+                    .objects
+                    .get(&id)
+                    .map(|o| {
+                        (
+                            o.definition.colors.clone(),
+                            o.definition.type_line.card_types.clone(),
+                            o.definition.type_line.subtypes.clone(),
+                        )
+                    })
+                    .unwrap_or_default();
+                if let Some(host_obj) = state.objects.get(&host_id)
+                    && crate::engine::has_protection_from(
+                        host_obj,
+                        &equip_colors,
+                        &equip_types,
+                        &equip_subtypes,
+                    )
+                {
+                    sbas.push(Sba::DetachEquipment(id));
+                }
             }
         }
     }
@@ -808,6 +831,102 @@ mod tests {
         let (gs, _) = check_and_apply_sbas(gs);
 
         assert!(!gs.is_game_over());
+    }
+
+    #[test]
+    fn aura_with_protected_quality_goes_to_graveyard_via_sba() {
+        // Blue aura attached to a creature with protection from blue → SBA sends aura to graveyard.
+        // CR 704.5m / 702.16c.
+        use crate::types::ability::{
+            KeywordAbility, ProtectionQuality, Rule, RulesText, TargetFilter,
+        };
+        use crate::types::mana::ManaColor;
+        use crate::types::{CardDefinition, CardType, TypeLine};
+
+        let mut gs = make_state();
+
+        // Creature: 2/2, protection from blue
+        let creature_id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(1),
+            CardDefinition {
+                name: "Protected Creature".into(),
+                mana_cost: None,
+                type_line: TypeLine {
+                    supertypes: vec![],
+                    card_types: vec![CardType::Creature],
+                    subtypes: vec![],
+                },
+                oracle_text: String::new(),
+                rules_text: vec![RulesText::Active(Rule::Static(
+                    KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Blue)),
+                ))],
+                text_annotations: vec![],
+                power: Some(2),
+                toughness: Some(2),
+                colors: vec![],
+            },
+        );
+
+        // Blue aura (use make_aura, then set colors to blue)
+        let mut aura_def = make_aura(TargetFilter::Creature);
+        aura_def.colors = vec![ManaColor::Blue];
+        let aura_id = add_creature_to_battlefield(&mut gs, PlayerId(0), aura_def);
+        gs.battlefield.get_mut(&aura_id).unwrap().attached_to = Some(creature_id);
+
+        let (gs, _) = check_and_apply_sbas(gs);
+        assert!(
+            !gs.battlefield.contains_key(&aura_id),
+            "aura should be gone"
+        );
+    }
+
+    #[test]
+    fn equipment_on_protected_creature_detaches_via_sba() {
+        // Artifact equipment attached to creature with protection from artifacts → SBA detaches.
+        // CR 704.5n / 702.16d.
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule, RulesText};
+        use crate::types::{CardDefinition, CardType, TypeLine};
+
+        let mut gs = make_state();
+
+        // Creature: 2/2, protection from artifacts
+        let creature_id = add_creature_to_battlefield(
+            &mut gs,
+            PlayerId(1),
+            CardDefinition {
+                name: "Protected Creature".into(),
+                mana_cost: None,
+                type_line: TypeLine {
+                    supertypes: vec![],
+                    card_types: vec![CardType::Creature],
+                    subtypes: vec![],
+                },
+                oracle_text: String::new(),
+                rules_text: vec![RulesText::Active(Rule::Static(
+                    KeywordAbility::ProtectionFrom(ProtectionQuality::CardType(CardType::Artifact)),
+                ))],
+                text_annotations: vec![],
+                power: Some(2),
+                toughness: Some(2),
+                colors: vec![],
+            },
+        );
+
+        // Artifact equipment (use make_equipment helper)
+        let equip_def = make_equipment();
+        let equip_id = add_creature_to_battlefield(&mut gs, PlayerId(0), equip_def);
+        gs.battlefield.get_mut(&equip_id).unwrap().attached_to = Some(creature_id);
+
+        let (gs, _) = check_and_apply_sbas(gs);
+        assert!(
+            gs.battlefield.contains_key(&equip_id),
+            "equipment stays on battlefield"
+        );
+        assert_eq!(
+            gs.battlefield[&equip_id].attached_to, None,
+            "equipment should be detached"
+        );
     }
 
     #[test]
