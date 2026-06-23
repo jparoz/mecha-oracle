@@ -292,10 +292,17 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
     let mut result = Vec::new();
 
     for source_id in source_ids {
-        let (controller, rules_text) = match state.objects.get(&source_id) {
-            Some(o) => (o.controller, o.definition.rules_text.clone()),
-            None => continue,
-        };
+        let (controller, rules_text, source_colors, source_card_types, source_subtypes) =
+            match state.objects.get(&source_id) {
+                Some(o) => (
+                    o.controller,
+                    o.definition.rules_text.clone(),
+                    o.definition.colors.clone(),
+                    o.definition.type_line.card_types.clone(),
+                    o.definition.type_line.subtypes.clone(),
+                ),
+                None => continue,
+            };
 
         for span in &rules_text {
             let triggered = match span {
@@ -515,7 +522,13 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                     .collect(),
             };
 
-            let effect = inject_source_flags(triggered_clone.effect, &rules_text);
+            let effect = inject_source_flags(
+                triggered_clone.effect,
+                &rules_text,
+                &source_colors,
+                &source_card_types,
+                &source_subtypes,
+            );
             let sid = state.alloc_stack_id();
             let label = format!(
                 "{}: trigger",

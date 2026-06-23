@@ -67,6 +67,9 @@ fn resolve_x_in_cost(
 pub(crate) fn inject_source_flags(
     effect: crate::types::effect::Effect,
     source_rules_text: &[crate::types::RulesText],
+    source_colors: &[crate::types::mana::ManaColor],
+    source_card_types: &[crate::types::card::CardType],
+    source_subtypes: &[String],
 ) -> crate::types::effect::Effect {
     use crate::types::ability::KeywordAbility;
     use crate::types::effect::{DamageStep, EffectStep};
@@ -79,6 +82,9 @@ pub(crate) fn inject_source_flags(
                 deathtouch: has_damage_kw(source_rules_text, &KeywordAbility::Deathtouch),
                 wither: has_damage_kw(source_rules_text, &KeywordAbility::Wither),
                 infect: has_damage_kw(source_rules_text, &KeywordAbility::Infect),
+                source_colors: source_colors.to_vec(),
+                source_card_types: source_card_types.to_vec(),
+                source_subtypes: source_subtypes.to_vec(),
                 ..s
             }),
             other => other,
@@ -510,12 +516,25 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     })
                     .unwrap_or_default();
 
-                let spell_rules_text: Vec<crate::types::RulesText> = state
+                let (spell_rules_text, spell_colors, spell_card_types, spell_subtypes) = state
                     .objects
                     .get(&card_id)
-                    .map(|o| o.definition.rules_text.clone())
+                    .map(|o| {
+                        (
+                            o.definition.rules_text.clone(),
+                            o.definition.colors.clone(),
+                            o.definition.type_line.card_types.clone(),
+                            o.definition.type_line.subtypes.clone(),
+                        )
+                    })
                     .unwrap_or_default();
-                let steps = inject_source_flags(steps, &spell_rules_text);
+                let steps = inject_source_flags(
+                    steps,
+                    &spell_rules_text,
+                    &spell_colors,
+                    &spell_card_types,
+                    &spell_subtypes,
+                );
 
                 // CR 608.2b: if all targets are illegal at resolution, spell is countered
                 // by the rules (instant/sorcery still moves to graveyard, effects not applied).
@@ -2081,7 +2100,7 @@ mod tests {
             amount: 2,
             ..Default::default()
         })];
-        let result = inject_source_flags(effect, &rules_text);
+        let result = inject_source_flags(effect, &rules_text, &[], &[], &[]);
         match &result[0] {
             EffectStep::DealDamage(s) => {
                 assert!(s.lifelink);
@@ -2109,7 +2128,7 @@ mod tests {
             amount: 1,
             ..Default::default()
         })];
-        let result = inject_source_flags(effect, &rules_text);
+        let result = inject_source_flags(effect, &rules_text, &[], &[], &[]);
         match &result[0] {
             EffectStep::DealDamage(s) => {
                 assert!(s.wither);
@@ -2128,7 +2147,7 @@ mod tests {
             amount: 5,
             ..Default::default()
         })];
-        let result = inject_source_flags(effect, &[]);
+        let result = inject_source_flags(effect, &[], &[], &[], &[]);
         match &result[0] {
             EffectStep::DealDamage(s) => {
                 assert!(!s.lifelink && !s.deathtouch && !s.wither && !s.infect);
@@ -2144,7 +2163,7 @@ mod tests {
         use crate::types::effect::EffectStep;
 
         let effect = vec![EffectStep::DrawCard(1)];
-        let result = inject_source_flags(effect, &[]);
+        let result = inject_source_flags(effect, &[], &[], &[], &[]);
         assert!(matches!(result[0], EffectStep::DrawCard(1)));
     }
 

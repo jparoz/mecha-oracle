@@ -132,7 +132,7 @@ pub fn continuous_pt_bonus(state: &GameState, target_id: ObjectId) -> PTDelta {
 
 // CR 702.16c/d/e: returns true if target_obj has ProtectionFrom any quality
 // satisfied by the given source characteristics.
-#[allow(dead_code)] // will be used by Task 3 callers
+#[allow(dead_code)] // will be used when protection check is wired into damage resolution
 pub(crate) fn has_protection_from(
     target_obj: &crate::types::CardObject,
     source_colors: &[crate::types::mana::ManaColor],

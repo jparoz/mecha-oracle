@@ -26,6 +26,10 @@ pub struct DamageStep {
     pub deathtouch: bool,
     pub wither: bool,
     pub infect: bool,
+    // CR 702.16e: source characteristics snapshotted at stack-push time (LKI).
+    pub source_colors: Vec<crate::types::mana::ManaColor>,
+    pub source_card_types: Vec<crate::types::card::CardType>,
+    pub source_subtypes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
