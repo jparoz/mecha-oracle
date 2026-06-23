@@ -182,6 +182,25 @@ pub(crate) fn execute_effect_steps(
             // CR 702.15b, 702.2b, 702.80a/b, 702.90b/c
             EffectStep::DealDamage(s) => {
                 let amount = s.amount;
+                // CR 702.16e: damage from a source with the stated quality to a permanent
+                // with protection from that quality is prevented entirely.
+                // Clone the check result first to avoid holding a shared borrow on state
+                // while later code needs mutable access.
+                let protected = if let Some(EffectTarget::Object { id }) = targets.first() {
+                    state.objects.get(id).is_some_and(|obj| {
+                        crate::engine::has_protection_from(
+                            obj,
+                            &s.source_colors,
+                            &s.source_card_types,
+                            &s.source_subtypes,
+                        )
+                    })
+                } else {
+                    false
+                };
+                if protected {
+                    continue;
+                }
                 match targets.first() {
                     Some(EffectTarget::Object { id }) => {
                         if let Some(perm) = state.battlefield.get_mut(id) {
@@ -1915,6 +1934,54 @@ mod tests {
         );
         let gs = resolve_top(gs);
         assert_eq!(gs.get_player(PlayerId(1)).unwrap().life, before_life - 3);
+    }
+
+    #[test]
+    fn deal_damage_to_protected_creature_is_prevented() {
+        // Creature has protection from blue; source is blue → damage prevented (CR 702.16e).
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule, RulesText};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::effect::DamageStep;
+        use crate::types::mana::ManaColor;
+
+        let mut gs = GameState::new(vec![
+            Player::new(PlayerId(0), "Alice"),
+            Player::new(PlayerId(1), "Bob"),
+        ]);
+        let creature_def = CardDefinition {
+            name: "Protected".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![RulesText::Active(Rule::Static(
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Blue)),
+            ))],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let target_id = gs.alloc_id();
+        let obj =
+            crate::types::CardObject::new(target_id, creature_def, PlayerId(1), Zone::Battlefield);
+        gs.battlefield
+            .insert(target_id, PermanentState::new(&obj.definition));
+        gs.add_object(obj);
+
+        let step = EffectStep::DealDamage(DamageStep {
+            amount: 3,
+            source_colors: vec![ManaColor::Blue], // blue source
+            ..DamageStep::default()
+        });
+        let targets = vec![crate::types::effect::EffectTarget::Object { id: target_id }];
+        let gs = execute_effect_steps(gs, PlayerId(0), &[step], &targets, None);
+
+        // Damage was prevented — creature still at 0 damage_marked
+        assert_eq!(gs.battlefield[&target_id].damage_marked, 0);
     }
 
     #[test]
