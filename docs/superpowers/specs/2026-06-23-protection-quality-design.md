@@ -50,8 +50,8 @@ pub fn source_matches_quality(
 
 - Rename `ProtectionFromColor(ManaColor)` → `ProtectionFrom(ProtectionQuality)`  
   Update `display_name`: "Protection from white", "Protection from artifacts", "Protection from Eldrazi", "Protection from everything"
-- Add `HexproofFromColor(ManaColor)` (CR 702.11d)  
-  `display_name`: "Hexproof from white", etc.
+- Add `HexproofFrom(ProtectionQuality)` (CR 702.11d) — reuses `ProtectionQuality` since 702.11d uses the same quality concept as 702.16a.  
+  `display_name`: "Hexproof from white", "Hexproof from artifacts", "Hexproof from everything", etc.
 
 ---
 
@@ -117,7 +117,7 @@ Callers: serve.rs (2 places), state_based_actions.rs (1 place), internal tests.
 ### Logic changes
 
 - `ProtectionFrom(q)` check: `source_matches_quality(q, source_colors, source_card_types, source_subtypes)`
-- `HexproofFromColor(c)` check: `source_colors.contains(c) && obj.controller != caster` (analogous to `Hexproof` but colour-gated)
+- `HexproofFrom(q)` check: `source_matches_quality(q, source_colors, source_card_types, source_subtypes) && obj.controller != caster` (analogous to `Hexproof` but quality-gated per CR 702.11d)
 
 ---
 
@@ -181,7 +181,7 @@ In `EffectStep::Attach` resolution (line 364–374), before setting `perm.attach
 | `[word] creatures` (e.g. `vampire creatures`) | `ProtectionFrom(CreatureType("Vampire"))` |
 | anything else | `ParsedUnimplemented` (unchanged) |
 
-`hexproof from [color]` dispatch: strip prefix `"hexproof from "`, match colour words → `HexproofFromColor(c)`. This replaces the existing `ParsedUnimplemented` path for `s.starts_with("hexproof from ")`.
+`hexproof from [quality]` dispatch: strip prefix `"hexproof from "`, parse the remainder using the same quality dispatch table as `protection from` (colours, "everything", card types, creature types). Produces `HexproofFrom(ProtectionQuality)`. Unrecognised qualities remain `ParsedUnimplemented`. This replaces the existing `ParsedUnimplemented` path for `s.starts_with("hexproof from ")`.
 
 ---
 
@@ -196,7 +196,8 @@ In `EffectStep::Attach` resolution (line 364–374), before setting `perm.attach
 
 ### `engine/targeting.rs`
 
-- `HexproofFromColor(Blue)` blocks blue spell from opponent, allows red spell, allows blue spell from controller
+- `HexproofFrom(Color(Blue))` blocks blue spell from opponent, allows red spell, allows blue spell from controller
+- `HexproofFrom(CardType(Artifact))` blocks artifact-source ability from opponent
 - `ProtectionFrom(CardType(Artifact))` with `source_card_types=[Artifact]` prevents targeting
 
 ### `engine/state_based_actions.rs`
@@ -209,7 +210,8 @@ In `EffectStep::Attach` resolution (line 364–374), before setting `perm.attach
 - `"protection from everything"` parses to `ProtectionFrom(Everything)`
 - `"protection from artifacts"` parses to `ProtectionFrom(CardType(Artifact))`
 - `"protection from vampire creatures"` parses to `ProtectionFrom(CreatureType("Vampire"))`
-- `"hexproof from black"` parses to `HexproofFromColor(Black)`
+- `"hexproof from black"` parses to `HexproofFrom(Color(Black))`
+- `"hexproof from artifacts"` parses to `HexproofFrom(CardType(Artifact))`
 
 ---
 
