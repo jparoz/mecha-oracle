@@ -317,11 +317,13 @@ pub fn can_block_attacker(state: &GameState, blocker_id: ObjectId, attacker_id: 
     }
     // CR 702.16f: Protection — can't be blocked by creatures with the protected quality
     {
-        use crate::types::ability::{KeywordAbility as SA, Rule};
+        use crate::types::ability::{KeywordAbility as SA, Rule, source_matches_quality};
         let blocker_colors = &blocker_obj.definition.colors;
+        let blocker_types = &blocker_obj.definition.type_line.card_types;
+        let blocker_subtypes = &blocker_obj.definition.type_line.subtypes;
         for span in &attacker_obj.definition.rules_text {
-            if let crate::types::RulesText::Active(Rule::Static(SA::ProtectionFromColor(c))) = span
-                && blocker_colors.contains(c)
+            if let crate::types::RulesText::Active(Rule::Static(SA::ProtectionFrom(q))) = span
+                && source_matches_quality(q, blocker_colors, blocker_types, blocker_subtypes)
             {
                 return false;
             }
@@ -1651,14 +1653,14 @@ mod tests {
     #[test]
     fn protection_from_red_blocks_red_blocker() {
         use crate::types::RulesText;
-        use crate::types::ability::{KeywordAbility, Rule};
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
             vec![RulesText::Active(Rule::Static(
-                KeywordAbility::ProtectionFromColor(ManaColor::Red),
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Red)),
             ))],
             vec![],
         );
@@ -1672,14 +1674,14 @@ mod tests {
     #[test]
     fn protection_from_red_allows_blue_blocker() {
         use crate::types::RulesText;
-        use crate::types::ability::{KeywordAbility, Rule};
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule};
         use crate::types::mana::ManaColor;
         let mut gs = make_combat_state();
         let attacker = place_creature_with_colors(
             &mut gs,
             PlayerId(0),
             vec![RulesText::Active(Rule::Static(
-                KeywordAbility::ProtectionFromColor(ManaColor::Red),
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Red)),
             ))],
             vec![],
         );

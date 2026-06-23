@@ -13,6 +13,58 @@ pub enum LandwalkKind {
     Nonbasic,
 }
 
+// CR 702.16a: the quality that protection applies to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProtectionQuality {
+    Color(ManaColor),
+    CardType(CardType),
+    CreatureType(String), // creature subtype, e.g. "Eldrazi", "Vampire"
+    Everything,           // CR 702.16j
+}
+
+impl ProtectionQuality {
+    fn quality_name(&self) -> String {
+        match self {
+            Self::Color(c) => match c {
+                ManaColor::White => "white".to_string(),
+                ManaColor::Blue => "blue".to_string(),
+                ManaColor::Black => "black".to_string(),
+                ManaColor::Red => "red".to_string(),
+                ManaColor::Green => "green".to_string(),
+                ManaColor::Colorless => "colorless".to_string(),
+            },
+            Self::CardType(ct) => match ct {
+                CardType::Artifact => "artifacts".to_string(),
+                CardType::Creature => "creatures".to_string(),
+                CardType::Instant => "instants".to_string(),
+                CardType::Sorcery => "sorceries".to_string(),
+                CardType::Enchantment => "enchantments".to_string(),
+                CardType::Land => "lands".to_string(),
+                CardType::Planeswalker => "planeswalkers".to_string(),
+            },
+            Self::CreatureType(s) => s.clone(),
+            Self::Everything => "everything".to_string(),
+        }
+    }
+}
+
+// CR 702.16a: returns true if the described source has the given protection quality.
+pub fn source_matches_quality(
+    quality: &ProtectionQuality,
+    source_colors: &[ManaColor],
+    source_card_types: &[CardType],
+    source_subtypes: &[String],
+) -> bool {
+    match quality {
+        ProtectionQuality::Color(c) => source_colors.contains(c),
+        ProtectionQuality::CardType(ct) => source_card_types.contains(ct),
+        ProtectionQuality::CreatureType(st) => {
+            source_subtypes.iter().any(|s| s.eq_ignore_ascii_case(st))
+        }
+        ProtectionQuality::Everything => true,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeywordAbility {
     Flying,
@@ -37,20 +89,21 @@ pub enum KeywordAbility {
     BushidoN(u32),
     Melee,
     Prowess,
-    Shroud,                         // CR 702.18
-    Hexproof,                       // CR 702.11
-    Landwalk(LandwalkKind),         // CR 702.14
-    BattleCry,                      // CR 702.91
-    Fear,                           // CR 702.36
-    Intimidate,                     // CR 702.13
-    ProtectionFromColor(ManaColor), // CR 702.16 (partial — blocking + targeting only)
-    Wither,                         // CR 702.80
-    Infect,                         // CR 702.90
-    ToxicN(u32),                    // CR 702.164
-    Evolve,                         // CR 702.100
-    Training,                       // CR 702.149
-    Persist,                        // CR 702.79
-    Undying,                        // CR 702.93
+    Shroud,                            // CR 702.18
+    Hexproof,                          // CR 702.11
+    Landwalk(LandwalkKind),            // CR 702.14
+    BattleCry,                         // CR 702.91
+    Fear,                              // CR 702.36
+    Intimidate,                        // CR 702.13
+    ProtectionFrom(ProtectionQuality), // CR 702.16
+    HexproofFrom(ProtectionQuality),   // CR 702.11d
+    Wither,                            // CR 702.80
+    Infect,                            // CR 702.90
+    ToxicN(u32),                       // CR 702.164
+    Evolve,                            // CR 702.100
+    Training,                          // CR 702.149
+    Persist,                           // CR 702.79
+    Undying,                           // CR 702.93
 }
 
 /// CR 109.5: who "you" refers to in a triggered ability — the controller of the source
@@ -313,22 +366,8 @@ impl KeywordAbility {
             Self::BattleCry => "Battle cry".to_string(),
             Self::Fear => "Fear".to_string(),
             Self::Intimidate => "Intimidate".to_string(),
-            Self::ProtectionFromColor(c) => {
-                // CR 105.4: colorless is not a color — ProtectionFromColor(Colorless) should never be constructed
-                debug_assert!(
-                    *c != ManaColor::Colorless,
-                    "ProtectionFromColor: Colorless is not a valid color (CR 105.4)"
-                );
-                let color_name = match c {
-                    ManaColor::White => "white",
-                    ManaColor::Blue => "blue",
-                    ManaColor::Black => "black",
-                    ManaColor::Red => "red",
-                    ManaColor::Green => "green",
-                    ManaColor::Colorless => "colorless",
-                };
-                format!("Protection from {color_name}")
-            }
+            Self::ProtectionFrom(q) => format!("Protection from {}", q.quality_name()),
+            Self::HexproofFrom(q) => format!("Hexproof from {}", q.quality_name()),
             Self::Wither => "Wither".to_string(),
             Self::Infect => "Infect".to_string(),
             Self::ToxicN(n) => format!("Toxic {n}"),
@@ -594,7 +633,6 @@ mod tests {
 
     #[test]
     fn new_static_ability_display_names() {
-        use crate::types::mana::ManaColor;
         assert_eq!(KeywordAbility::Fear.display_name(), "Fear");
         assert_eq!(KeywordAbility::Intimidate.display_name(), "Intimidate");
         assert_eq!(KeywordAbility::BattleCry.display_name(), "Battle cry");
@@ -606,10 +644,89 @@ mod tests {
             KeywordAbility::Landwalk(LandwalkKind::Nonbasic).display_name(),
             "Nonbasic landwalk"
         );
+    }
+
+    #[test]
+    fn protection_from_color_display_name_uses_quality() {
+        use crate::types::mana::ManaColor;
         assert_eq!(
-            KeywordAbility::ProtectionFromColor(ManaColor::Blue).display_name(),
+            KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Blue))
+                .display_name(),
             "Protection from blue"
         );
+    }
+
+    #[test]
+    fn protection_from_artifact_display_name() {
+        use crate::types::card::CardType;
+        assert_eq!(
+            KeywordAbility::ProtectionFrom(ProtectionQuality::CardType(CardType::Artifact))
+                .display_name(),
+            "Protection from artifacts"
+        );
+    }
+
+    #[test]
+    fn protection_from_everything_display_name() {
+        assert_eq!(
+            KeywordAbility::ProtectionFrom(ProtectionQuality::Everything).display_name(),
+            "Protection from everything"
+        );
+    }
+
+    #[test]
+    fn hexproof_from_color_display_name() {
+        use crate::types::mana::ManaColor;
+        assert_eq!(
+            KeywordAbility::HexproofFrom(ProtectionQuality::Color(ManaColor::Black)).display_name(),
+            "Hexproof from black"
+        );
+    }
+
+    #[test]
+    fn source_matches_quality_color() {
+        use crate::types::mana::ManaColor;
+        let q = ProtectionQuality::Color(ManaColor::Blue);
+        assert!(source_matches_quality(&q, &[ManaColor::Blue], &[], &[]));
+        assert!(!source_matches_quality(&q, &[ManaColor::Red], &[], &[]));
+        assert!(!source_matches_quality(&q, &[], &[], &[]));
+    }
+
+    #[test]
+    fn source_matches_quality_card_type() {
+        use crate::types::card::CardType;
+        let q = ProtectionQuality::CardType(CardType::Artifact);
+        assert!(source_matches_quality(&q, &[], &[CardType::Artifact], &[]));
+        assert!(!source_matches_quality(&q, &[], &[CardType::Creature], &[]));
+    }
+
+    #[test]
+    fn source_matches_quality_creature_type() {
+        let q = ProtectionQuality::CreatureType("Vampire".into());
+        assert!(source_matches_quality(
+            &q,
+            &[],
+            &[],
+            &["Vampire".to_string()]
+        ));
+        assert!(source_matches_quality(
+            &q,
+            &[],
+            &[],
+            &["vampire".to_string()]
+        ));
+        assert!(!source_matches_quality(
+            &q,
+            &[],
+            &[],
+            &["Zombie".to_string()]
+        ));
+    }
+
+    #[test]
+    fn source_matches_quality_everything() {
+        let q = ProtectionQuality::Everything;
+        assert!(source_matches_quality(&q, &[], &[], &[]));
     }
 
     #[test]

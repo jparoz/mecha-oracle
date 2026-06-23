@@ -47,9 +47,8 @@ pub fn is_legal_target(
             }
             // CR 702.16c: protection prevents targeting by sources of protected quality
             for span in &obj.definition.rules_text {
-                if let RulesText::Active(Rule::Static(KeywordAbility::ProtectionFromColor(c))) =
-                    span
-                    && source_colors.contains(c)
+                if let RulesText::Active(Rule::Static(KeywordAbility::ProtectionFrom(q))) = span
+                    && crate::types::ability::source_matches_quality(q, source_colors, &[], &[])
                 {
                     return false;
                 }
@@ -398,13 +397,14 @@ mod tests {
 
     #[test]
     fn protection_from_blue_blocks_blue_spell() {
+        use crate::types::ability::ProtectionQuality;
         use crate::types::mana::ManaColor;
         let mut gs = two_player_state();
         let id = place_creature(
             &mut gs,
             PlayerId(1),
             vec![RulesText::Active(Rule::Static(
-                KeywordAbility::ProtectionFromColor(ManaColor::Blue),
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Blue)),
             ))],
         );
         let target = EffectTarget::Object { id };
@@ -420,13 +420,14 @@ mod tests {
 
     #[test]
     fn protection_from_blue_allows_red_spell() {
+        use crate::types::ability::ProtectionQuality;
         use crate::types::mana::ManaColor;
         let mut gs = two_player_state();
         let id = place_creature(
             &mut gs,
             PlayerId(1),
             vec![RulesText::Active(Rule::Static(
-                KeywordAbility::ProtectionFromColor(ManaColor::Blue),
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Blue)),
             ))],
         );
         let target = EffectTarget::Object { id };

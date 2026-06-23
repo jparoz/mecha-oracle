@@ -530,7 +530,9 @@ fn match_keyword(kw: &str) -> RulesText {
             _ => None,
         };
         if let Some(c) = color {
-            return RulesText::Active(Rule::Static(KeywordAbility::ProtectionFromColor(c)));
+            return RulesText::Active(Rule::Static(KeywordAbility::ProtectionFrom(
+                crate::types::ability::ProtectionQuality::Color(c),
+            )));
         }
         // Non-color protections remain ParsedUnimplemented
         return ParsedUnimplemented(kw.to_string());
@@ -752,7 +754,7 @@ fn is_cr702_keyword(s: &str) -> bool {
     s.starts_with("equip") ||
     // 702.11 Hexproof from [quality]
     s.starts_with("hexproof from ") ||
-    // 702.16 Protection from [quality] — fully handled above (ProtectionFromColor or ParsedUnimplemented)
+    // 702.16 Protection from [quality] — colour handled above (ProtectionFrom), others ParsedUnimplemented
     // 702.21 Ward [cost] — mana cost form handled above; bare "ward" or unknown forms fall through here
     s == "ward" ||
     // 702.23 Rampage N
@@ -3006,7 +3008,9 @@ mod tests {
         assert_eq!(
             spans,
             vec![RulesText::Active(Rule::Static(
-                KeywordAbility::ProtectionFromColor(ManaColor::Blue)
+                KeywordAbility::ProtectionFrom(crate::types::ability::ProtectionQuality::Color(
+                    ManaColor::Blue
+                ))
             ))]
         );
     }
