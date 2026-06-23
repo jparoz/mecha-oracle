@@ -1751,6 +1751,57 @@ mod tests {
     }
 
     #[test]
+    fn protection_from_artifact_blocks_artifact_blocker() {
+        // CR 702.16f: a creature with protection from artifacts can't be blocked by artifact creatures.
+        use crate::types::RulesText;
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+
+        let mut gs = make_combat_state();
+        // Attacker: 2/2 with protection from artifacts
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![RulesText::Active(Rule::Static(
+                KeywordAbility::ProtectionFrom(ProtectionQuality::CardType(CardType::Artifact)),
+            ))],
+            vec![],
+        );
+        gs.combat.attackers = vec![attacker];
+
+        // Blocker: artifact creature (inline CardDefinition — place_creature_with_colors hardcodes Creature-only)
+        let artifact_blocker_def = CardDefinition {
+            name: "Artifact Creature".into(),
+            mana_cost: None,
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Artifact, CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: String::new(),
+            rules_text: vec![],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        };
+        let blocker_id = {
+            let id = gs.alloc_id();
+            let obj = CardObject::new(id, artifact_blocker_def, PlayerId(1), Zone::Battlefield);
+            let mut perm = PermanentState::new(&obj.definition);
+            perm.controller_since_turn = 0;
+            gs.battlefield.insert(id, perm);
+            gs.add_object(obj);
+            id
+        };
+
+        assert!(
+            !can_block_attacker(&gs, blocker_id, attacker),
+            "artifact creature should not block protected attacker"
+        );
+    }
+
+    #[test]
     fn wither_deals_minus_counters_to_blocker_not_marked_damage() {
         // CR 702.80a: Wither routes creature damage as -1/-1 counters.
         use crate::types::CounterKind;
