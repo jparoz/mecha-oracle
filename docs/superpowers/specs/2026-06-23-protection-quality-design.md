@@ -5,14 +5,13 @@
 
 ## Goal
 
-Complete the "Unblocked" items remaining in `docs/todo.md` under "Protection from X — partial":
+Complete all "Unblocked" items remaining in `docs/todo.md` under "Protection from X — partial":
 
 1. Damage prevention (D in DEBT) — CR 702.16e
-2. `ProtectionQuality` enum replacing the colour-only `ProtectionFromColor(ManaColor)` — CR 702.16a
-3. `ProtectionFrom(Everything)` — CR 702.16j
-4. `HexproofFromColor(ManaColor)` — CR 702.11d
-
-The enchant/equip items (E in DEBT) remain future work as noted in the todo.
+2. Enchant/Equip prevention (E in DEBT) — CR 702.16c/d
+3. `ProtectionQuality` enum replacing the colour-only `ProtectionFromColor(ManaColor)` — CR 702.16a
+4. `ProtectionFrom(Everything)` — CR 702.16j
+5. `HexproofFromColor(ManaColor)` — CR 702.11d
 
 ---
 
@@ -124,12 +123,12 @@ Callers: serve.rs (2 places), state_based_actions.rs (1 place), internal tests.
 
 ## Section 4 — Combat damage (`engine/combat.rs`)
 
-### Helper function
+### Shared helper function
 
-Defined in `engine/mod.rs` (already hosts `continuous_pt_bonus` and similar shared helpers) so both `combat.rs` and `stack.rs` can call it:
+Defined in `engine/mod.rs` (already hosts `continuous_pt_bonus` and similar shared helpers) so `combat.rs`, `stack.rs`, and `state_based_actions.rs` can all call it:
 
 ```rust
-pub(crate) fn protection_prevents_damage(
+pub(crate) fn has_protection_from(
     target_obj: &CardObject,
     source_colors: &[ManaColor],
     source_card_types: &[CardType],
@@ -142,13 +141,33 @@ Iterates `target_obj.definition.rules_text` looking for `Active(Static(Protectio
 ### Integration points
 
 1. **Attacker → player**: players have no keyword protection in this engine; no check needed.
-2. **Attacker → blocker**: before accumulating `damage_to_objects[blocker_id]` (and `wither_to_objects`), call `protection_prevents_damage` with the attacker's colors/card_types/subtypes. If true, skip.
+2. **Attacker → blocker**: before accumulating `damage_to_objects[blocker_id]` (and `wither_to_objects`), call `has_protection_from` with the attacker's colors/card_types/subtypes. If true, skip.
 3. **Blocker → attacker**: same pattern before `damage_to_objects[attacker_id]`.
 4. **Blocking legality**: rename existing `ProtectionFromColor` match arm to use `source_matches_quality` via `ProtectionFrom(q)`.
 
 ---
 
-## Section 5 — Parser (`parser/oracle.rs`)
+## Section 5 — Enchant/Equip prevention (E in DEBT)
+
+### Aura SBA (`engine/state_based_actions.rs` — CR 704.5m / 702.16c)
+
+The existing `AuraToGraveyard` SBA at line 114 already delegates to `is_legal_target` with the aura's colors. After the Section 3 signature expansion, we also pass the aura's `card_types` and `subtypes`. This makes "aura with the protected quality attached to a protected permanent" automatically trigger `AuraToGraveyard` with no further logic change.
+
+### Aura ETB attachment (`engine/stack.rs` — CR 303.4 / 702.16c)
+
+At the attachment step (line 481–492 of stack.rs), before `perm.attached_to = Some(host_id)`, call `has_protection_from(host_obj, aura_colors, aura_card_types, aura_subtypes)`. If true, skip setting `attached_to`. The aura is now on the battlefield unattached; the `AuraToGraveyard` SBA fires at the next SBA check.
+
+### Equipment SBA (`engine/state_based_actions.rs` — CR 704.5n / 702.16d)
+
+Extend the `DetachEquipment` SBA: after the existing `!host_on_battlefield || !host_is_creature` guard, add a second condition — if the host creature has `has_protection_from(host_obj, equip_colors, equip_card_types, equip_subtypes)`, also push `DetachEquipment`. Per CR 702.16d, equipment stays on the battlefield (just detaches); the existing `Sba::DetachEquipment` handler already does this (`perm.attached_to = None`).
+
+### Equipment Attach prevention (`engine/stack.rs` — CR 702.16d)
+
+In `EffectStep::Attach` resolution (line 364–374), before setting `perm.attached_to = Some(target_id)`, look up the equipment's `colors`, `card_types`, and `subtypes` from `state.objects.get(source_id)` and call `has_protection_from` on the target. If protected, skip attachment entirely.
+
+---
+
+## Section 6 — Parser (`parser/oracle.rs`)
 
 `protection from [quality]` dispatch table (after stripping prefix and trailing `.`):
 
@@ -166,7 +185,7 @@ Iterates `target_obj.definition.rules_text` looking for `Active(Static(Protectio
 
 ---
 
-## Section 6 — Tests
+## Section 7 — Tests
 
 ### `engine/combat.rs`
 
@@ -179,6 +198,11 @@ Iterates `target_obj.definition.rules_text` looking for `Active(Static(Protectio
 
 - `HexproofFromColor(Blue)` blocks blue spell from opponent, allows red spell, allows blue spell from controller
 - `ProtectionFrom(CardType(Artifact))` with `source_card_types=[Artifact]` prevents targeting
+
+### `engine/state_based_actions.rs`
+
+- Blue aura attached to creature with `ProtectionFrom(Color(Blue))` → `AuraToGraveyard`
+- Equipment (Artifact subtype) attached to creature with `ProtectionFrom(CardType(Artifact))` → `DetachEquipment`
 
 ### `parser/oracle.rs`
 
@@ -195,10 +219,11 @@ Iterates `target_obj.definition.rules_text` looking for `Active(Static(Protectio
 |---|---|
 | `src/types/ability.rs` | Add `ProtectionQuality`, `source_matches_quality`; rename variant; add `HexproofFromColor` |
 | `src/types/effect.rs` | Add 3 fields to `DamageStep` |
-| `src/engine/stack.rs` | Expand `inject_source_flags` signature; add protection prevention to `DealDamage` resolution |
+| `src/engine/mod.rs` | Add `has_protection_from` shared helper |
+| `src/engine/stack.rs` | Expand `inject_source_flags` signature; add protection prevention to `DealDamage` resolution; add protection check to `Attach` and aura ETB attachment |
 | `src/engine/targeting.rs` | Expand `is_legal_target`/`legal_targets`; add `HexproofFromColor` check |
-| `src/engine/combat.rs` | Add `protection_prevents_damage` helper; guard damage paths; update blocking check |
+| `src/engine/combat.rs` | Guard damage paths; update blocking check |
+| `src/engine/state_based_actions.rs` | Update `is_legal_target` call site (pass aura card_types/subtypes); add equipment protection detach check |
 | `src/parser/oracle.rs` | Expand protection parsing; add hexproof-from-color parsing |
 | `src/serve.rs` | Update `legal_targets` call sites (2) |
-| `src/engine/state_based_actions.rs` | Update `is_legal_target` call site (1) |
 | `docs/todo.md` | Remove completed bullets |
