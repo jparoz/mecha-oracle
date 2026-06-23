@@ -414,6 +414,48 @@ fn emit_token_spans(
     }
 }
 
+/// Maps a lowercased quality string (after stripping "protection from " or "hexproof from ")
+/// to a `ProtectionQuality`. Returns `None` for unrecognised qualities.
+fn parse_protection_quality(s: &str) -> Option<crate::types::ability::ProtectionQuality> {
+    use crate::types::ability::ProtectionQuality;
+    use crate::types::card::CardType;
+    match s {
+        "white" => Some(ProtectionQuality::Color(ManaColor::White)),
+        "blue" => Some(ProtectionQuality::Color(ManaColor::Blue)),
+        "black" => Some(ProtectionQuality::Color(ManaColor::Black)),
+        "red" => Some(ProtectionQuality::Color(ManaColor::Red)),
+        "green" => Some(ProtectionQuality::Color(ManaColor::Green)),
+        "everything" => Some(ProtectionQuality::Everything),
+        "artifacts" | "artifact" => Some(ProtectionQuality::CardType(CardType::Artifact)),
+        "creatures" | "creature" => Some(ProtectionQuality::CardType(CardType::Creature)),
+        "instants" | "instant" => Some(ProtectionQuality::CardType(CardType::Instant)),
+        "enchantments" | "enchantment" => Some(ProtectionQuality::CardType(CardType::Enchantment)),
+        "sorceries" | "sorcery" => Some(ProtectionQuality::CardType(CardType::Sorcery)),
+        "lands" | "land" => Some(ProtectionQuality::CardType(CardType::Land)),
+        "planeswalkers" | "planeswalker" => {
+            Some(ProtectionQuality::CardType(CardType::Planeswalker))
+        }
+        other => {
+            // "[subtype] creatures" / "[subtype] creature" → CreatureType
+            let subtype = other
+                .strip_suffix(" creatures")
+                .or_else(|| other.strip_suffix(" creature"));
+            if let Some(sub) = subtype
+                && !sub.is_empty()
+            {
+                let mut chars = sub.chars();
+                let title = chars
+                    .next()
+                    .map(|c| c.to_uppercase().collect::<String>())
+                    .unwrap_or_default()
+                    + chars.as_str();
+                return Some(ProtectionQuality::CreatureType(title));
+            }
+            None
+        }
+    }
+}
+
 fn match_keyword(kw: &str) -> RulesText {
     let s = kw.to_lowercase();
     let s = s.as_str();
@@ -519,22 +561,21 @@ fn match_keyword(kw: &str) -> RulesText {
         }));
     }
 
-    // Protection from [color] (CR 702.16)
-    if let Some(quality) = s.strip_prefix("protection from ") {
-        let color = match quality.trim_end_matches('.') {
-            "white" => Some(ManaColor::White),
-            "blue" => Some(ManaColor::Blue),
-            "black" => Some(ManaColor::Black),
-            "red" => Some(ManaColor::Red),
-            "green" => Some(ManaColor::Green),
-            _ => None,
-        };
-        if let Some(c) = color {
-            return RulesText::Active(Rule::Static(KeywordAbility::ProtectionFrom(
-                crate::types::ability::ProtectionQuality::Color(c),
-            )));
+    // Protection from [quality] (CR 702.16)
+    if let Some(q_str) = s.strip_prefix("protection from ") {
+        let quality_str = q_str.trim_end_matches('.');
+        if let Some(q) = parse_protection_quality(quality_str) {
+            return RulesText::Active(Rule::Static(KeywordAbility::ProtectionFrom(q)));
         }
-        // Non-color protections remain ParsedUnimplemented
+        return ParsedUnimplemented(kw.to_string());
+    }
+
+    // Hexproof from [quality] (CR 702.11d)
+    if let Some(q_str) = s.strip_prefix("hexproof from ") {
+        let quality_str = q_str.trim_end_matches('.');
+        if let Some(q) = parse_protection_quality(quality_str) {
+            return RulesText::Active(Rule::Static(KeywordAbility::HexproofFrom(q)));
+        }
         return ParsedUnimplemented(kw.to_string());
     }
 
@@ -1845,11 +1886,6 @@ mod tests {
             parse_perm("Kicker {1}{U}", ""),
             vec![unimplemented("Kicker {1}{U}")]
         );
-        // Protection from non-color qualities remain ParsedUnimplemented
-        assert_eq!(
-            parse_perm("Protection from artifacts", ""),
-            vec![unimplemented("Protection from artifacts")]
-        );
     }
 
     #[test]
@@ -3016,9 +3052,16 @@ mod tests {
     }
 
     #[test]
-    fn protection_from_artifacts_stays_unimplemented() {
-        let (spans, _) = parse_permanent("Protection from artifacts", "Test");
-        assert!(matches!(&spans[0], RulesText::ParsedUnimplemented(_)));
+    fn protection_from_artifacts_parses_as_protection() {
+        let (spans, _) = parse_permanent("Protection from artifacts", "");
+        assert_eq!(
+            spans,
+            vec![active(KeywordAbility::ProtectionFrom(
+                crate::types::ability::ProtectionQuality::CardType(
+                    crate::types::card::CardType::Artifact
+                )
+            ))]
+        );
     }
 
     // ── Conditional counter-spell parsing (Task 6) ────────────────────────────
@@ -3268,5 +3311,66 @@ mod tests {
             }
             other => panic!("expected Rule::Continuous, got {other:?}"),
         }
+    }
+
+    // ── parse_protection_quality / protection from / hexproof from ─────────────
+
+    #[test]
+    fn protection_from_everything_parses() {
+        let (spans, _) = parse_permanent("Protection from everything", "Test");
+        assert_eq!(
+            spans,
+            vec![active(KeywordAbility::ProtectionFrom(
+                crate::types::ability::ProtectionQuality::Everything
+            ))]
+        );
+    }
+
+    #[test]
+    fn protection_from_artifacts_parses() {
+        let (spans, _) = parse_permanent("Protection from artifacts", "Test");
+        assert_eq!(
+            spans,
+            vec![active(KeywordAbility::ProtectionFrom(
+                crate::types::ability::ProtectionQuality::CardType(
+                    crate::types::card::CardType::Artifact
+                )
+            ))]
+        );
+    }
+
+    #[test]
+    fn protection_from_vampire_creatures_parses() {
+        let (spans, _) = parse_permanent("Protection from vampire creatures", "Test");
+        assert_eq!(
+            spans,
+            vec![active(KeywordAbility::ProtectionFrom(
+                crate::types::ability::ProtectionQuality::CreatureType("Vampire".into())
+            ))]
+        );
+    }
+
+    #[test]
+    fn hexproof_from_black_parses() {
+        let (spans, _) = parse_permanent("Hexproof from black", "Test");
+        assert_eq!(
+            spans,
+            vec![active(KeywordAbility::HexproofFrom(
+                crate::types::ability::ProtectionQuality::Color(ManaColor::Black)
+            ))]
+        );
+    }
+
+    #[test]
+    fn hexproof_from_artifacts_parses() {
+        let (spans, _) = parse_permanent("Hexproof from artifacts", "Test");
+        assert_eq!(
+            spans,
+            vec![active(KeywordAbility::HexproofFrom(
+                crate::types::ability::ProtectionQuality::CardType(
+                    crate::types::card::CardType::Artifact
+                )
+            ))]
+        );
     }
 }
