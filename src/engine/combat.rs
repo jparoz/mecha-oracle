@@ -408,6 +408,9 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             has_wither,
             has_infect,
             atk_controller,
+            atk_colors,
+            atk_card_types,
+            atk_subtypes,
         ) = {
             let obj = match state.objects.get(&attacker_id) {
                 Some(o) => o,
@@ -428,6 +431,9 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                 obj.has_keyword(KeywordAbility::Wither),
                 obj.has_keyword(KeywordAbility::Infect),
                 obj.controller,
+                obj.definition.colors.clone(),
+                obj.definition.type_line.card_types.clone(),
+                obj.definition.type_line.subtypes.clone(),
             )
         };
         let toxic_n = state
@@ -474,6 +480,19 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                         .max(1)
                 };
                 let assign = remaining.min(lethal);
+                // CR 702.16e: protection prevents damage from sources of the protected quality.
+                if let Some(blocker_obj) = state.objects.get(&blocker_id)
+                    && super::has_protection_from(
+                        blocker_obj,
+                        &atk_colors,
+                        &atk_card_types,
+                        &atk_subtypes,
+                    )
+                {
+                    remaining -= assign;
+                    // damage is prevented — don't record it
+                    continue;
+                }
                 if has_wither || has_infect {
                     *wither_to_objects.entry(blocker_id).or_insert(0) += assign;
                 } else {
@@ -496,15 +515,30 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                     total_damage_dealt += remaining;
                     attacked_player = Some(defending_player);
                 } else if let Some(&last) = blockers.last() {
-                    if has_wither || has_infect {
-                        *wither_to_objects.entry(last).or_insert(0) += remaining;
-                    } else {
-                        *damage_to_objects.entry(last).or_insert(0) += remaining;
+                    // CR 702.16e: protection prevents damage from sources of the protected quality.
+                    let last_protected = state
+                        .objects
+                        .get(&last)
+                        .map(|o| {
+                            super::has_protection_from(
+                                o,
+                                &atk_colors,
+                                &atk_card_types,
+                                &atk_subtypes,
+                            )
+                        })
+                        .unwrap_or(false);
+                    if !last_protected {
+                        if has_wither || has_infect {
+                            *wither_to_objects.entry(last).or_insert(0) += remaining;
+                        } else {
+                            *damage_to_objects.entry(last).or_insert(0) += remaining;
+                        }
+                        if has_deathtouch {
+                            deathtouch_targets.insert(last);
+                        }
+                        total_damage_dealt += remaining;
                     }
-                    if has_deathtouch {
-                        deathtouch_targets.insert(last);
-                    }
-                    total_damage_dealt += remaining;
                 }
             }
         }
@@ -531,7 +565,17 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
             if !deals_this_round(blocker_id) {
                 continue;
             }
-            let (blk_power, blk_wither, blk_infect, blk_deathtouch, blk_lifelink, blk_controller) = {
+            let (
+                blk_power,
+                blk_wither,
+                blk_infect,
+                blk_deathtouch,
+                blk_lifelink,
+                blk_controller,
+                blk_colors,
+                blk_card_types,
+                blk_subtypes,
+            ) = {
                 let obj = match state.objects.get(&blocker_id) {
                     Some(o) => o,
                     None => continue,
@@ -550,9 +594,23 @@ pub fn deal_combat_damage(mut state: GameState) -> GameState {
                     obj.has_keyword(KeywordAbility::Deathtouch),
                     obj.has_keyword(KeywordAbility::Lifelink),
                     obj.controller,
+                    obj.definition.colors.clone(),
+                    obj.definition.type_line.card_types.clone(),
+                    obj.definition.type_line.subtypes.clone(),
                 )
             };
             if blk_power > 0 {
+                // CR 702.16e: protection prevents damage from sources of the protected quality.
+                if let Some(atk_obj) = state.objects.get(&attacker_id)
+                    && super::has_protection_from(
+                        atk_obj,
+                        &blk_colors,
+                        &blk_card_types,
+                        &blk_subtypes,
+                    )
+                {
+                    continue; // damage prevented
+                }
                 if blk_wither || blk_infect {
                     *wither_to_objects.entry(attacker_id).or_insert(0) += blk_power;
                 } else {
@@ -2008,6 +2066,91 @@ mod tests {
             !gs.stack.is_empty(),
             "Trample attacker should fire DealsCombatDamage trigger (excess to player)"
         );
+    }
+
+    #[test]
+    fn protection_from_red_blocker_takes_no_damage_from_red_attacker() {
+        // Blocker has protection from red; attacker is red.
+        // CR 702.16e: the red attacker's damage to the protected blocker is prevented.
+        use crate::types::RulesText;
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule};
+        use crate::types::mana::ManaColor;
+
+        let mut gs = make_combat_state();
+        let attacker =
+            place_creature_with_colors(&mut gs, PlayerId(0), vec![], vec![ManaColor::Red]);
+        let blocker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(1),
+            vec![RulesText::Active(Rule::Static(
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Red)),
+            ))],
+            vec![],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.combat.blocking_map = [(attacker, vec![blocker])].into();
+        gs.step = Step::CombatDamage;
+        let gs = deal_combat_damage(gs);
+        assert!(
+            gs.battlefield.contains_key(&blocker),
+            "blocker should survive"
+        );
+        assert_eq!(gs.battlefield[&blocker].damage_marked, 0);
+    }
+
+    #[test]
+    fn protection_from_red_attacker_takes_no_damage_from_red_blocker() {
+        // Attacker has protection from red; blocker is red.
+        // CR 702.16e: the red blocker's damage to the protected attacker is prevented.
+        use crate::types::RulesText;
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule};
+        use crate::types::mana::ManaColor;
+
+        let mut gs = make_combat_state();
+        let attacker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(0),
+            vec![RulesText::Active(Rule::Static(
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Color(ManaColor::Red)),
+            ))],
+            vec![],
+        );
+        let blocker =
+            place_creature_with_colors(&mut gs, PlayerId(1), vec![], vec![ManaColor::Red]);
+        gs.combat.attackers = vec![attacker];
+        gs.combat.blocking_map = [(attacker, vec![blocker])].into();
+        gs.step = Step::CombatDamage;
+        let gs = deal_combat_damage(gs);
+        assert!(
+            gs.battlefield.contains_key(&attacker),
+            "attacker should survive"
+        );
+        assert_eq!(gs.battlefield[&attacker].damage_marked, 0);
+    }
+
+    #[test]
+    fn protection_from_everything_prevents_all_combat_damage() {
+        use crate::types::RulesText;
+        use crate::types::ability::{KeywordAbility, ProtectionQuality, Rule};
+        use crate::types::mana::ManaColor;
+
+        let mut gs = make_combat_state();
+        let attacker =
+            place_creature_with_colors(&mut gs, PlayerId(0), vec![], vec![ManaColor::Red]);
+        let blocker = place_creature_with_colors(
+            &mut gs,
+            PlayerId(1),
+            vec![RulesText::Active(Rule::Static(
+                KeywordAbility::ProtectionFrom(ProtectionQuality::Everything),
+            ))],
+            vec![],
+        );
+        gs.combat.attackers = vec![attacker];
+        gs.combat.blocking_map = [(attacker, vec![blocker])].into();
+        gs.step = Step::CombatDamage;
+        let gs = deal_combat_damage(gs);
+        assert!(gs.battlefield.contains_key(&blocker));
+        assert_eq!(gs.battlefield[&blocker].damage_marked, 0);
     }
 
     #[test]
