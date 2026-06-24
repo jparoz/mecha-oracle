@@ -17,9 +17,8 @@ use mecha_oracle::engine::mana::reset_mana;
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
-use mecha_oracle::types::ability::CastMode;
 use mecha_oracle::types::ability::{
-    ActivatedAbility, AnnotationKind, CostComponent, KeywordAbility, Rule, RulesText,
+    ActivatedAbility, AnnotationKind, CastMode, CostComponent, KeywordAbility, Rule, RulesText,
     TextAnnotation,
 };
 use mecha_oracle::types::effect::{EffectStep, EffectTarget};
@@ -604,6 +603,113 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
                 }
             }
             // If no legal targets were found, no action is emitted (structural failure).
+        }
+    }
+
+    // Per-mode actions for Dash, Kicker, Multikicker, Evoke.
+    if !is_land && !is_aura && can_cast_structural(state, pid, obj) {
+        let std_cost_label = obj
+            .definition
+            .mana_cost
+            .as_ref()
+            .map(format_mana_cost_braced)
+            .unwrap_or_default();
+
+        // Dash: generate a Dashed alternative action.
+        if let Some(dash_cost) = obj.definition.rules_text.iter().find_map(|span| {
+            if let RulesText::Active(Rule::Dash { alternative_cost }) = span {
+                Some(alternative_cost)
+            } else {
+                None
+            }
+        }) {
+            let dash_label = format_mana_cost_braced(dash_cost);
+            let cast_mode_val = serde_json::to_value(CastMode::Dashed).unwrap();
+            actions.push(ActionItemView {
+                label: format!("Cast {} (Dash {})", obj.definition.name, dash_label),
+                kind: ActionItemKind::Server {
+                    action: serde_json::json!({
+                        "type": "cast_spell",
+                        "object_id": obj.id.0,
+                        "cast_mode": cast_mode_val,
+                        "cost_label": dash_label,
+                    }),
+                },
+            });
+        }
+
+        // Kicker: generate a Kicked action with combined cost label.
+        if let Some(kicker_cost) = obj.definition.rules_text.iter().find_map(|span| {
+            if let RulesText::Active(Rule::Kicker { additional_cost }) = span {
+                Some(additional_cost)
+            } else {
+                None
+            }
+        }) {
+            let kicker_label = format_mana_cost_braced(kicker_cost);
+            let combined_label = format!("{} + {}", std_cost_label, kicker_label);
+            let cast_mode_val = serde_json::to_value(CastMode::Kicked).unwrap();
+            actions.push(ActionItemView {
+                label: format!("Cast {} (Kicked {})", obj.definition.name, combined_label),
+                kind: ActionItemKind::Server {
+                    action: serde_json::json!({
+                        "type": "cast_spell",
+                        "object_id": obj.id.0,
+                        "cast_mode": cast_mode_val,
+                        "cost_label": combined_label,
+                    }),
+                },
+            });
+        }
+
+        // Multikicker: generate a Multikicked(1) action (once — simple first pass).
+        if let Some(kicker_cost) = obj.definition.rules_text.iter().find_map(|span| {
+            if let RulesText::Active(Rule::Multikicker { additional_cost }) = span {
+                Some(additional_cost)
+            } else {
+                None
+            }
+        }) {
+            let kicker_label = format_mana_cost_braced(kicker_cost);
+            let combined_label = format!("{} + {}", std_cost_label, kicker_label);
+            let cast_mode_val = serde_json::to_value(CastMode::Multikicked(1)).unwrap();
+            actions.push(ActionItemView {
+                label: format!(
+                    "Cast {} (Multikick ×1 {})",
+                    obj.definition.name, combined_label
+                ),
+                kind: ActionItemKind::Server {
+                    action: serde_json::json!({
+                        "type": "cast_spell",
+                        "object_id": obj.id.0,
+                        "cast_mode": cast_mode_val,
+                        "cost_label": combined_label,
+                    }),
+                },
+            });
+        }
+
+        // Evoke: generate an Evoked alternative action.
+        if let Some(evoke_cost) = obj.definition.rules_text.iter().find_map(|span| {
+            if let RulesText::Active(Rule::Evoke { alternative_cost }) = span {
+                Some(alternative_cost)
+            } else {
+                None
+            }
+        }) {
+            let evoke_label = format_mana_cost_braced(evoke_cost);
+            let cast_mode_val = serde_json::to_value(CastMode::Evoked).unwrap();
+            actions.push(ActionItemView {
+                label: format!("Cast {} (Evoke {})", obj.definition.name, evoke_label),
+                kind: ActionItemKind::Server {
+                    action: serde_json::json!({
+                        "type": "cast_spell",
+                        "object_id": obj.id.0,
+                        "cast_mode": cast_mode_val,
+                        "cost_label": evoke_label,
+                    }),
+                },
+            });
         }
     }
 
@@ -3729,5 +3835,122 @@ mod tests {
         );
         let gs2 = result.unwrap();
         assert_eq!(gs2.stack.len(), 1, "equip ability should be on the stack");
+    }
+
+    #[test]
+    fn hand_card_with_dash_generates_both_standard_and_dashed_actions() {
+        use mecha_oracle::types::ability::Rule;
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        use mecha_oracle::types::mana::{ManaCost, ManaPip};
+        use mecha_oracle::types::{CardObject, RulesText, Zone};
+
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        assert_eq!(gs.step(), Step::PreCombatMain);
+
+        let dash_def = CardDefinition {
+            name: "Hellspark Elemental".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(1), ManaPip::Red],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Dash {R}".into(),
+            rules_text: vec![RulesText::Active(Rule::Dash {
+                alternative_cost: ManaCost {
+                    pips: vec![ManaPip::Red],
+                },
+            })],
+            text_annotations: vec![],
+            power: Some(3),
+            toughness: Some(1),
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, dash_def, PlayerId(0), Zone::Hand);
+        gs.hands.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 2;
+
+        let gs_ref = &gs;
+        let obj_ref = gs_ref.objects.get(&id).unwrap();
+        let actions = compute_hand_actions(gs_ref, PlayerId(0), obj_ref);
+
+        let labels: Vec<&str> = actions.iter().map(|a| a.label.as_str()).collect();
+        assert!(
+            labels.iter().any(|l| l.contains("Dash")),
+            "expected a Dashed action, got: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|l| !l.contains("Dash") && l.contains("Cast")),
+            "expected a Standard action, got: {labels:?}"
+        );
+    }
+
+    #[test]
+    fn hand_card_with_kicker_generates_both_standard_and_kicked_actions() {
+        use mecha_oracle::types::ability::Rule;
+        use mecha_oracle::types::card::{CardDefinition, CardType, TypeLine};
+        use mecha_oracle::types::mana::{ManaCost, ManaPip};
+        use mecha_oracle::types::{CardObject, RulesText, Zone};
+
+        let db = test_db();
+        let config = vec![
+            (0..10).map(|_| "Forest".to_string()).collect(),
+            (0..10).map(|_| "Forest".to_string()).collect(),
+        ];
+        let mut gs = build_game_state(config, &db, false).unwrap();
+        assert_eq!(gs.step(), Step::PreCombatMain);
+
+        let kick_def = CardDefinition {
+            name: "Kor Sanctifiers".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(2), ManaPip::White],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Kicker {W}".into(),
+            rules_text: vec![RulesText::Active(Rule::Kicker {
+                additional_cost: ManaCost {
+                    pips: vec![ManaPip::White],
+                },
+            })],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(4),
+            colors: vec![],
+        };
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, kick_def, PlayerId(0), Zone::Hand);
+        gs.hands.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.white += 4;
+
+        let gs_ref = &gs;
+        let obj_ref = gs_ref.objects.get(&id).unwrap();
+        let actions = compute_hand_actions(gs_ref, PlayerId(0), obj_ref);
+        let labels: Vec<&str> = actions.iter().map(|a| a.label.as_str()).collect();
+        assert!(
+            labels.iter().any(|l| l.contains("Kick")),
+            "expected a Kicked action, got: {labels:?}"
+        );
+        assert!(
+            labels
+                .iter()
+                .any(|l| !l.contains("Kick") && l.contains("Cast")),
+            "expected a Standard action"
+        );
     }
 }
