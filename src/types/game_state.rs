@@ -45,6 +45,20 @@ impl CombatState {
     }
 }
 
+// A one-shot trigger registered by an engine effect (e.g. Dash — CR 702.109a).
+// Fires at the start of the matching step; drained from the list after firing.
+#[derive(Debug, Clone)]
+pub struct DelayedTrigger {
+    /// The step at which this trigger fires.
+    pub fires_on_step: Step,
+    /// The effect to execute when the trigger resolves.
+    pub effect: crate::types::effect::Effect,
+    /// Pre-declared targets for the effect.
+    pub targets: Vec<crate::types::effect::EffectTarget>,
+    /// The player who controls this trigger.
+    pub controller: PlayerId,
+}
+
 /// CR 118.12: an inline cost-payment obligation raised during the resolution
 /// of a spell or ability. Set by `EffectStep::Payment`; cleared by
 /// `pay_pending_cost` or `decline_pending_cost`.
@@ -93,6 +107,7 @@ pub struct GameState {
     pub next_object_id: u64,
     pub game_over: bool,
     pub pending_payment: Option<PendingPayment>,
+    pub delayed_triggers: Vec<DelayedTrigger>,
 }
 
 impl GameState {
@@ -130,6 +145,7 @@ impl GameState {
             next_object_id: 1,
             game_over: false,
             pending_payment: None,
+            delayed_triggers: vec![],
         }
     }
 

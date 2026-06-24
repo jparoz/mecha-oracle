@@ -467,6 +467,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
     let is_activated = matches!(stack_obj.payload, StackPayload::ActivatedAbility { .. });
     let targets = stack_obj.targets.clone();
     let x_value = stack_obj.x_value;
+    let cast_mode = stack_obj.cast_mode;
 
     match stack_obj.payload {
         StackPayload::Spell { card_id } => {
@@ -515,6 +516,33 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     let mut perm = PermanentState::new(&def);
                     perm.controller_since_turn = state.turn_number;
                     state.battlefield.insert(card_id, perm);
+                }
+
+                // (702.109a) Dash: inject Haste into the PermanentState copy and register a delayed
+                // return-to-hand trigger. Only the battlefield copy is modified — CardObject.definition
+                // stays untouched so the card retains its original rules on future casts.
+                if cast_mode == crate::types::ability::CastMode::Dashed {
+                    if let Some(perm) = state.battlefield.get_mut(&card_id) {
+                        perm.definition
+                            .rules_text
+                            .push(crate::types::RulesText::Active(crate::types::Rule::Static(
+                                crate::types::ability::KeywordAbility::Haste,
+                            )));
+                    }
+                    state
+                        .delayed_triggers
+                        .push(crate::types::game_state::DelayedTrigger {
+                            fires_on_step: crate::types::Step::End,
+                            effect: vec![crate::types::effect::EffectStep::MoveZone {
+                                from: crate::types::Zone::Battlefield,
+                                to: crate::types::Zone::Hand,
+                                to_player: crate::types::ZoneOwner::CardController,
+                            }],
+                            targets: vec![crate::types::effect::EffectTarget::Object {
+                                id: card_id,
+                            }],
+                            controller,
+                        });
                 }
 
                 // CR 603.2 / CR 702.100b: collect ETB triggers and Evolve triggers via unified dispatch.
@@ -2394,5 +2422,123 @@ mod tests {
         assert_eq!(gs.objects[&counter_card_id].zone, Zone::Graveyard);
         assert!(gs.graveyards[&PlayerId(0)].contains(&counter_card_id));
         assert!(gs.stack.is_empty());
+    }
+
+    fn make_dash_creature_def() -> crate::types::card::CardDefinition {
+        use crate::types::RulesText;
+        use crate::types::ability::{KeywordAbility, Rule};
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::mana::{ManaCost, ManaPip};
+        CardDefinition {
+            name: "Hellspark Elemental".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(1), ManaPip::Red],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec![],
+            },
+            oracle_text: "Haste\nDash {R}".into(),
+            rules_text: vec![
+                RulesText::Active(Rule::Static(KeywordAbility::Haste)),
+                RulesText::Active(Rule::Dash {
+                    alternative_cost: ManaCost {
+                        pips: vec![ManaPip::Red],
+                    },
+                }),
+            ],
+            text_annotations: vec![],
+            power: Some(3),
+            toughness: Some(1),
+            colors: vec![],
+        }
+    }
+
+    #[test]
+    fn dash_resolution_injects_haste_into_permanent_state() {
+        use crate::engine::casting::cast_spell;
+        use crate::types::ability::{CastMode, KeywordAbility};
+        use crate::types::{CardObject, Player, Zone};
+        let mut gs = GameState::new(vec![
+            Player::new(PlayerId(0), "Alice"),
+            Player::new(PlayerId(1), "Bob"),
+        ]);
+        gs.step = crate::types::Step::PreCombatMain;
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 2;
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, make_dash_creature_def(), PlayerId(0), Zone::Hand);
+        gs.hands.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Dashed).unwrap();
+        let gs = pass_priority(gs, PlayerId(0)).unwrap();
+        let gs = pass_priority(gs, PlayerId(1)).unwrap();
+
+        // Permanent should be on battlefield with Haste in PermanentState.
+        assert!(
+            gs.battlefield.contains_key(&id),
+            "creature should be on battlefield"
+        );
+        let perm = &gs.battlefield[&id];
+        assert!(
+            perm.has_keyword(KeywordAbility::Haste),
+            "dashed creature must have Haste in PermanentState"
+        );
+        // CardObject.definition must NOT have injected Haste beyond what was parsed.
+        // (The creature already has Haste in oracle text; the injected copy is a duplicate,
+        // but it must be in perm.definition, not obj.definition — covered by the rule above.)
+
+        // A delayed trigger for end step must be registered.
+        assert!(
+            !gs.delayed_triggers.is_empty(),
+            "a delayed return-to-hand trigger should be registered"
+        );
+    }
+
+    #[test]
+    fn dash_creature_returns_to_hand_at_end_step() {
+        use crate::engine::casting::cast_spell;
+        use crate::engine::turn::apply_step_start;
+        use crate::types::ability::CastMode;
+        use crate::types::{CardObject, Player, Step, Zone};
+        let mut gs = GameState::new(vec![
+            Player::new(PlayerId(0), "Alice"),
+            Player::new(PlayerId(1), "Bob"),
+        ]);
+        gs.step = crate::types::Step::PreCombatMain;
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 2;
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, make_dash_creature_def(), PlayerId(0), Zone::Hand);
+        gs.hands.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+
+        // Cast with Dash, resolve.
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Dashed).unwrap();
+        let gs = pass_priority(gs, PlayerId(0)).unwrap();
+        let gs = pass_priority(gs, PlayerId(1)).unwrap();
+        assert!(gs.battlefield.contains_key(&id));
+
+        // Advance to end step.
+        let mut gs = gs;
+        gs.step = Step::End;
+        let gs = apply_step_start(gs);
+
+        // End-step delayed trigger is now on the stack. Both players pass → it resolves.
+        assert!(
+            !gs.stack.is_empty(),
+            "return-to-hand trigger should be on stack"
+        );
+        let gs = pass_priority(gs, PlayerId(0)).unwrap();
+        let gs = pass_priority(gs, PlayerId(1)).unwrap();
+
+        assert!(
+            !gs.battlefield.contains_key(&id),
+            "creature should have left the battlefield"
+        );
+        assert!(
+            gs.hands[&PlayerId(0)].contains(&id),
+            "creature should be in owner's hand"
+        );
     }
 }

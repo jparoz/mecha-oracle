@@ -23,7 +23,7 @@ pub use card::{CardDefinition, CardType, Supertype, TypeLine};
 pub use card_object::CardObject;
 pub use counter::CounterKind;
 pub use effect::{Effect, EffectStep, EffectTarget};
-pub use game_state::{CombatState, GameState, ManaCheckpoint, PendingPayment};
+pub use game_state::{CombatState, DelayedTrigger, GameState, ManaCheckpoint, PendingPayment};
 pub use ids::{ObjectId, PlayerId};
 pub use mana::{ManaColor, ManaCost, ManaPip, ManaPool, PaymentPlan};
 pub use permanent::{PTDelta, PermanentState};

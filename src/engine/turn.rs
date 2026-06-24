@@ -32,6 +32,31 @@ pub fn apply_step_start(mut state: GameState) -> GameState {
         state.stack_objects.insert(id, t);
     }
 
+    // Drain and fire one-shot delayed triggers matching the current step.
+    // (e.g. Dash's return-to-hand — CR 702.109a.)
+    let (to_fire, to_keep): (Vec<_>, Vec<_>) = state
+        .delayed_triggers
+        .drain(..)
+        .partition(|t| t.fires_on_step == current_step);
+    state.delayed_triggers = to_keep;
+    for trigger in to_fire {
+        let stack_id = state.alloc_stack_id();
+        let stack_obj = crate::types::stack::StackObject {
+            id: stack_id,
+            payload: crate::types::stack::StackPayload::TriggeredAbility {
+                source_id: crate::types::ids::ObjectId(0),
+                effect: trigger.effect,
+                label: "Delayed trigger".into(),
+            },
+            controller: trigger.controller,
+            targets: trigger.targets,
+            x_value: None,
+            cast_mode: crate::types::ability::CastMode::Standard,
+        };
+        state.stack.push(stack_id);
+        state.stack_objects.insert(stack_id, stack_obj);
+    }
+
     match state.step {
         Step::Untap => untap_step(state),
         Step::Draw => draw_step(state),
