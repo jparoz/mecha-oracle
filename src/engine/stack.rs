@@ -558,6 +558,31 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                     state.stack_objects.insert(id, trigger);
                 }
 
+                // (702.74a) Evoke: when cast with the Evoke alternative cost, synthesise an ETB
+                // sacrifice trigger. This replicates "when this enters, if its evoke cost was paid,
+                // sacrifice it" without parsing the conditional oracle clause.
+                if cast_mode == crate::types::ability::CastMode::Evoked {
+                    let evoke_stack_id = state.alloc_stack_id();
+                    let evoke_trigger = crate::types::stack::StackObject {
+                        id: evoke_stack_id,
+                        payload: crate::types::stack::StackPayload::TriggeredAbility {
+                            source_id: card_id,
+                            effect: vec![crate::types::effect::EffectStep::MoveZone {
+                                from: crate::types::Zone::Battlefield,
+                                to: crate::types::Zone::Graveyard,
+                                to_player: crate::types::ZoneOwner::CardOwner,
+                            }],
+                            label: "Evoke".into(),
+                        },
+                        controller,
+                        targets: vec![crate::types::effect::EffectTarget::Object { id: card_id }],
+                        x_value: None,
+                        cast_mode: crate::types::ability::CastMode::Standard,
+                    };
+                    state.stack.push(evoke_stack_id);
+                    state.stack_objects.insert(evoke_stack_id, evoke_trigger);
+                }
+
                 // CR 303.4 / 702.16c: attach aura only if host doesn't have protection from it.
                 // If protected, the aura stays on battlefield unattached; SBA 704.5m removes it.
                 if is_aura
@@ -2539,6 +2564,80 @@ mod tests {
         assert!(
             gs.hands[&PlayerId(0)].contains(&id),
             "creature should be in owner's hand"
+        );
+    }
+
+    fn make_evoke_creature_def() -> crate::types::card::CardDefinition {
+        use crate::types::RulesText;
+        use crate::types::ability::Rule;
+        use crate::types::card::{CardDefinition, CardType, TypeLine};
+        use crate::types::mana::{ManaCost, ManaPip};
+        CardDefinition {
+            name: "Shriekmaw".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(4), ManaPip::Black],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Elemental".into()],
+            },
+            oracle_text:
+                "Fear\nWhen this enters, destroy target nonblack, nonartifact creature.\nEvoke {B}"
+                    .into(),
+            rules_text: vec![RulesText::Active(Rule::Evoke {
+                alternative_cost: ManaCost {
+                    pips: vec![ManaPip::Black],
+                },
+            })],
+            text_annotations: vec![],
+            power: Some(3),
+            toughness: Some(2),
+            colors: vec![],
+        }
+    }
+
+    #[test]
+    fn evoke_resolution_pushes_sacrifice_trigger() {
+        use crate::engine::casting::cast_spell;
+        use crate::types::ability::CastMode;
+        use crate::types::{CardObject, Player, Zone};
+        let mut gs = GameState::new(vec![
+            Player::new(PlayerId(0), "Alice"),
+            Player::new(PlayerId(1), "Bob"),
+        ]);
+        gs.step = crate::types::Step::PreCombatMain;
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.black += 1;
+        let id = gs.alloc_id();
+        let obj = CardObject::new(id, make_evoke_creature_def(), PlayerId(0), Zone::Hand);
+        gs.hands.get_mut(&PlayerId(0)).unwrap().push(id);
+        gs.add_object(obj);
+
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Evoked).unwrap();
+        let gs = pass_priority(gs, PlayerId(0)).unwrap();
+        let gs = pass_priority(gs, PlayerId(1)).unwrap(); // spell resolves → creature ETBs
+
+        // After ETB: creature is on battlefield + sacrifice trigger is on stack.
+        assert!(
+            gs.battlefield.contains_key(&id),
+            "creature should be on battlefield after ETB"
+        );
+        assert!(
+            !gs.stack.is_empty(),
+            "Evoke sacrifice trigger should be on stack"
+        );
+
+        // Resolve the sacrifice trigger.
+        let gs = pass_priority(gs, PlayerId(0)).unwrap();
+        let gs = pass_priority(gs, PlayerId(1)).unwrap();
+
+        assert!(
+            !gs.battlefield.contains_key(&id),
+            "creature should have left the battlefield after Evoke sacrifice"
+        );
+        assert!(
+            gs.graveyards[&PlayerId(0)].contains(&id),
+            "creature should be in owner's graveyard"
         );
     }
 }
