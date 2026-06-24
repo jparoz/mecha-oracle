@@ -32,6 +32,7 @@ pub enum EngineError {
     NoManaCheckpoint,
     AbilityIndexOutOfRange,
     InvalidPaymentPlan,
+    InvalidCastMode,
     NotYourPriority,
     WrongNumberOfTargets, // CR 601.2c: wrong number of targets declared
     IllegalTarget,        // CR 601.2c: declared target is not a legal target

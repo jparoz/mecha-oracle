@@ -334,6 +334,23 @@ pub struct ContinuousEffect {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardFilter;
 
+// Records how a spell was cast — used by cast_spell and StackObject.
+// Standard: paid normal mana cost.
+// Kicked: paid mana cost + Kicker cost (702.33a).
+// Multikicked(n): paid mana cost + n × Multikicker cost (702.33c); n ≥ 1.
+// Dashed: paid Dash alternative cost instead of mana cost (702.109a).
+// Evoked: paid Evoke alternative cost instead of mana cost (702.74a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CastMode {
+    #[default]
+    Standard,
+    Kicked,
+    Multikicked(u32),
+    Dashed,
+    Evoked,
+}
+
 impl KeywordAbility {
     pub fn display_name(&self) -> String {
         match self {
@@ -528,6 +545,22 @@ pub enum Rule {
     Equip {
         cost: Cost,
         grants: ContinuousEffect,
+    },
+    // (702.33a) Optional additional cost; pays mana_cost + additional_cost.
+    Kicker {
+        additional_cost: ManaCost,
+    },
+    // (702.33c) Repeatable additional cost; pays mana_cost + n × additional_cost, n ≥ 1.
+    Multikicker {
+        additional_cost: ManaCost,
+    },
+    // (702.109a) Alternative cost that replaces mana_cost; grants Haste; returns to hand at end step.
+    Dash {
+        alternative_cost: ManaCost,
+    },
+    // (702.74a) Alternative cost that replaces mana_cost; ETB trigger sacrifices the permanent.
+    Evoke {
+        alternative_cost: ManaCost,
     },
 }
 
