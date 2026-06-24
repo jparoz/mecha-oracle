@@ -45,9 +45,6 @@ Requires a framework for alternative costs / face-down casting at the stack leve
 Currently `casting.rs` only handles standard `ManaCost` payment.
 
 - **Morph [cost]** (702.37): cast face-down as a 2/2 for {3}; turn face-up later.
-- **Kicker [cost]** (702.33): optional additional cost with conditional extra effect.
-- **Dash [cost]** (702.109): alternative cost; return to hand at end of combat.
-- **Evoke [cost]** (702.74): alternative cost; sacrifice on ETB.
 - **Bestow [cost]** (702.103): cast as Aura or as a creature depending on targets.
 - **Emerge [cost]** (702.119): sacrifice a creature to reduce the mana cost.
 - **Mutate [cost]** (702.140): merge onto existing creature.
