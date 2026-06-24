@@ -98,6 +98,7 @@ pub fn cast_spell(
     object_id: ObjectId,
     declared_targets: Vec<crate::types::effect::EffectTarget>,
     x_value: Option<u32>,
+    cast_mode: CastMode,
 ) -> Result<GameState, EngineError> {
     if state.priority_player != player_id {
         return Err(EngineError::NotYourPriority);
@@ -162,7 +163,9 @@ pub fn cast_spell(
         }
     }
 
-    let cost = {
+    let cost_components = {
+        use crate::types::RulesText;
+        use crate::types::ability::{CostComponent, Rule};
         let hand = state
             .hands
             .get(&player_id)
@@ -188,19 +191,96 @@ pub fn cast_spell(
             }
         }
 
-        obj.definition
-            .mana_cost
-            .clone()
-            .ok_or(EngineError::CannotCastNow)?
+        match cast_mode {
+            CastMode::Standard => {
+                let mana = obj
+                    .definition
+                    .mana_cost
+                    .clone()
+                    .ok_or(EngineError::CannotCastNow)?;
+                vec![CostComponent::Mana(mana)]
+            }
+            CastMode::Kicked => {
+                let mana = obj
+                    .definition
+                    .mana_cost
+                    .clone()
+                    .ok_or(EngineError::CannotCastNow)?;
+                let kicker = obj
+                    .definition
+                    .rules_text
+                    .iter()
+                    .find_map(|span| {
+                        if let RulesText::Active(Rule::Kicker { additional_cost }) = span {
+                            Some(additional_cost.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or(EngineError::InvalidCastMode)?;
+                vec![CostComponent::Mana(mana), CostComponent::Mana(kicker)]
+            }
+            CastMode::Multikicked(n) => {
+                if n == 0 {
+                    return Err(EngineError::InvalidCastMode);
+                }
+                let mana = obj
+                    .definition
+                    .mana_cost
+                    .clone()
+                    .ok_or(EngineError::CannotCastNow)?;
+                let kicker = obj
+                    .definition
+                    .rules_text
+                    .iter()
+                    .find_map(|span| {
+                        if let RulesText::Active(Rule::Multikicker { additional_cost }) = span {
+                            Some(additional_cost.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or(EngineError::InvalidCastMode)?;
+                let mut components = vec![CostComponent::Mana(mana)];
+                for _ in 0..n {
+                    components.push(CostComponent::Mana(kicker.clone()));
+                }
+                components
+            }
+            CastMode::Dashed => {
+                let dash = obj
+                    .definition
+                    .rules_text
+                    .iter()
+                    .find_map(|span| {
+                        if let RulesText::Active(Rule::Dash { alternative_cost }) = span {
+                            Some(alternative_cost.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or(EngineError::InvalidCastMode)?;
+                vec![CostComponent::Mana(dash)]
+            }
+            CastMode::Evoked => {
+                let evoke = obj
+                    .definition
+                    .rules_text
+                    .iter()
+                    .find_map(|span| {
+                        if let RulesText::Active(Rule::Evoke { alternative_cost }) = span {
+                            Some(alternative_cost.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or(EngineError::InvalidCastMode)?;
+                vec![CostComponent::Mana(evoke)]
+            }
+        }
     };
 
-    use crate::types::ability::CostComponent;
-    state = super::costs::pay_cost_components(
-        state,
-        player_id,
-        &[CostComponent::Mana(cost.clone())],
-        x_value,
-    )?;
+    state = super::costs::pay_cost_components(state, player_id, &cost_components, x_value)?;
     state.mana_checkpoint = None;
     state
         .hands
@@ -219,7 +299,7 @@ pub fn cast_spell(
         controller: player_id,
         targets: declared_targets,
         x_value,
-        cast_mode: CastMode::Standard,
+        cast_mode,
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);
@@ -362,7 +442,7 @@ mod tests {
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Standard).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -379,7 +459,7 @@ mod tests {
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Standard).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -408,7 +488,7 @@ mod tests {
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 2;
         let id = put_in_hand(&mut gs, PlayerId(0), make_flash_creature_def());
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Standard).unwrap();
 
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
@@ -443,7 +523,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), id, vec![], None),
+            cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Standard),
             Err(EngineError::CannotCastNow)
         ));
     }
@@ -459,7 +539,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Standard).unwrap();
 
         assert!(!gs.hands[&PlayerId(0)].contains(&id));
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
@@ -477,7 +557,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Standard).unwrap();
 
         assert_eq!(gs.priority_player, PlayerId(0));
         assert_eq!(gs.consecutive_passes, 0);
@@ -561,7 +641,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), bear_id, vec![], None),
+            cast_spell(gs, PlayerId(0), bear_id, vec![], None, CastMode::Standard),
             Err(EngineError::InsufficientMana)
         ));
     }
@@ -583,7 +663,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None, CastMode::Standard).unwrap();
 
         assert!(gs.mana_checkpoint.is_none());
     }
@@ -614,7 +694,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None, CastMode::Standard).unwrap();
 
         assert!(!gs.battlefield.contains_key(&bear_id));
         assert!(gs.hands[&PlayerId(0)].is_empty());
@@ -633,7 +713,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None, CastMode::Standard).unwrap();
 
         // CR 117.3c: caster retains priority
         assert_eq!(gs.priority_player, PlayerId(0));
@@ -653,7 +733,7 @@ mod tests {
         );
 
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), bear_id, vec![], None),
+            cast_spell(gs, PlayerId(0), bear_id, vec![], None, CastMode::Standard),
             Err(EngineError::NotYourPriority)
         ));
     }
@@ -670,7 +750,7 @@ mod tests {
             db.get("Grizzly Bears").unwrap().clone(),
         );
 
-        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bear_id, vec![], None, CastMode::Standard).unwrap();
         let gs = pass_priority(gs, PlayerId(0)).unwrap();
         let gs = pass_priority(gs, PlayerId(1)).unwrap();
 
@@ -732,7 +812,7 @@ mod tests {
             PlayerId(0),
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
-        let gs = cast_spell(gs, PlayerId(0), spell_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), spell_id, vec![], None, CastMode::Standard).unwrap();
 
         // Spell on stack + 1 Prowess trigger on stack = 2 items.
         assert_eq!(gs.stack.len(), 2);
@@ -764,7 +844,7 @@ mod tests {
             colors: vec![],
         };
         let id = put_in_hand(&mut gs, PlayerId(0), targeted_instant_def);
-        let result = cast_spell(gs, PlayerId(0), id, vec![], None);
+        let result = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Standard);
         assert!(matches!(result, Err(EngineError::WrongNumberOfTargets)));
     }
 
@@ -802,6 +882,7 @@ mod tests {
             id,
             vec![EffectTarget::Object { id: ObjectId(999) }],
             None,
+            CastMode::Standard,
         );
         assert!(matches!(result, Err(EngineError::IllegalTarget)));
     }
@@ -862,6 +943,7 @@ mod tests {
             id,
             vec![EffectTarget::Object { id: creature_id }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
@@ -882,7 +964,7 @@ mod tests {
             PlayerId(0),
             make_instant_def("Opt", vec![ManaPip::Blue]),
         );
-        let gs = cast_spell(gs, PlayerId(0), id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Standard).unwrap();
         assert_eq!(gs.objects[&id].zone, Zone::Stack);
     }
 
@@ -1003,6 +1085,7 @@ mod tests {
             spell_id,
             vec![EffectTarget::Object { id: ward_id }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
 
@@ -1072,6 +1155,7 @@ mod tests {
             spell_id,
             vec![EffectTarget::Object { id: ward_id }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
 
@@ -1130,6 +1214,7 @@ mod tests {
             spell_id,
             vec![EffectTarget::Object { id: ward_id }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
 
@@ -1165,7 +1250,7 @@ mod tests {
         gs.hands.entry(PlayerId(0)).or_default().push(id);
         gs.priority_player = PlayerId(0);
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![], Some(3)).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], Some(3), CastMode::Standard).unwrap();
         // X=3 + R=1 = 4 red spent
         assert_eq!(gs.get_player(PlayerId(0)).unwrap().mana_pool.red, 0);
     }
@@ -1187,7 +1272,7 @@ mod tests {
         gs.hands.entry(PlayerId(0)).or_default().push(id);
         gs.priority_player = PlayerId(0);
 
-        let gs = cast_spell(gs, PlayerId(0), id, vec![], Some(3)).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], Some(3), CastMode::Standard).unwrap();
         let stack_id = *gs.stack.last().unwrap();
         assert_eq!(gs.stack_objects[&stack_id].x_value, Some(3));
     }
@@ -1237,7 +1322,7 @@ mod tests {
 
         // No target declared → wrong number of targets
         assert!(matches!(
-            cast_spell(gs, PlayerId(0), aura_id, vec![], None),
+            cast_spell(gs, PlayerId(0), aura_id, vec![], None, CastMode::Standard),
             Err(crate::engine::EngineError::WrongNumberOfTargets)
         ));
         let _ = db; // silence unused warning
@@ -1270,7 +1355,8 @@ mod tests {
                 PlayerId(0),
                 aura_id,
                 vec![crate::types::effect::EffectTarget::Object { id: land_id }],
-                None
+                None,
+                CastMode::Standard,
             ),
             Err(crate::engine::EngineError::IllegalTarget)
         ));
@@ -1296,6 +1382,7 @@ mod tests {
             aura_id,
             vec![crate::types::effect::EffectTarget::Object { id: bear_id }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
         assert_eq!(gs.stack.len(), 1);
@@ -1400,6 +1487,7 @@ mod tests {
             aura_id,
             vec![crate::types::effect::EffectTarget::Object { id: bear_id }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
         assert_eq!(gs.stack.len(), 1);
@@ -1501,7 +1589,7 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None, CastMode::Standard).unwrap();
         let bears_sid = gs.stack[0];
 
         let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
@@ -1514,6 +1602,7 @@ mod tests {
             counter_id,
             vec![EffectTarget::StackObject { id: bears_sid }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
 
@@ -1560,7 +1649,7 @@ mod tests {
         };
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 1;
         let draw_id = put_in_hand(&mut gs, PlayerId(0), draw_def);
-        let gs = cast_spell(gs, PlayerId(0), draw_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), draw_id, vec![], None, CastMode::Standard).unwrap();
         let draw_sid = gs.stack[0];
 
         let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
@@ -1573,6 +1662,7 @@ mod tests {
             negate_id,
             vec![EffectTarget::StackObject { id: draw_sid }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
 
@@ -1599,7 +1689,7 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None, CastMode::Standard).unwrap();
         let bears_sid = gs.stack[0];
 
         let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
@@ -1612,6 +1702,7 @@ mod tests {
             negate_id,
             vec![EffectTarget::StackObject { id: bears_sid }],
             None,
+            CastMode::Standard,
         );
 
         assert!(matches!(result, Err(EngineError::IllegalTarget)));
@@ -1633,7 +1724,7 @@ mod tests {
             PlayerId(0),
             db.get("Grizzly Bears").unwrap().clone(),
         );
-        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None).unwrap();
+        let gs = cast_spell(gs, PlayerId(0), bears_id, vec![], None, CastMode::Standard).unwrap();
         let bears_sid = gs.stack[0];
 
         let mut gs = pass_priority(gs, PlayerId(0)).unwrap();
@@ -1646,6 +1737,7 @@ mod tests {
             counter_id,
             vec![EffectTarget::StackObject { id: bears_sid }],
             None,
+            CastMode::Standard,
         )
         .unwrap();
 
@@ -1661,5 +1753,208 @@ mod tests {
         // Bears already countered; in graveyard.
         assert_eq!(gs.objects[&bears_id].zone, Zone::Graveyard);
         assert!(gs.stack.is_empty());
+    }
+
+    fn make_creature_with_kicker() -> CardDefinition {
+        use crate::types::ability::Rule;
+        use crate::types::mana::{ManaCost, ManaPip};
+        CardDefinition {
+            name: "Kor Sanctifiers".into(),
+            mana_cost: Some(ManaCost { pips: vec![ManaPip::Generic(2), ManaPip::White] }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Kor".into(), "Cleric".into()],
+            },
+            oracle_text: "Kicker {W}\nWhen this enters, if it was kicked, destroy target artifact or enchantment.".into(),
+            rules_text: vec![
+                RulesText::Active(Rule::Kicker {
+                    additional_cost: ManaCost { pips: vec![ManaPip::White] },
+                }),
+            ],
+            text_annotations: vec![],
+            power: Some(2), toughness: Some(4), colors: vec![],
+        }
+    }
+
+    fn make_creature_with_multikicker() -> CardDefinition {
+        use crate::types::ability::Rule;
+        use crate::types::mana::{ManaCost, ManaPip};
+        CardDefinition {
+            name: "Wolfbriar Elemental".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(2), ManaPip::Green, ManaPip::Green],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Elemental".into()],
+            },
+            oracle_text: "Multikicker {G}".into(),
+            rules_text: vec![RulesText::Active(Rule::Multikicker {
+                additional_cost: ManaCost {
+                    pips: vec![ManaPip::Green],
+                },
+            })],
+            text_annotations: vec![],
+            power: Some(4),
+            toughness: Some(4),
+            colors: vec![],
+        }
+    }
+
+    fn make_creature_with_dash() -> CardDefinition {
+        use crate::types::ability::Rule;
+        use crate::types::mana::{ManaCost, ManaPip};
+        CardDefinition {
+            name: "Hellspark Elemental".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(1), ManaPip::Red],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Elemental".into()],
+            },
+            oracle_text: "Dash {R}".into(),
+            rules_text: vec![RulesText::Active(Rule::Dash {
+                alternative_cost: ManaCost {
+                    pips: vec![ManaPip::Red],
+                },
+            })],
+            text_annotations: vec![],
+            power: Some(3),
+            toughness: Some(1),
+            colors: vec![],
+        }
+    }
+
+    fn make_creature_with_evoke() -> CardDefinition {
+        use crate::types::ability::Rule;
+        use crate::types::mana::{ManaCost, ManaPip};
+        CardDefinition {
+            name: "Mulldrifter".into(),
+            mana_cost: Some(ManaCost {
+                pips: vec![ManaPip::Generic(4), ManaPip::Blue],
+            }),
+            type_line: TypeLine {
+                supertypes: vec![],
+                card_types: vec![CardType::Creature],
+                subtypes: vec!["Elemental".into()],
+            },
+            oracle_text: "Flying\nWhen this enters, draw two cards.\nEvoke {2}{U}".into(),
+            rules_text: vec![
+                RulesText::Active(Rule::Static(KeywordAbility::Flying)),
+                RulesText::Active(Rule::Evoke {
+                    alternative_cost: ManaCost {
+                        pips: vec![ManaPip::Generic(2), ManaPip::Blue],
+                    },
+                }),
+            ],
+            text_annotations: vec![],
+            power: Some(2),
+            toughness: Some(2),
+            colors: vec![],
+        }
+    }
+
+    #[test]
+    fn cast_kicked_deducts_mana_cost_plus_kicker() {
+        use crate::types::ability::CastMode;
+        let mut gs = make_state();
+        // 2W (standard) + W (kicker) = 2WW = 2 generic + 2 white
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.white += 4;
+        let id = put_in_hand(&mut gs, PlayerId(0), make_creature_with_kicker());
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Kicked).unwrap();
+        let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
+        assert_eq!(pool.white, 0, "all 4 white should be spent");
+        assert_eq!(
+            gs.stack_objects[gs.stack.last().unwrap()].cast_mode,
+            CastMode::Kicked
+        );
+    }
+
+    #[test]
+    fn cast_multikicked_twice_deducts_base_plus_two_kicker() {
+        use crate::types::ability::CastMode;
+        let mut gs = make_state();
+        // 2GG (standard) + G + G (2× kicker) = 2GGGG = 2 generic + 4 green
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 6;
+        let id = put_in_hand(&mut gs, PlayerId(0), make_creature_with_multikicker());
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Multikicked(2)).unwrap();
+        let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
+        assert_eq!(pool.green, 0, "all 6 green should be spent");
+    }
+
+    #[test]
+    fn cast_multikicked_zero_returns_invalid_cast_mode() {
+        use crate::types::ability::CastMode;
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 6;
+        let id = put_in_hand(&mut gs, PlayerId(0), make_creature_with_multikicker());
+        let result = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Multikicked(0));
+        assert!(matches!(result, Err(EngineError::InvalidCastMode)));
+    }
+
+    #[test]
+    fn cast_dashed_deducts_only_alternative_cost() {
+        use crate::types::ability::CastMode;
+        let mut gs = make_state();
+        // Dash cost = {R}. Standard = {1}{R}. With Dash only 1 red is spent.
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.red += 2;
+        let id = put_in_hand(&mut gs, PlayerId(0), make_creature_with_dash());
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Dashed).unwrap();
+        let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
+        assert_eq!(pool.red, 1, "only 1 red spent for Dash cost {{R}}");
+        assert_eq!(
+            gs.stack_objects[gs.stack.last().unwrap()].cast_mode,
+            CastMode::Dashed
+        );
+    }
+
+    #[test]
+    fn cast_evoked_deducts_only_alternative_cost() {
+        use crate::types::ability::CastMode;
+        let mut gs = make_state();
+        // Evoke cost = {2}{U}. Give just enough.
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 3;
+        let id = put_in_hand(&mut gs, PlayerId(0), make_creature_with_evoke());
+        let gs = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Evoked).unwrap();
+        let pool = &gs.get_player(PlayerId(0)).unwrap().mana_pool;
+        assert_eq!(pool.blue, 0);
+        assert_eq!(
+            gs.stack_objects[gs.stack.last().unwrap()].cast_mode,
+            CastMode::Evoked
+        );
+    }
+
+    #[test]
+    fn cast_dashed_without_dash_rule_returns_invalid_cast_mode() {
+        use crate::types::ability::CastMode;
+        let db = test_db();
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
+        let id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let result = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Dashed);
+        assert!(matches!(result, Err(EngineError::InvalidCastMode)));
+    }
+
+    #[test]
+    fn cast_kicked_without_kicker_rule_returns_invalid_cast_mode() {
+        use crate::types::ability::CastMode;
+        let db = test_db();
+        let mut gs = make_state();
+        gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
+        let id = put_in_hand(
+            &mut gs,
+            PlayerId(0),
+            db.get("Grizzly Bears").unwrap().clone(),
+        );
+        let result = cast_spell(gs, PlayerId(0), id, vec![], None, CastMode::Kicked);
+        assert!(matches!(result, Err(EngineError::InvalidCastMode)));
     }
 }

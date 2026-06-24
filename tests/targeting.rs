@@ -3,6 +3,7 @@ use mecha_oracle::engine::EngineError;
 use mecha_oracle::engine::casting::cast_spell;
 use mecha_oracle::engine::stack::resolve_top;
 use mecha_oracle::engine::turn::skip_to_first_main;
+use mecha_oracle::types::ability::CastMode;
 use mecha_oracle::types::effect::EffectTarget;
 use mecha_oracle::types::{
     CardObject, GameState, ObjectId, PermanentState, Player, PlayerId, Zone,
@@ -90,6 +91,7 @@ fn giant_growth_cast_and_resolve_boosts_creature() {
         gg_id,
         vec![EffectTarget::Object { id: bears_id }],
         None,
+        CastMode::Standard,
     )
     .unwrap();
 
@@ -145,6 +147,7 @@ fn lightning_bolt_kills_creature() {
         bolt_id,
         vec![EffectTarget::Object { id: bears_id }],
         None,
+        CastMode::Standard,
     )
     .unwrap();
 
@@ -186,6 +189,7 @@ fn lightning_bolt_damages_player() {
         bolt_id,
         vec![EffectTarget::Player { id: PlayerId(1) }],
         None,
+        CastMode::Standard,
     )
     .unwrap();
 
@@ -233,6 +237,7 @@ fn giant_growth_fizzles_when_target_leaves() {
         gg_id,
         vec![EffectTarget::Object { id: bears_id }],
         None,
+        CastMode::Standard,
     )
     .unwrap();
 
@@ -304,6 +309,7 @@ fn cant_cast_giant_growth_targeting_shroud_creature() {
         gg_id,
         vec![EffectTarget::Object { id: shroud_id }],
         None,
+        CastMode::Standard,
     );
 
     assert!(

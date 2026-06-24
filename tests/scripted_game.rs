@@ -5,6 +5,7 @@ use mecha_oracle::engine::{
     mana::tap_land_for_mana,
     turn::{advance_step, apply_step_start, draw_card},
 };
+use mecha_oracle::types::ability::CastMode;
 use mecha_oracle::types::{
     CardObject, GameState, ObjectId, PermanentState, Phase, Player, PlayerId, Step, Zone,
 };
@@ -173,7 +174,7 @@ fn scripted_game_runs_to_completion() {
         let gs = tap_all_lands_for_player(gs, PlayerId(0));
         let available = gs.get_player(PlayerId(0)).unwrap().mana_pool.total();
         if available >= cost.mana_value() {
-            cast_spell(gs, PlayerId(0), bear_id, vec![], None).unwrap()
+            cast_spell(gs, PlayerId(0), bear_id, vec![], None, CastMode::Standard).unwrap()
         } else {
             gs
         }

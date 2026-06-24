@@ -17,7 +17,6 @@ use mecha_oracle::engine::mana::reset_mana;
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
-#[cfg(test)]
 use mecha_oracle::types::ability::CastMode;
 use mecha_oracle::types::ability::{
     ActivatedAbility, AnnotationKind, CostComponent, KeywordAbility, Rule, RulesText,
@@ -1088,6 +1087,8 @@ enum ActionRequest {
         targets: Vec<mecha_oracle::types::effect::EffectTarget>,
         #[serde(default)]
         x_value: Option<u32>,
+        #[serde(default)]
+        cast_mode: Option<CastMode>,
     },
     DeclareAttackers {
         attacker_ids: Vec<u64>,
@@ -1195,9 +1196,11 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
             object_id,
             targets,
             x_value,
+            cast_mode,
         } => {
             let player = state.priority_player;
-            cast_spell(state, player, ObjectId(object_id), targets, x_value)
+            let mode = cast_mode.unwrap_or(CastMode::Standard);
+            cast_spell(state, player, ObjectId(object_id), targets, x_value, mode)
                 .map_err(|e| format!("{e:?}"))
         }
         ActionRequest::DeclareAttackers { attacker_ids } => {
