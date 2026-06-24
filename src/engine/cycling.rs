@@ -1,6 +1,6 @@
 use super::EngineError;
 use crate::engine::costs::pay_cost_components;
-use crate::types::ability::Rule;
+use crate::types::ability::{CastMode, Rule};
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
 use crate::types::{GameState, ObjectId, PlayerId, RulesText, Zone};
@@ -73,6 +73,7 @@ pub fn cycle_card(
         controller: player_id,
         targets: vec![],
         x_value: None,
+        cast_mode: CastMode::Standard,
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);

@@ -3,6 +3,8 @@ use super::{
     state_based_actions::check_and_apply_sbas,
     turn::{advance_step, draw_card},
 };
+#[cfg(test)]
+use crate::types::ability::CastMode;
 use crate::types::effect::EffectStep;
 use crate::types::stack::StackPayload;
 use crate::types::{GameState, PermanentState, PlayerId, Zone};
@@ -715,6 +717,7 @@ mod tests {
             controller,
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, obj);
@@ -733,6 +736,7 @@ mod tests {
             controller,
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, obj);
@@ -863,6 +867,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, obj);
@@ -889,6 +894,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, obj);
@@ -1199,6 +1205,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![EffectTarget::Object { id }],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1231,6 +1238,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![EffectTarget::Object { id: nonexistent_id }],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1280,6 +1288,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![EffectTarget::Object { id }],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1310,6 +1319,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![EffectTarget::Player { id: PlayerId(1) }],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1419,6 +1429,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![EffectTarget::Player { id: PlayerId(1) }],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1474,6 +1485,7 @@ mod tests {
                 controller: PlayerId(1),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         gs.stack.push(target_sid);
@@ -1543,6 +1555,7 @@ mod tests {
                 controller: PlayerId(1),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         gs.stack.push(target_sid);
@@ -1613,6 +1626,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![EffectTarget::Object { id }],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1652,6 +1666,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![EffectTarget::Player { id: PlayerId(1) }],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -1716,6 +1731,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![target],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, obj);
@@ -2322,6 +2338,7 @@ mod tests {
                 controller: PlayerId(1),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
 
@@ -2361,6 +2378,7 @@ mod tests {
                 controller: PlayerId(0),
                 targets: vec![EffectTarget::StackObject { id: bears_sid }],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
 

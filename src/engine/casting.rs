@@ -1,5 +1,5 @@
 use super::{EngineError, state_based_actions::check_and_apply_sbas};
-use crate::types::ability::KeywordAbility;
+use crate::types::ability::{CastMode, KeywordAbility};
 use crate::types::card::CardType;
 use crate::types::{GameState, ObjectId, PermanentState, PlayerId, Step, Zone};
 
@@ -219,6 +219,7 @@ pub fn cast_spell(
         controller: player_id,
         targets: declared_targets,
         x_value,
+        cast_mode: CastMode::Standard,
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);
@@ -351,6 +352,7 @@ mod tests {
                 controller: PlayerId(0),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 1;
@@ -400,6 +402,7 @@ mod tests {
                 controller: PlayerId(0),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.blue += 2;
@@ -429,6 +432,7 @@ mod tests {
                 controller: PlayerId(0),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         gs.get_player_mut(PlayerId(0)).unwrap().mana_pool.green += 2;
@@ -899,6 +903,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(sid);
         gs.stack_objects.insert(sid, obj);

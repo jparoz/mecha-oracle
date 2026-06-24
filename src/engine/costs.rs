@@ -1,6 +1,8 @@
 use super::EngineError;
 use crate::engine::mana::{greedy_payment_plan, pay_mana_cost};
 use crate::engine::stack::execute_effect_steps;
+#[cfg(test)]
+use crate::types::ability::CastMode;
 use crate::types::ability::CostComponent;
 use crate::types::{GameState, ObjectId, PlayerId};
 
@@ -341,6 +343,7 @@ mod tests {
                 controller: PlayerId(1),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         gs.stack.push(sid);

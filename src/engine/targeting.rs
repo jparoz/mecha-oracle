@@ -1,3 +1,5 @@
+#[cfg(test)]
+use crate::types::ability::CastMode;
 use crate::types::ability::{KeywordAbility, Rule, TargetFilter};
 
 // CR 202.3: mana value is the sum of pip values; delegates to ManaCost::mana_value().
@@ -648,6 +650,7 @@ mod tests {
             controller: owner,
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, sobj);
@@ -728,6 +731,7 @@ mod tests {
                 controller: PlayerId(0),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         let target = EffectTarget::StackObject { id: sid };
@@ -812,6 +816,7 @@ mod tests {
                 controller: PlayerId(0),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         let targets = legal_targets(

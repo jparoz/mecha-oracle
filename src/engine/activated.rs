@@ -1,6 +1,6 @@
 use super::EngineError;
 use crate::engine::costs::{can_pay_cost_components, pay_cost_components};
-use crate::types::ability::{ActivatedAbility, CostComponent, Rule, RulesText};
+use crate::types::ability::{ActivatedAbility, CastMode, CostComponent, Rule, RulesText};
 use crate::types::effect::EffectStep;
 use crate::types::{GameState, ManaCheckpoint, ObjectId, PlayerId, Zone};
 
@@ -227,6 +227,7 @@ pub fn activate_ability(
             controller: activating_player,
             targets: declared_targets,
             x_value,
+            cast_mode: CastMode::Standard,
         };
         state.stack.push(stack_id);
         state.stack_objects.insert(stack_id, stack_obj);

@@ -17,6 +17,8 @@ use mecha_oracle::engine::mana::reset_mana;
 use mecha_oracle::engine::stack::pass_priority;
 use mecha_oracle::engine::targeting::legal_targets;
 use mecha_oracle::engine::turn::{advance_step, apply_step_start, draw_card, skip_to_first_main};
+#[cfg(test)]
+use mecha_oracle::types::ability::CastMode;
 use mecha_oracle::types::ability::{
     ActivatedAbility, AnnotationKind, CostComponent, KeywordAbility, Rule, RulesText,
     TextAnnotation,
@@ -2619,6 +2621,7 @@ mod tests {
                 controller: PlayerId(1),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
 
@@ -2675,6 +2678,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![EffectTarget::Player { id: PlayerId(1) }],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -2725,6 +2729,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -2773,6 +2778,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);
@@ -2809,6 +2815,7 @@ mod tests {
             controller: PlayerId(0),
             targets: vec![],
             x_value: None,
+            cast_mode: CastMode::Standard,
         };
         gs.stack.push(stack_id);
         gs.stack_objects.insert(stack_id, stack_obj);

@@ -35,4 +35,7 @@ pub struct StackObject {
     pub targets: Vec<super::effect::EffectTarget>, // declared targets (CR 115.1)
     // CR 107.4: X is fixed when the spell/ability is put on the stack and used at resolution.
     pub x_value: Option<u32>,
+    // CR 601.2b: records how the spell was cast, so resolution effects (Dash, Evoke) and
+    // conditional rules text ("if this spell was kicked") can query it.
+    pub cast_mode: crate::types::ability::CastMode,
 }

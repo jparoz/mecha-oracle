@@ -1,6 +1,6 @@
 use super::EngineError;
 use crate::engine::costs::{can_pay_cost_components, pay_cost_components};
-use crate::types::ability::{Cost, Rule, RulesText};
+use crate::types::ability::{CastMode, Cost, Rule, RulesText};
 use crate::types::effect::{EffectStep, EffectTarget};
 use crate::types::stack::{StackObject, StackPayload};
 use crate::types::{GameState, ObjectId, PlayerId, Step, Zone};
@@ -101,6 +101,7 @@ pub fn activate_equip(
             id: target_creature_id,
         }],
         x_value: None,
+        cast_mode: CastMode::Standard,
     };
     state.stack.push(stack_id);
     state.stack_objects.insert(stack_id, stack_obj);
@@ -250,6 +251,7 @@ mod tests {
                 controller: PlayerId(0),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         assert!(matches!(

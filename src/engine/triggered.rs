@@ -1,4 +1,4 @@
-use crate::types::ability::{KeywordAbility, Rule, TriggerEvent, TriggeredAbility};
+use crate::types::ability::{CastMode, KeywordAbility, Rule, TriggerEvent, TriggeredAbility};
 use crate::types::effect::EffectStep;
 use crate::types::stack::{StackObject, StackPayload};
 use crate::types::{
@@ -548,6 +548,7 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                 controller,
                 targets,
                 x_value: None,
+                cast_mode: CastMode::Standard,
             });
         }
 
@@ -610,6 +611,7 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                             controller,
                             targets: vec![EffectTarget::Object { id: source_id }],
                             x_value: None,
+                            cast_mode: CastMode::Standard,
                         });
                     }
                 }
@@ -681,6 +683,7 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                             controller,
                             targets: vec![EffectTarget::Object { id: dying_id }],
                             x_value: None,
+                            cast_mode: CastMode::Standard,
                         });
                     }
                 }
@@ -725,6 +728,7 @@ pub fn collect_triggers_for_event(state: &mut GameState, event: &GameEvent) -> V
                             controller,
                             targets: vec![EffectTarget::Object { id: dying_id }],
                             x_value: None,
+                            cast_mode: CastMode::Standard,
                         });
                     }
                 }
@@ -1968,6 +1972,7 @@ mod tests {
                 controller: PlayerId(0),
                 targets: vec![],
                 x_value: None,
+                cast_mode: CastMode::Standard,
             },
         );
         gs.stack.push(triggering_sid);
