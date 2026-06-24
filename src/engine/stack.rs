@@ -536,7 +536,7 @@ pub fn resolve_top(mut state: GameState) -> GameState {
                             effect: vec![crate::types::effect::EffectStep::MoveZone {
                                 from: crate::types::Zone::Battlefield,
                                 to: crate::types::Zone::Hand,
-                                to_player: crate::types::ZoneOwner::CardController,
+                                to_player: crate::types::ZoneOwner::CardOwner,
                             }],
                             targets: vec![crate::types::effect::EffectTarget::Object {
                                 id: card_id,
