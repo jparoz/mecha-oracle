@@ -520,6 +520,42 @@ fn match_keyword(kw: &str) -> RulesText {
         return RulesText::Active(Rule::Cycling(cost));
     }
 
+    // Kicker [cost] (702.33a): optional additional mana cost.
+    if s.starts_with("kicker ")
+        && let Some(cost) = try_parse_mana_cost(kw["kicker ".len()..].trim())
+    {
+        return RulesText::Active(Rule::Kicker {
+            additional_cost: cost,
+        });
+    }
+
+    // Multikicker [cost] (702.33c): repeatable additional mana cost.
+    if s.starts_with("multikicker ")
+        && let Some(cost) = try_parse_mana_cost(kw["multikicker ".len()..].trim())
+    {
+        return RulesText::Active(Rule::Multikicker {
+            additional_cost: cost,
+        });
+    }
+
+    // Dash [cost] (702.109a): alternative cost; grants Haste; returns to hand at end step.
+    if s.starts_with("dash ")
+        && let Some(cost) = try_parse_mana_cost(kw["dash ".len()..].trim())
+    {
+        return RulesText::Active(Rule::Dash {
+            alternative_cost: cost,
+        });
+    }
+
+    // Evoke [cost] (702.74a): alternative cost; ETB trigger sacrifices the permanent.
+    if s.starts_with("evoke ")
+        && let Some(cost) = try_parse_mana_cost(kw["evoke ".len()..].trim())
+    {
+        return RulesText::Active(Rule::Evoke {
+            alternative_cost: cost,
+        });
+    }
+
     // Fear (CR 702.36)
     if s == "fear" {
         return RulesText::Active(Rule::Static(KeywordAbility::Fear));
@@ -1876,10 +1912,12 @@ mod tests {
     #[test]
     fn parameterised_keyword_emits_parsed_unimplemented() {
         // Cycling {2} is now promoted to Parsed(Rule::Cycling(...))
-        // See parse_cycling_keyword test for its new behavior.
+        // Kicker {1}{U} is now promoted to Parsed(Rule::Kicker(...))
+        // See parse_cycling_keyword and parse_kicker_mana_cost tests for their new behavior.
+        // Test with a keyword that remains unimplemented.
         assert_eq!(
-            parse_perm("Kicker {1}{U}", ""),
-            vec![unimplemented("Kicker {1}{U}")]
+            parse_perm("Madness {1}{U}", ""),
+            vec![unimplemented("Madness {1}{U}")]
         );
     }
 
@@ -3366,6 +3404,71 @@ mod tests {
                     crate::types::card::CardType::Artifact
                 )
             ))]
+        );
+    }
+
+    #[test]
+    fn parse_kicker_mana_cost() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let (spans, _) = parse_permanent("Kicker {1}{U}", "Test");
+        assert_eq!(
+            spans,
+            vec![RulesText::Active(Rule::Kicker {
+                additional_cost: ManaCost {
+                    pips: vec![ManaPip::Generic(1), ManaPip::Blue]
+                }
+            })]
+        );
+    }
+
+    #[test]
+    fn parse_multikicker_mana_cost() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let (spans, _) = parse_permanent("Multikicker {G}", "Test");
+        assert_eq!(
+            spans,
+            vec![RulesText::Active(Rule::Multikicker {
+                additional_cost: ManaCost {
+                    pips: vec![ManaPip::Green]
+                }
+            })]
+        );
+    }
+
+    #[test]
+    fn parse_dash_mana_cost() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let (spans, _) = parse_permanent("Dash {R}", "Test");
+        assert_eq!(
+            spans,
+            vec![RulesText::Active(Rule::Dash {
+                alternative_cost: ManaCost {
+                    pips: vec![ManaPip::Red]
+                }
+            })]
+        );
+    }
+
+    #[test]
+    fn parse_evoke_mana_cost() {
+        use crate::types::mana::{ManaCost, ManaPip};
+        let (spans, _) = parse_permanent("Evoke {2}{U}", "Test");
+        assert_eq!(
+            spans,
+            vec![RulesText::Active(Rule::Evoke {
+                alternative_cost: ManaCost {
+                    pips: vec![ManaPip::Generic(2), ManaPip::Blue]
+                }
+            })]
+        );
+    }
+
+    #[test]
+    fn parse_kicker_malformed_cost_falls_back_to_unimplemented() {
+        let (spans, _) = parse_permanent("Kicker badcost", "Test");
+        assert_eq!(
+            spans,
+            vec![RulesText::ParsedUnimplemented("Kicker badcost".to_string())]
         );
     }
 }
