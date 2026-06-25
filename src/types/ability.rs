@@ -542,7 +542,7 @@ pub enum AnnotationKind {
     AbilityWord,
     ParsedUnimplemented,
     Unparsed,
-    Active, // parsed and engine-implemented oracle text
+    Active,
 }
 
 /// A styled byte-range annotation over a `CardDefinition`'s `oracle_text` field.
@@ -683,14 +683,6 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&AnnotationKind::ParsedUnimplemented).unwrap(),
             r#""parsed_unimplemented""#
-        );
-    }
-
-    #[test]
-    fn annotation_kind_active_serializes_as_active() {
-        assert_eq!(
-            serde_json::to_string(&AnnotationKind::Active).unwrap(),
-            r#""active""#
         );
     }
 

@@ -1296,7 +1296,18 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<RulesText>, Vec<Text
             let effect_str = paragraph[colon_pos + 1..].trim();
             let cost = parse_activation_cost(cost_str);
             if !cost.is_empty() {
+                let has_unimplemented_cost = cost
+                    .iter()
+                    .any(|c| matches!(c, CostComponent::Unimplemented(_)));
                 if let Some(effect) = parse_ability_effect(effect_str) {
+                    if has_unimplemented_cost {
+                        let para_start = subslice_offset(text, paragraph);
+                        annotations.push(TextAnnotation {
+                            start: para_start,
+                            end: para_start + paragraph.len(),
+                            kind: AnnotationKind::ParsedUnimplemented,
+                        });
+                    }
                     spans.push(RulesText::Active(Rule::Activated(ActivatedAbility {
                         cost,
                         target_requirements: vec![],
