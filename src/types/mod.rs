@@ -1,3 +1,14 @@
+//! Core data types for the rules engine.
+//!
+//! All engine functions consume and return `GameState`; everything else in this
+//! module is the vocabulary those functions operate on.  The most important types
+//! are:
+//!
+//! * [`GameState`] — the complete, immutable-snapshot game state
+//! * [`CardObject`] — a single card instance (owns its [`CardDefinition`])
+//! * [`PermanentState`] — battlefield-only data (tapped, damage, counters, …)
+//! * [`StackObject`] / [`StackPayload`] — items on the stack
+//! * [`RulesText`] / [`Rule`] — the parsed oracle-text representation
 pub mod ability;
 pub mod card;
 pub mod card_object;

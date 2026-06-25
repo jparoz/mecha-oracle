@@ -24,6 +24,7 @@ pub enum Step {
 }
 
 impl Step {
+    /// Returns the phase that contains this step (CR 500.1).
     pub fn phase(self) -> Phase {
         match self {
             Step::Untap | Step::Upkeep | Step::Draw => Phase::Beginning,
@@ -39,6 +40,7 @@ impl Step {
     }
 }
 
+/// One of the five phases of a turn (CR 500.1). Derived from `Step::phase()`; not stored directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     Beginning,

@@ -6,7 +6,7 @@ use crate::types::{CombatState, GameState, ObjectId, PTDelta, PlayerId, Step, Zo
 /// Apply the automatic rules for the start of the current step/phase.
 ///
 /// CR 603.2b: At the beginning of each step, fire a PhaseStep event so that
-/// "at the beginning of [step]" triggered abilities are collected onto the stack.
+/// "at the beginning of `step`" triggered abilities are collected onto the stack.
 pub fn apply_step_start(mut state: GameState) -> GameState {
     // CR 603.2b: collect PhaseStep triggers before step-specific logic runs.
     // Untap and Cleanup have no priority window (CR 502.4, CR 514.3), so triggers
@@ -134,6 +134,7 @@ fn set(mut state: GameState, step: Step) -> GameState {
     state
 }
 
+/// CR 502: untap all permanents the active player controls and reset `lands_played_this_turn`.
 fn untap_step(mut state: GameState) -> GameState {
     let active = state.active_player;
     // CR 502: untap all permanents the active player controls; clear summoning sickness.
@@ -159,6 +160,7 @@ fn untap_step(mut state: GameState) -> GameState {
     state
 }
 
+/// CR 504.1: the active player draws one card at the start of their draw step.
 fn draw_step(state: GameState) -> GameState {
     let active = state.active_player;
     draw_card(state, active, true)
@@ -215,6 +217,8 @@ pub fn skip_to_first_main(mut state: GameState) -> GameState {
     state
 }
 
+/// CR 514.2: remove all damage from permanents and clear the deathtouch/EOT-boost flags.
+/// CR 514.1: hand-size discard is noted but not enforced in Phase 1.
 fn cleanup_step(mut state: GameState) -> GameState {
     // CR 514.2: remove damage from all permanents and clear deathtouch flag.
     for perm in state.battlefield.values_mut() {
@@ -226,6 +230,8 @@ fn cleanup_step(mut state: GameState) -> GameState {
     state
 }
 
+/// Transitions to the next player's turn: cleanup, swap active player, increment `turn_number`,
+/// reset land count and combat state, and advance to the Untap step.
 fn start_next_turn(mut state: GameState) -> GameState {
     state = cleanup_step(state);
     let next = state.opponent_of(state.active_player);

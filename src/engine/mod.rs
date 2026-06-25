@@ -13,6 +13,9 @@ pub mod turn;
 
 use crate::types::{ControllerFilter, GameState, ObjectId, PTDelta, Rule, RulesText};
 
+/// All reasons why a game action can be rejected.
+/// Engine functions return `Err(EngineError)` for any illegal action; `Ok(GameState)` on success.
+/// HTTP API translates these to 4xx responses with a matching error string.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EngineError {
     CardNotFound,
@@ -39,9 +42,14 @@ pub enum EngineError {
     InsufficientLife,     // CR 116.5: player cannot pay a life cost component
 }
 
-// CR 611.3b: continuous effects from static abilities apply at all times the source permanent
-// is on the battlefield. This function sums all P/T modifications from Rule::Continuous entries
-// across every battlefield permanent whose subject_filter matches `target_id`.
+/// Computes the total P/T bonus granted to `target_id` by all active continuous effects (CR 611.3b).
+///
+/// Two passes:
+/// 1. All battlefield permanents with `Rule::Continuous` whose `subject_filter` matches `target_id`.
+/// 2. All Auras and Equipment whose `attached_to == Some(target_id)`, applying their `grants` delta.
+///
+/// Returns `PTDelta::default()` (0/0) if the target is not on the battlefield.
+/// The returned delta is passed as `continuous_bonus` to `effective_power`/`effective_toughness`.
 pub fn continuous_pt_bonus(state: &GameState, target_id: ObjectId) -> PTDelta {
     let target_obj = match state.objects.get(&target_id) {
         Some(o) => o,
@@ -131,8 +139,8 @@ pub fn continuous_pt_bonus(state: &GameState, target_id: ObjectId) -> PTDelta {
     bonus
 }
 
-// CR 702.16c/d/e: returns true if target_obj has ProtectionFrom any quality
-// satisfied by the given source characteristics.
+/// Returns true if `target_obj` has ProtectionFrom any quality matched by the given source
+/// characteristics (CR 702.16c/d/e). Used by targeting and combat damage prevention.
 pub(crate) fn has_protection_from(
     target_obj: &crate::types::CardObject,
     source_colors: &[crate::types::mana::ManaColor],

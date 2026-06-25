@@ -3,13 +3,21 @@ use crate::types::card::{CardDefinition, CardType, Supertype, TypeLine};
 use crate::types::mana::{ManaColor, ManaCost, ManaPip};
 use serde_json::Value;
 
+/// Outcome of parsing a single Scryfall bulk-data entry.
 pub enum ParsedEntry {
+    /// A regular playable card.
     Card(CardDefinition),
+    /// A token or emblem (stored separately to avoid name collisions with cards).
     Token(CardDefinition),
-    UnCard,  // Silver border or acorn stamp (CR 100.7); out of scope
-    ArtCard, // Non-playable; out of scope
+    /// Silver-border / acorn-stamp Un-card (CR 100.7) — out of scope.
+    UnCard,
+    /// Non-playable art-series or memorabilia card — out of scope.
+    ArtCard,
 }
 
+/// Parses a single Scryfall JSON object into a `ParsedEntry`.
+/// Filters out Un-cards, art cards, and entries missing required fields.
+/// Delegates oracle text parsing to `parse_permanent` / `parse_instant_or_sorcery`.
 pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
     // CR 100.7: Un-cards (silver border, acorn stamp, or playtest cards) are out of scope
     if v["border_color"].as_str() == Some("silver")
@@ -86,6 +94,8 @@ pub fn parse_entry(v: &Value) -> Result<ParsedEntry, String> {
     }
 }
 
+/// Maps Scryfall color codes ("W","U","B","R","G") to `ManaColor`, excluding Colorless.
+/// Used for the `colors` field, which lists identity colors only (not {C} pips).
 fn color_from_str_no_colorless(s: &str) -> Option<ManaColor> {
     match s {
         "W" => Some(ManaColor::White),
@@ -97,6 +107,8 @@ fn color_from_str_no_colorless(s: &str) -> Option<ManaColor> {
     }
 }
 
+/// Maps Scryfall color codes including "C" (Colorless) to `ManaColor`.
+/// Used for mana cost pip parsing where {C} is a valid cost component.
 fn color_from_str(s: &str) -> Option<ManaColor> {
     match s {
         "W" => Some(ManaColor::White),
@@ -162,6 +174,8 @@ fn parse_mana_cost(s: &str) -> ManaCost {
     ManaCost { pips }
 }
 
+/// Parses a Scryfall type line string (e.g. "Legendary Creature — Elf Warrior") into
+/// a `TypeLine`. Left of the em-dash gives supertypes and card types; right gives subtypes.
 fn parse_type_line(s: &str) -> TypeLine {
     let em_dash = '\u{2014}';
     let (left, right) = if let Some(idx) = s.find(em_dash) {

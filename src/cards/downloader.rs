@@ -2,6 +2,9 @@ use std::path::Path;
 
 const BULK_DATA_URL: &str = "https://api.scryfall.com/bulk-data";
 
+/// Downloads the Scryfall `oracle_cards` bulk data JSON to `data_dir/oracle_cards.json`.
+/// Fetches the bulk-data index first to get the current download URI, then streams
+/// the file via a temporary path to avoid a partial write replacing a good file.
 pub fn update_cards(data_dir: &Path) -> Result<(), String> {
     println!("Fetching bulk data index from Scryfall...");
     let index: serde_json::Value = ureq::get(BULK_DATA_URL)

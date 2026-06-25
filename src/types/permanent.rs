@@ -13,12 +13,15 @@ pub struct PTDelta {
     pub toughness: i32,
 }
 
+/// Battlefield-specific state for a card that is currently a permanent (CR 110).
+/// Created when a card enters the battlefield; destroyed when it leaves.
+/// The `GameState.battlefield` map keys this by the permanent's `ObjectId`.
 #[derive(Debug, Clone)]
 pub struct PermanentState {
     /// Cloned from CardObject on enter-battlefield.
     /// If CardDefinition ever becomes mutable (copy effects, aura modifications, etc.)
     /// this copy will need to be kept in sync — either by re-cloning on mutation or by
-    /// switching to Arc<CardDefinition>.
+    /// switching to `Arc<CardDefinition>`.
     pub definition: CardDefinition,
     /// Printed P/T is on the definition; this diverges once effects are applied.
     pub current_power: Option<i32>,
@@ -39,6 +42,9 @@ pub struct PermanentState {
 }
 
 impl PermanentState {
+    /// Creates a fresh `PermanentState` from a card definition.
+    /// `controller_since_turn` is initialised to `u32::MAX` (always summoning-sick);
+    /// the caller must set it to `state.turn_number` after creation (handled in `execute_effect_steps`).
     pub fn new(definition: &CardDefinition) -> Self {
         Self {
             definition: definition.clone(),
@@ -54,6 +60,9 @@ impl PermanentState {
         }
     }
 
+    /// Returns true if this permanent has `kw` as an active static keyword ability.
+    /// Checks only `RulesText::Active(Rule::Static(...))` entries — does not check
+    /// counters, continuous effects, or abilities granted by other permanents.
     pub fn has_keyword(&self, kw: KeywordAbility) -> bool {
         self.definition
             .rules_text
@@ -90,14 +99,19 @@ impl PermanentState {
         if total > 0 { Some(total) } else { None }
     }
 
+    /// Returns true if this permanent has the Creature card type (CR 302.1).
     pub fn is_creature(&self) -> bool {
         self.definition.type_line.is_creature()
     }
 
+    /// Returns true if this permanent has the Land card type (CR 305.1).
     pub fn is_land(&self) -> bool {
         self.definition.type_line.is_land()
     }
 
+    /// Computes visible power: base + counter adjustments + `pt_boost_until_eot` + `continuous_bonus`.
+    /// `continuous_bonus` is the result of `engine::continuous_pt_bonus` (Auras, Equipment, anthems).
+    /// Returns `None` for non-creatures. Can be negative.
     pub fn effective_power(&self, continuous_bonus: i32) -> Option<i32> {
         self.current_power.map(|p| {
             let counter_bonus: i32 = self
@@ -112,6 +126,8 @@ impl PermanentState {
         })
     }
 
+    /// Computes visible toughness: base + counter adjustments + `pt_boost_until_eot` + `continuous_bonus`.
+    /// Returns `None` for non-creatures. Can be ≤ 0, which triggers SBAs (CR 704.5f).
     pub fn effective_toughness(&self, continuous_bonus: i32) -> Option<i32> {
         self.current_toughness.map(|t| {
             let counter_bonus: i32 = self
@@ -149,10 +165,12 @@ impl PermanentState {
         self.is_creature() && !self.tapped && !self.has_keyword(KeywordAbility::Decayed)
     }
 
+    /// Returns the number of counters of `kind` on this permanent, or 0 if none.
     pub fn counter_count(&self, kind: &CounterKind) -> u32 {
         *self.counters.get(kind).unwrap_or(&0)
     }
 
+    /// Adds `n` counters of `kind` to this permanent (CR 122.6).
     pub fn add_counters(&mut self, kind: CounterKind, n: u32) {
         *self.counters.entry(kind).or_insert(0) += n;
     }

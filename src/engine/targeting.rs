@@ -11,9 +11,17 @@ use crate::types::mana::ManaColor;
 use crate::types::stack::StackPayload;
 use crate::types::{GameState, PlayerId, RulesText, Zone};
 
-// CR 115.4: a target is legal if it exists in the targeted zone, satisfies the
-// filter, and is not protected by Shroud (CR 702.18) or Hexproof (CR 702.11).
-// CR 702.16b: protection prevents targeting by sources of the protected quality.
+/// Returns true if `target` is a legal target for the given source and filter (CR 115.4).
+///
+/// Objects must be on the battlefield and pass the filter, then:
+/// - Shroud (CR 702.18): blocks targeting by anyone.
+/// - Hexproof (CR 702.11): blocks targeting by opponents.
+/// - HexproofFrom (CR 702.11d): blocks targeting by opponents whose source matches the quality.
+/// - ProtectionFrom (CR 702.16b): blocks targeting by sources matching the quality.
+///
+/// Players: must not have `has_lost`; must match `TargetFilter::Player | Any`.
+/// StackObjects: must be a Spell payload matching the `SpellFilter` (CR 115.4).
+/// Shroud/Hexproof do NOT apply to spells on the stack (CR 702.11a/702.18a).
 pub fn is_legal_target(
     state: &GameState,
     target: &EffectTarget,
@@ -118,7 +126,8 @@ pub fn is_legal_target(
     }
 }
 
-/// Returns all legal targets for `filter` from `caster`'s point of view.
+/// Returns all currently legal targets for `filter` from `caster`'s point of view.
+/// Called by serve.rs to populate the UI target-selection list before the player chooses.
 pub fn legal_targets(
     state: &GameState,
     filter: &TargetFilter,
@@ -180,9 +189,9 @@ pub fn legal_targets(
     result
 }
 
-// CR 608.2b: targets are still legal if the object/player still exists in the
-// required zone. (Does not re-check Shroud/Hexproof — those apply at declaration
-// time, not at resolution time.)
+/// Returns true if all targets are still in the required zone at resolution time (CR 608.2b).
+/// Does not re-check Shroud or Hexproof — those apply only at declaration time (CR 115.7).
+/// An empty target list always returns true (untargeted spells never fizzle from this check).
 pub fn targets_still_legal(state: &GameState, targets: &[EffectTarget]) -> bool {
     if targets.is_empty() {
         return true;

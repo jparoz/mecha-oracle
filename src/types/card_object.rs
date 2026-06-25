@@ -59,6 +59,9 @@ pub struct CardObject {
 }
 
 impl CardObject {
+    /// Creates a new card object and injects intrinsic mana abilities for basic land subtypes (CR 305.6).
+    /// The `definition` is cloned per-object so each game instance owns its own ability list.
+    /// `controller` starts equal to `owner`; control-change effects update `controller` directly.
     pub fn new(id: ObjectId, mut definition: CardDefinition, owner: PlayerId, zone: Zone) -> Self {
         inject_intrinsic_abilities(&mut definition);
         Self {
@@ -70,14 +73,18 @@ impl CardObject {
         }
     }
 
+    /// Returns true if this card has the Creature card type in any zone (CR 302.1).
     pub fn is_creature(&self) -> bool {
         self.definition.type_line.is_creature()
     }
 
+    /// Returns true if this card has the Land card type in any zone (CR 305.1).
     pub fn is_land(&self) -> bool {
         self.definition.type_line.is_land()
     }
 
+    /// Returns true if this card has `kw` as an active static keyword ability.
+    /// Used for zone-agnostic keyword checks (e.g. Flash at cast time, Shroud at targeting time).
     pub fn has_keyword(&self, kw: KeywordAbility) -> bool {
         self.definition
             .rules_text

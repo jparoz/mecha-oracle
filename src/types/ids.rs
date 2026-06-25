@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
 
+/// A unique identifier for a card object in the game (CR 109.1).
+/// Each physical card instance — including copies on the stack — gets its own ObjectId,
+/// allocated monotonically from `GameState::alloc_id`. IDs are never reused within a game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ObjectId(pub u64);
 
+/// A unique identifier for a player.
+/// In the current two-player implementation: PlayerId(0) = first player, PlayerId(1) = second.
+/// Stored as a u8 and serialized as a plain JSON integer for API compactness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PlayerId(pub u8);

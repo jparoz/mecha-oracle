@@ -30,6 +30,8 @@ enum Sba {
     DetachEquipment(ObjectId), // CR 704.5n
 }
 
+/// Scans the current game state and returns every SBA that is currently applicable.
+/// Called repeatedly by `check_and_apply_sbas` until the list is empty.
 fn find_sbas(state: &GameState) -> Vec<Sba> {
     let mut sbas = vec![];
 
@@ -180,6 +182,8 @@ fn find_sbas(state: &GameState) -> Vec<Sba> {
     sbas
 }
 
+/// Applies a batch of SBAs to the game state and collects any resulting triggered
+/// abilities (e.g. Dies triggers that fire before the creature leaves the battlefield).
 fn apply_sbas(
     mut state: GameState,
     sbas: Vec<Sba>,
@@ -235,6 +239,8 @@ fn apply_sbas(
     (state, triggers)
 }
 
+/// Moves `object_id` from the battlefield to its owner's graveyard and updates
+/// the object's zone. Does not fire any events or check triggers.
 pub fn move_to_graveyard(mut state: GameState, object_id: ObjectId) -> GameState {
     state.battlefield.remove(&object_id);
     if let Some(obj) = state.objects.get_mut(&object_id) {

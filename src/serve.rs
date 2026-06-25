@@ -31,13 +31,18 @@ use std::sync::{Arc, Mutex};
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
+/// Two-player deck list: outer vec is per-player, inner vec is card names.
 type DeckConfig = Vec<Vec<String>>;
 
+/// Reads and JSON-parses the deck config file at `path`.
 fn load_config(path: &str) -> Result<DeckConfig, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("Cannot read {path}: {e}"))?;
     serde_json::from_str(&text).map_err(|e| format!("Invalid JSON in {path}: {e}"))
 }
 
+/// Constructs the initial `GameState` from a two-player deck config.
+/// Validates that exactly two decklists are provided, resolves card names against
+/// `db`, deals 7-card opening hands (no mulligans), and advances to PreCombatMain.
 fn build_game_state(
     config: DeckConfig,
     db: &CardDatabase,
@@ -108,6 +113,7 @@ fn build_game_state(
 
 // ── View model ──────────────────────────────────────────────────────────────
 
+/// Serializable mana-pool snapshot for the frontend.
 #[derive(Serialize)]
 struct ManaPoolView {
     w: u32,
@@ -118,6 +124,8 @@ struct ManaPoolView {
     c: u32,
 }
 
+/// A single oracle-text highlight region with Unicode codepoint offsets
+/// (matching JavaScript string indices) and a semantic kind for CSS styling.
 #[derive(Serialize)]
 struct TextAnnotationView {
     start: usize,
@@ -131,6 +139,7 @@ fn byte_to_char(s: &str, byte_offset: usize) -> usize {
     s[..byte_offset].chars().count()
 }
 
+/// Converts `TextAnnotation` byte-offset spans to codepoint-offset `TextAnnotationView`s.
 fn annotation_views(oracle_text: &str, anns: &[TextAnnotation]) -> Vec<TextAnnotationView> {
     anns.iter()
         .map(|a| TextAnnotationView {
@@ -141,6 +150,7 @@ fn annotation_views(oracle_text: &str, anns: &[TextAnnotation]) -> Vec<TextAnnot
         .collect()
 }
 
+/// JSON view of a single object on the stack (spell, triggered ability, or activated ability).
 #[derive(Serialize)]
 struct StackItemView {
     id: u64,
@@ -158,6 +168,7 @@ struct StackItemView {
     source_colors: Vec<String>,
 }
 
+/// A single selectable action surfaced in the UI for a card.
 #[derive(Serialize)]
 struct ActionItemView {
     label: String,
@@ -165,6 +176,7 @@ struct ActionItemView {
     kind: ActionItemKind,
 }
 
+/// Discriminates how the frontend handles a selected action.
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum ActionItemKind {
@@ -176,6 +188,8 @@ enum ActionItemKind {
     AssignBlocker { blocker_id: u64, attacker_id: u64 },
 }
 
+/// JSON view of a card object for the frontend — combines definition fields with
+/// per-instance battlefield state (tapped, damage, counters, available actions).
 #[derive(Serialize)]
 struct CardView {
     id: ObjectId,
@@ -198,6 +212,7 @@ struct CardView {
     attached_to: Option<u64>,
 }
 
+/// JSON view of a player's game state: life, mana pool, zones, and counters.
 #[derive(Serialize)]
 struct PlayerView {
     life: i32,
@@ -210,6 +225,8 @@ struct PlayerView {
     poison_counters: u32,
 }
 
+/// JSON view of a single counter stack on a permanent (e.g. "+1/+1 ×3").
+/// `kind` is used as a CSS class suffix; must be letters/digits/hyphens only.
 #[derive(Serialize)]
 struct CounterView {
     label: String,
@@ -218,8 +235,9 @@ struct CounterView {
     sublabel: Option<String>,
 }
 
-// kind strings ("plus", "minus", "mixed", "poison", "named") are used as CSS class
-// name suffixes (hex-{kind}) — must contain only letters, digits, and hyphens.
+/// Converts a `CounterKind` + stack count to a `CounterView`.
+/// Kind strings ("plus", "minus", "mixed", "poison", "named") become CSS class
+/// suffixes (e.g. `hex-plus`) so they must contain only letters, digits, and hyphens.
 fn counter_to_view(kind: &CounterKind, count: u32) -> CounterView {
     match kind {
         CounterKind::PtModifier { power, toughness } => {
@@ -264,12 +282,14 @@ fn counter_to_view(kind: &CounterKind, count: u32) -> CounterView {
     }
 }
 
+/// JSON view of an outstanding `PendingPayment` obligation (e.g. Ward cost).
 #[derive(Serialize)]
 struct PendingPaymentView {
     paying_player: u64,
     cost_label: String,
 }
 
+/// Complete JSON snapshot of the game state sent to the frontend after every action.
 #[derive(Serialize)]
 struct GameView {
     turn: u32,
@@ -335,6 +355,7 @@ fn display_colors(
     colors
 }
 
+/// Renders a `TypeLine` as a human-readable string (e.g. "Legendary Creature — Elf Warrior").
 fn format_type_line(tl: &mecha_oracle::types::card::TypeLine) -> String {
     use mecha_oracle::types::card::{CardType, Supertype};
     let mut parts: Vec<&str> = Vec::new();
@@ -365,6 +386,7 @@ fn format_type_line(tl: &mecha_oracle::types::card::TypeLine) -> String {
     }
 }
 
+/// Formats a `ManaCost` as a brace-notation string (e.g. `{2}{G}{G}`).
 fn format_mana_cost_braced(cost: &mecha_oracle::types::mana::ManaCost) -> String {
     use mecha_oracle::types::mana::ManaPip;
     cost.pips
@@ -388,6 +410,7 @@ fn format_mana_cost_braced(cost: &mecha_oracle::types::mana::ManaCost) -> String
         .collect::<String>()
 }
 
+/// Formats a `ManaPool` as a brace-notation string (e.g. `{G}{G}` for two green mana).
 fn format_mana_pool(pool: &mecha_oracle::types::mana::ManaPool) -> String {
     let mut s = String::new();
     for _ in 0..pool.white {
@@ -411,6 +434,7 @@ fn format_mana_pool(pool: &mecha_oracle::types::mana::ManaPool) -> String {
     s
 }
 
+/// Formats an `ActivatedAbility` as a human-readable label (e.g. `"{T}: Add {G}"`).
 fn format_activated_ability(ability: &ActivatedAbility) -> String {
     let cost_parts: Vec<String> = ability
         .cost
@@ -459,6 +483,10 @@ fn format_activated_ability(ability: &ActivatedAbility) -> String {
     format!("{}: {}", cost_parts.join(", "), effect_parts.join(". "))
 }
 
+/// Returns true if `pid` is structurally allowed to cast `obj` right now —
+/// checks zone (must be Hand), priority, mana cost presence, and timing restrictions
+/// (sorcery speed: active player, main phase, empty stack; instant speed: always ok).
+/// Does not check whether the player can actually pay the mana cost.
 fn can_cast_structural(state: &GameState, pid: PlayerId, obj: &CardObject) -> bool {
     use mecha_oracle::types::card::CardType;
     if obj.zone != Zone::Hand {
@@ -484,6 +512,8 @@ fn can_cast_structural(state: &GameState, pid: PlayerId, obj: &CardObject) -> bo
         && state.stack.is_empty()
 }
 
+/// Returns the list of available actions for `obj` owned by `pid`, dispatching
+/// to the zone-specific helper (`compute_hand_actions` or `compute_battlefield_actions`).
 fn compute_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<ActionItemView> {
     match obj.zone {
         Zone::Hand => compute_hand_actions(state, pid, obj),
@@ -492,6 +522,9 @@ fn compute_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<Ac
     }
 }
 
+/// Computes available hand actions for `obj`: play land, cast spell (targeted and
+/// untargeted), per-mode casts (Dash, Kicker, Multikicker, Evoke), aura casts,
+/// and cycling.  Each legal target becomes a separate `ActionItemView`.
 fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> Vec<ActionItemView> {
     let mut actions = Vec::new();
 
@@ -783,6 +816,9 @@ fn compute_hand_actions(state: &GameState, pid: PlayerId, obj: &CardObject) -> V
     actions
 }
 
+/// Computes available battlefield actions for `obj`: declare-attacker toggle,
+/// declare-blocker assignment (one entry per eligible attacker), activated ability
+/// activations (CR 117.1b: mana abilities skip priority check), and equip actions.
 fn compute_battlefield_actions(
     state: &GameState,
     pid: PlayerId,
@@ -921,6 +957,8 @@ fn compute_battlefield_actions(
     actions
 }
 
+/// Builds the full `PlayerView` for `pid`, including per-card `CardView`s for hand,
+/// battlefield (split into lands and creatures), and graveyard.
 fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
     use mecha_oracle::types::ObjectId;
     use std::collections::HashSet;
@@ -1018,6 +1056,7 @@ fn build_player_view(state: &GameState, pid: PlayerId) -> PlayerView {
     }
 }
 
+/// Formats a `CostComponent` slice as a comma-separated label (e.g. `"{T}, {G}"`).
 fn format_ability_cost_label(cost: &[CostComponent]) -> String {
     cost.iter()
         .map(|c| match c {
@@ -1032,6 +1071,8 @@ fn format_ability_cost_label(cost: &[CostComponent]) -> String {
         .join(", ")
 }
 
+/// Returns a human-readable name for an `EffectTarget` (card name, player name, or
+/// spell name from the stack), falling back to an empty string if the object is gone.
 fn target_display_name(state: &GameState, target: &EffectTarget) -> String {
     match target {
         EffectTarget::Object { id } => state
@@ -1057,6 +1098,7 @@ fn target_display_name(state: &GameState, target: &EffectTarget) -> String {
     }
 }
 
+/// Builds the complete `GameView` serialised as the HTTP response after every action.
 fn build_game_view(state: &GameState) -> GameView {
     let stack: Vec<StackItemView> = state
         .stack
@@ -1181,6 +1223,8 @@ fn build_game_view(state: &GameState) -> GameView {
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 
+/// All actions the frontend can POST to `/action`.
+/// Serialised as `{ "type": "<snake_case_variant>", ... }`.
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ActionRequest {
@@ -1228,6 +1272,7 @@ enum ActionRequest {
     DeclinePendingCost,
 }
 
+/// HTTP response body for every `/action` POST: the new game state plus an optional error.
 #[derive(Serialize)]
 struct ActionResponse {
     ok: bool,
@@ -1236,6 +1281,7 @@ struct ActionResponse {
     error: Option<String>,
 }
 
+/// Returns true if the active player has at least one creature that can legally attack.
 fn has_valid_attackers(state: &GameState) -> bool {
     let cmt = state.controllers_most_recent_turn(state.active_player);
     state.battlefield.iter().any(|(&id, perm)| {
@@ -1248,7 +1294,8 @@ fn has_valid_attackers(state: &GameState) -> bool {
     })
 }
 
-// O(A×B): attackers × battlefield; acceptable for current board sizes.
+/// Returns true if the defending player has at least one creature that can legally block
+/// at least one attacking creature. O(A×B): attackers × battlefield; fine for current board sizes.
 fn has_valid_blockers(state: &GameState) -> bool {
     let defender = state.opponent_of(state.active_player);
     state.combat.attackers.iter().any(|&atk_id| {
@@ -1263,10 +1310,11 @@ fn has_valid_blockers(state: &GameState) -> bool {
     })
 }
 
-// After pass_priority has already advanced the step, apply step-start actions and
-// auto-advance through Untap/Cleanup steps (CR 502, 514). When no valid options
-// exist for DA/DB, auto-declare the empty set (no UI shown) but still give players
-// priority at that step (CR 506.1 — DB and CD skipped by advance_step when attackers=0).
+/// Applies step-start actions and auto-advances through steps that don't need player input.
+/// Untap and Cleanup are passed through automatically (CR 502, 514). When there are no
+/// valid attackers or blockers the empty set is auto-declared, but players still receive
+/// priority at that step (CR 506.1 — Declare Blockers and Combat Damage are skipped by
+/// `advance_step` when no attackers were declared).
 fn apply_step_start_loop(mut state: GameState) -> GameState {
     loop {
         state = apply_step_start(state);
@@ -1292,6 +1340,8 @@ fn apply_step_start_loop(mut state: GameState) -> GameState {
     state
 }
 
+/// Routes an `ActionRequest` to the appropriate engine function, converting the raw
+/// u64 object IDs in the JSON payload to typed `ObjectId`/`PlayerId` values.
 fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState, String> {
     match action {
         ActionRequest::PlayLand { object_id } => {
@@ -1404,6 +1454,7 @@ fn dispatch_action(state: GameState, action: ActionRequest) -> Result<GameState,
 
 // ── Game init ────────────────────────────────────────────────────────────────
 
+/// Opens the card database and initialises the game from the deck config at `path`.
 fn init_game(path: &str, shuffle: bool) -> Result<GameState, String> {
     let db = CardDatabase::open().map_err(|e| format!("Card database error: {e}"))?;
     let config = load_config(path)?;
@@ -1416,6 +1467,8 @@ const APP_JS: &str = include_str!("serve.js");
 
 // ── App state ────────────────────────────────────────────────────────────────
 
+/// Axum shared state: the live `GameState` protected by a `Mutex`.
+/// Cloning is cheap — the `Arc` is reference-counted.
 #[derive(Clone)]
 struct AppState {
     game: Arc<Mutex<GameState>>,
@@ -1423,14 +1476,17 @@ struct AppState {
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
 
+/// Serves the embedded `serve.html` UI at `/`.
 async fn index_handler() -> impl IntoResponse {
     Html(INDEX_HTML)
 }
 
+/// Serves the embedded `serve.css` stylesheet at `/static/app.css`.
 async fn css_handler() -> impl IntoResponse {
     ([(axum::http::header::CONTENT_TYPE, "text/css")], STYLE_CSS)
 }
 
+/// Serves the embedded `serve.js` script at `/static/app.js`.
 async fn js_handler() -> impl IntoResponse {
     (
         [(axum::http::header::CONTENT_TYPE, "application/javascript")],
@@ -1438,11 +1494,14 @@ async fn js_handler() -> impl IntoResponse {
     )
 }
 
+/// GET `/state` — returns the current game view without modifying state.
 async fn state_handler(State(app): State<AppState>) -> Json<GameView> {
     let gs = app.game.lock().unwrap();
     Json(build_game_view(&gs))
 }
 
+/// POST `/action` — applies `req` to the game state and returns the updated view.
+/// On error the response has `ok: false` and the state is left unchanged.
 async fn action_handler(
     State(app): State<AppState>,
     Json(req): Json<ActionRequest>,
@@ -1468,6 +1527,7 @@ async fn action_handler(
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+/// Initialises the game, builds the Axum router, and listens on `0.0.0.0:3000`.
 pub async fn run(shuffle: bool, deck_path: &str) {
     let gs = init_game(deck_path, shuffle).unwrap_or_else(|e| {
         eprintln!("Error: {e}");

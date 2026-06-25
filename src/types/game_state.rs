@@ -11,6 +11,9 @@ use std::collections::{HashMap, VecDeque};
 // Re-export so callers that imported Phase/Step from game_state continue to work.
 pub use super::step::{Phase, Step};
 
+/// Snapshot of mana pools and tapped lands taken when the first land is tapped for mana
+/// in a priority window. Allows `reset_mana` to undo all taps within that window.
+/// Cleared by `advance_step` at the end of every phase/step.
 #[derive(Debug, Clone)]
 pub struct ManaCheckpoint {
     /// Mana pool state for every player at the moment the first mana tap was made.
@@ -19,6 +22,8 @@ pub struct ManaCheckpoint {
     pub tapped_lands: Vec<ObjectId>,
 }
 
+/// All mutable state related to the current combat phase (CR 506–510).
+/// Cleared at the start of each combat by `advance_step` moving through `BeginningOfCombat`.
 #[derive(Debug, Clone)]
 pub struct CombatState {
     /// Creatures declared as attackers this combat.
@@ -34,6 +39,7 @@ pub struct CombatState {
 }
 
 impl CombatState {
+    /// Returns a `CombatState` with no attackers, no blockers, and all flags cleared.
     pub fn empty() -> Self {
         Self {
             attackers: vec![],
@@ -45,7 +51,7 @@ impl CombatState {
     }
 }
 
-// A one-shot trigger registered by an engine effect (e.g. Dash — CR 702.109a).
+/// A one-shot trigger registered by an engine effect (e.g. Dash — CR 702.109a).
 // Fires at the start of the matching step; drained from the list after firing.
 #[derive(Debug, Clone)]
 pub struct DelayedTrigger {
@@ -69,7 +75,7 @@ pub struct PendingPayment {
     pub cost: Cost,
     /// Steps to execute if the player pays (often empty).
     pub on_paid: Effect,
-    /// Steps to execute if the player declines (e.g. [CounterSpell]).
+    /// Steps to execute if the player declines (e.g. `CounterSpell`).
     pub on_declined: Effect,
     /// Steps after the payment decision that always run (for future use).
     pub continuation: Effect,
@@ -79,6 +85,15 @@ pub struct PendingPayment {
     pub controller: PlayerId,
 }
 
+/// The complete, canonical game state. All engine functions take ownership of this struct
+/// and return a (possibly modified) copy — there is no interior mutability.
+///
+/// Zones are represented as:
+/// - `objects`: all cards by id (any zone)
+/// - `libraries`, `hands`, `graveyards`: player-keyed ordered vecs of ids
+/// - `battlefield`: id → `PermanentState` (battlefield only)
+/// - `stack`/`stack_objects`: ordered vec of ids + id-keyed lookup
+/// - `exile`: unordered vec of ids
 #[derive(Debug, Clone)]
 pub struct GameState {
     /// All card objects that exist in the game, keyed by their unique id.
@@ -111,6 +126,9 @@ pub struct GameState {
 }
 
 impl GameState {
+    /// Constructs an initial game state for the given players.
+    /// Starts at turn 1, step Untap, with player 0 as active and priority player.
+    /// Libraries, hands, and graveyards are initialised as empty; cards must be added via `add_object`.
     pub fn new(players: Vec<Player>) -> Self {
         assert!(!players.is_empty());
         let active = players[0].id;
@@ -149,34 +167,42 @@ impl GameState {
         }
     }
 
+    /// Returns the current step. The `step` field is `pub(crate)`; use this accessor externally.
     pub fn step(&self) -> Step {
         self.step
     }
 
+    /// Returns the phase of the current step. Convenience wrapper around `Step::phase`.
     pub fn phase(&self) -> Phase {
         self.step.phase()
     }
 
+    /// Allocates a monotonically increasing `ObjectId`. IDs are never reused within a game.
     pub fn alloc_id(&mut self) -> ObjectId {
         let id = ObjectId(self.next_object_id);
         self.next_object_id += 1;
         id
     }
 
+    /// Allocates a monotonically increasing `StackId` for a new stack object.
     pub fn alloc_stack_id(&mut self) -> StackId {
         let id = StackId(self.next_stack_id);
         self.next_stack_id += 1;
         id
     }
 
+    /// Inserts a card object into the `objects` map. Does not modify any zone list —
+    /// the caller must also push `obj.id` to the appropriate zone vec (library, hand, etc.).
     pub fn add_object(&mut self, obj: CardObject) {
         self.objects.insert(obj.id, obj);
     }
 
+    /// Returns a shared reference to the player with `id`, or `None` if not found.
     pub fn get_player(&self, id: PlayerId) -> Option<&Player> {
         self.players.iter().find(|p| p.id == id)
     }
 
+    /// Returns a mutable reference to the player with `id`, or `None` if not found.
     pub fn get_player_mut(&mut self, id: PlayerId) -> Option<&mut Player> {
         self.players.iter_mut().find(|p| p.id == id)
     }
@@ -200,6 +226,7 @@ impl GameState {
         self.turn_number.saturating_sub(offset)
     }
 
+    /// Returns the id of the player who is not `player`. Panics in non-two-player games.
     pub fn opponent_of(&self, player: PlayerId) -> PlayerId {
         self.players
             .iter()
@@ -208,10 +235,12 @@ impl GameState {
             .id
     }
 
+    /// Returns true if `game_over` is set or any player has `has_lost = true`.
     pub fn is_game_over(&self) -> bool {
         self.game_over || self.players.iter().any(|p| p.has_lost)
     }
 
+    /// Returns the id of the surviving player, or `None` if the game is still in progress.
     pub fn winner(&self) -> Option<PlayerId> {
         if !self.is_game_over() {
             return None;

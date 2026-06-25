@@ -9,8 +9,12 @@ use crate::types::effect::EffectStep;
 use crate::types::stack::StackPayload;
 use crate::types::{GameState, PermanentState, PlayerId, Zone};
 
-// CR 405.5: when all players pass in succession, top of stack resolves;
-// if stack is empty, current step/phase ends.
+/// Passes priority for `player_id` (CR 405.5).
+/// Once all players have passed consecutively (`consecutive_passes >= num_players`):
+/// - Non-empty stack → `resolve_top`
+/// - Empty stack → `advance_step`
+///
+/// Priority is passed to the opponent if not yet both-passed.
 pub fn pass_priority(mut state: GameState, player_id: PlayerId) -> Result<GameState, EngineError> {
     if state.priority_player != player_id {
         return Err(EngineError::NotYourPriority);
@@ -29,10 +33,9 @@ pub fn pass_priority(mut state: GameState, player_id: PlayerId) -> Result<GameSt
     }
 }
 
-// CR 107.4: substitute the resolving spell/ability's own fixed X for any
-// ManaPip::X in a payment cost. Used for effects like "unless its controller
-// pays {X}" (CR 118.12), where the X referenced is the caster's X choice,
-// not a fresh choice made by the player paying.
+/// Substitutes the resolving spell/ability's own fixed X for any `ManaPip::X` in a
+/// payment cost (CR 107.4). Used for "unless its controller pays {X}" (CR 118.12)
+/// effects (e.g. Condescend) where the X is the caster's X choice, not a new choice.
 fn resolve_x_in_cost(
     cost: &crate::types::ability::Cost,
     x_value: Option<u32>,
@@ -94,6 +97,8 @@ pub(crate) fn inject_source_flags(
         .collect()
 }
 
+/// Returns true if `rules_text` contains an active static rule for `kw`.
+/// Used by `inject_source_flags` to check Lifelink, Deathtouch, Wither, and Infect.
 fn has_damage_kw(
     rules_text: &[crate::types::RulesText],
     kw: &crate::types::ability::KeywordAbility,
@@ -105,8 +110,11 @@ fn has_damage_kw(
         .any(|span| matches!(span, RulesText::Active(Rule::Static(k)) if k == kw))
 }
 
-// CR 608.2b: execute each effect step for the given controller.
-// Shared by instant/sorcery spell resolution and triggered/activated ability resolution.
+/// Executes each `EffectStep` sequentially for `controller` (CR 608.2b).
+/// Shared by instant/sorcery spell resolution and triggered/activated ability resolution.
+/// A `Payment` step stores remaining steps as `continuation` in `PendingPayment` and
+/// returns early; the caller is responsible for resuming via `pay_pending_cost` or
+/// `decline_pending_cost`.
 pub(crate) fn execute_effect_steps(
     mut state: GameState,
     controller: PlayerId,
@@ -451,6 +459,13 @@ pub(crate) fn counter_spell_on_stack(
     }
 }
 
+/// Pops and resolves the top object on the stack (CR 608).
+/// - Permanent spells enter the battlefield (CR 608.3); non-permanent spells execute
+///   their `SpellAbility` steps then move to the graveyard (CR 608.2b).
+/// - Activated and triggered abilities execute their effect steps.
+/// - If all targets are illegal at resolution, spells and activated abilities fizzle
+///   (CR 608.2b); triggered abilities don't (CR 603.6).
+/// - After resolution, SBAs are checked and any resulting triggers are pushed.
 pub fn resolve_top(mut state: GameState) -> GameState {
     let stack_id = match state.stack.last().copied() {
         Some(id) => id,

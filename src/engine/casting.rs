@@ -80,7 +80,9 @@ pub fn play_land(
     Ok(state)
 }
 
-// CR 702.8a, CR 304.1: instants and Flash permanents may be cast at instant speed
+/// Returns true if the card can be cast at instant speed.
+/// Instants are always instant-speed (CR 304.1). Flash grants instant speed to any permanent
+/// or sorcery (CR 702.8a). Everything else requires sorcery speed (active player, main phase, empty stack).
 fn is_instant_speed(obj: &crate::types::CardObject) -> bool {
     obj.definition
         .type_line

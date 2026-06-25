@@ -6,6 +6,7 @@ use mecha_oracle::cards::{CardDatabase, update_cards};
 use mecha_oracle::engine::turn::{advance_step, apply_step_start};
 use mecha_oracle::types::{CardObject, GameState, Player, PlayerId, Step, Zone};
 
+/// Top-level CLI parsed by clap.
 #[derive(Parser)]
 #[command(name = "mecha-oracle", about = "MTG Rules Engine")]
 struct Cli {
@@ -15,14 +16,20 @@ struct Cli {
     command: Command,
 }
 
+/// Available subcommands.
 #[derive(Subcommand)]
 enum Command {
+    /// Run the headless turn-loop demo (Forest + Grizzly Bears vs. itself).
     Demo,
+    /// Start the Axum HTTP server with a deck loaded from `deck` (a JSON path).
     Serve {
+        /// Shuffle each player's library on game start.
         #[arg(long)]
         shuffle: bool,
+        /// Path to the deck config JSON file (array of two string arrays).
         deck: String,
     },
+    /// Download/refresh the Scryfall oracle-cards bulk data file.
     UpdateCards,
 }
 
@@ -48,6 +55,7 @@ async fn main() {
     }
 }
 
+/// Resolves the platform data directory and delegates to [`update_cards`].
 fn run_update_cards() {
     let dirs =
         ProjectDirs::from("", "", "mecha-oracle").expect("Cannot determine user data directory");
@@ -55,6 +63,8 @@ fn run_update_cards() {
     update_cards(dirs.data_dir()).expect("Card update failed");
 }
 
+/// Runs a headless turn-loop demo: two players each with 5 Forests and 2 Grizzly Bears,
+/// no decision-making, advancing steps automatically until the game ends or 200 steps pass.
 fn run_demo() {
     let db = CardDatabase::open()
         .expect("Card database not found — run `mecha-oracle update-cards` first");
@@ -87,6 +97,8 @@ fn run_demo() {
     }
 }
 
+/// Builds the demo `GameState`: Alice and Bob each receive 5 Forests and 2 Grizzly Bears
+/// placed in their libraries (no shuffle, no opening-hand draw — `run_demo` advances manually).
 fn build_game(db: &CardDatabase) -> GameState {
     let forest = || db.get("Forest").expect("Forest not in database").clone();
     let bears = || {

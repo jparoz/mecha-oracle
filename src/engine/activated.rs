@@ -4,6 +4,13 @@ use crate::types::ability::{ActivatedAbility, CastMode, CostComponent, Rule, Rul
 use crate::types::effect::EffectStep;
 use crate::types::{GameState, ManaCheckpoint, ObjectId, PlayerId, Zone};
 
+/// Activates the `ability_index`-th `Rule::Activated` ability of `object_id` (CR 602.2).
+///
+/// Validates: object on battlefield, controlled by player, index in range.
+/// For non-mana abilities: validates target count and legality.
+/// Handles Tap cost: marks the permanent tapped before paying other components.
+/// Mana abilities (effect contains `AddMana`): resolve directly without the stack (CR 605.3).
+/// All other abilities: pushed onto the stack and resolved via `pass_priority`.
 pub fn activate_ability(
     mut state: GameState,
     object_id: ObjectId,

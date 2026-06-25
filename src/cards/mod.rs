@@ -8,6 +8,10 @@ use crate::types::card::CardDefinition;
 use std::collections::HashMap;
 use std::path::Path;
 
+/// In-memory lookup table for card definitions keyed by lowercase card name.
+/// Populated from the Scryfall `oracle_cards.json` bulk data file.
+/// Tracks both normal cards and token definitions separately so token names
+/// don't overwrite playable card entries.
 pub struct CardDatabase {
     inner: HashMap<String, CardDefinition>,
     tokens: HashMap<String, CardDefinition>,
@@ -85,10 +89,14 @@ impl CardDatabase {
         self.inner.values().filter(|def| def.has_unparsed()).count()
     }
 
+    /// Looks up a playable card by name (case-insensitive). Returns `None` if not found.
     pub fn get(&self, name: &str) -> Option<&CardDefinition> {
         self.inner.get(&name.to_lowercase())
     }
 
+    /// Looks up a token by name (case-insensitive). Returns `None` if not found.
+    /// Tokens are stored separately from regular cards to avoid name collisions
+    /// (e.g. "Llanowar Elves" as both creature and token).
     pub fn get_token(&self, name: &str) -> Option<&CardDefinition> {
         self.tokens.get(&name.to_lowercase())
     }

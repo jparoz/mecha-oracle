@@ -1,3 +1,7 @@
+/// The game zone a card object occupies (CR 400.1).
+/// `GameState` uses this field on `CardObject` to track where each card is.
+/// The `Battlefield` zone is additionally indexed by `GameState.battlefield`
+/// which holds the associated `PermanentState`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Zone {
     Library,

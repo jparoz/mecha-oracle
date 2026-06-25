@@ -3,6 +3,9 @@ use super::ids::PlayerId;
 use super::mana::ManaPool;
 use std::collections::HashMap;
 
+/// Runtime state for one player in the game (CR 100.1).
+/// Life total, mana pool, counters (e.g. poison), and loss status live here.
+/// Player-specific zones (library, hand, graveyard) are keyed by `PlayerId` in `GameState`.
 #[derive(Debug, Clone)]
 pub struct Player {
     pub id: PlayerId,
@@ -15,6 +18,7 @@ pub struct Player {
 }
 
 impl Player {
+    /// Creates a player starting at 20 life with an empty mana pool (CR 103.3).
     pub fn new(id: PlayerId, name: impl Into<String>) -> Self {
         Self {
             id,
@@ -26,10 +30,12 @@ impl Player {
         }
     }
 
+    /// Returns the number of counters of `kind` on this player, or 0 if none.
     pub fn counter_count(&self, kind: &CounterKind) -> u32 {
         *self.counters.get(kind).unwrap_or(&0)
     }
 
+    /// Adds `n` counters of `kind` to this player (CR 122.6).
     pub fn add_counters(&mut self, kind: CounterKind, n: u32) {
         *self.counters.entry(kind).or_insert(0) += n;
     }

@@ -74,6 +74,7 @@ fn find_colon_at_depth_zero(text: &str) -> Option<usize> {
     None
 }
 
+/// Maps a single-char color code ("W", "U", "B", "R", "G", "C") to a `ManaColor`.
 fn oracle_color_from_str(s: &str) -> Option<ManaColor> {
     match s {
         "W" => Some(ManaColor::White),
@@ -140,6 +141,9 @@ fn try_parse_mana_cost(s: &str) -> Option<ManaCost> {
     if saw { Some(ManaCost { pips }) } else { None }
 }
 
+/// Parses a sequence of colored mana symbols (e.g. `{W}{U}`) into a `ManaPool`.
+/// Generic mana (`{2}`) is not supported here — returns `None` for unknown tokens.
+/// Used for `AddMana` effect steps (activated mana abilities, e.g. `{T}: Add {G}{G}`).
 fn try_parse_mana_pool(s: &str) -> Option<ManaPool> {
     let mut pool = ManaPool::default();
     let mut chars = s.chars().peekable();
@@ -169,6 +173,8 @@ fn try_parse_mana_pool(s: &str) -> Option<ManaPool> {
     if saw_symbol { Some(pool) } else { None }
 }
 
+/// Parses "one"–"ten" or a numeric literal to a `u32`. Used wherever oracle text uses
+/// English number words (e.g. "draw three cards", "mill two").
 fn parse_number_word(s: &str) -> Option<u32> {
     match s {
         "one" | "1" => Some(1),
@@ -185,6 +191,8 @@ fn parse_number_word(s: &str) -> Option<u32> {
     }
 }
 
+/// Parses an activated ability cost string (the text before `:`) into a `Cost` vec.
+/// Handles `{T}` → `Tap`, mana costs `{W}{2}` etc. → `Mana`, and anything else → `Unimplemented`.
 fn parse_activation_cost(s: &str) -> Cost {
     s.split(',')
         .map(|t| t.trim())
@@ -201,6 +209,8 @@ fn parse_activation_cost(s: &str) -> Cost {
         .collect()
 }
 
+/// Attempts to parse a single effect clause string into an `EffectStep`.
+/// Returns `None` for patterns that aren't yet recognised.
 fn try_parse_effect_step(s: &str) -> Option<EffectStep> {
     let lower = s.to_lowercase();
     let lower = lower.as_str();
@@ -265,6 +275,8 @@ fn try_parse_effect_step(s: &str) -> Option<EffectStep> {
     None
 }
 
+/// Parses the effect portion of an activated ability (after the `:`) into an `Effect`.
+/// Splits on ". " sentence boundaries; returns `None` if any step fails to parse.
 fn parse_ability_effect(s: &str) -> Option<Effect> {
     let s = s.trim_end_matches('.');
     s.split(". ")
@@ -453,6 +465,9 @@ fn parse_protection_quality(s: &str) -> Option<crate::types::ability::Protection
     }
 }
 
+/// Maps a keyword string (already lowercased) to its `RulesText` representation.
+/// Returns `Active(Rule::Static(...))` for implemented keywords, `ParsedUnimplemented`
+/// for known CR 702 keywords that aren't yet enforced, and `Unparsed` for anything else.
 fn match_keyword(kw: &str) -> RulesText {
     let s = kw.to_lowercase();
     let s = s.as_str();
@@ -1109,6 +1124,9 @@ fn try_parse_continuous_pt_effect(paragraph: &str) -> Option<RulesText> {
     None
 }
 
+/// Tries to parse a paragraph as a "When/Whenever [this|CardName] enters…, effect" ETB trigger.
+/// Returns `Some(Active(Triggered(...)))` on success, `Some(ParsedUnimplemented)` if the
+/// trigger clause was recognised but the effect wasn't, or `None` if it's not an ETB at all.
 fn try_parse_etb_trigger(paragraph: &str, card_name: &str) -> Option<RulesText> {
     use crate::types::ability::{
         Rule, TriggerEvent, TriggerSubjectFilter, TriggerTargetMode, TriggeredAbility,

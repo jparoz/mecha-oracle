@@ -6,8 +6,12 @@ use crate::types::ability::CastMode;
 use crate::types::ability::CostComponent;
 use crate::types::{GameState, ObjectId, PlayerId};
 
-// CR 116.1, 601.2h — unified cost payment for all cost-bearing game actions.
-// Mana: greedy allocation. Life: immediate deduction. Tap: caller's responsibility.
+/// Pays all cost components in `components` for `player_id` (CR 116.1, 601.2h).
+///
+/// `Mana`: resolved via `greedy_payment_plan` + `pay_mana_cost`.
+/// `PayLife`: deducted immediately; returns `InsufficientLife` if the player cannot afford it.
+/// `Tap`: not handled here — the caller taps the source before calling this function.
+/// `Sacrifice`/`Discard`: parsed but skipped — not yet implemented.
 pub fn pay_cost_components(
     mut state: GameState,
     player_id: PlayerId,
@@ -46,9 +50,12 @@ pub fn pay_cost_components(
     Ok(state)
 }
 
-// CR 602.2: structural feasibility check before mutating state.
-// Tap: checks not already tapped and not summoning sick (with Haste exception).
-// Mana/life: always structurally feasible — affordability deferred to payment context.
+/// Returns true if the cost components are structurally feasible to pay (CR 602.2).
+///
+/// `Tap`: checks not already tapped and not summoning sick (unless Haste).
+/// `Mana`/`PayLife`: always returns true — affordability is deferred to the payment step.
+/// This is intentional: the serve.rs UI uses this to show available actions, so mana affordability
+/// must not filter actions before the player has tapped lands.
 pub fn can_pay_cost_components(
     state: &GameState,
     player_id: PlayerId,
@@ -74,7 +81,9 @@ pub fn can_pay_cost_components(
     true
 }
 
-// CR 118.12: pay an inline cost obligation and execute on_paid + continuation steps.
+/// Pays the pending inline cost obligation and resumes resolution (CR 118.12).
+/// Calls `pay_cost_components` for the Ward/Payment cost, then executes `on_paid` and
+/// `continuation` steps, and resets priority to the active player.
 pub fn pay_pending_cost(
     mut state: GameState,
     player_id: PlayerId,
@@ -107,7 +116,8 @@ pub fn pay_pending_cost(
     Ok(state)
 }
 
-// CR 118.12: decline an inline cost obligation; execute on_declined + continuation steps.
+/// Declines the pending inline cost obligation and executes `on_declined` + `continuation` steps (CR 118.12).
+/// For Ward, `on_declined` contains `[CounterSpell]` which removes the triggering spell from the stack.
 pub fn decline_pending_cost(mut state: GameState) -> Result<GameState, EngineError> {
     let pending = state
         .pending_payment

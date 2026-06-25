@@ -6,9 +6,9 @@ use crate::types::{
     TriggerCondition, TriggerSubjectFilter, TriggerTargetMode, TurnOwner,
 };
 
-/// Returns true if filter matches the given subject.
-/// source_id: the permanent that owns the triggered ability.
-/// source_controller: that permanent's controller.
+/// Returns true if `filter` matches the given `subject_id`.
+/// `source_id` and `source_controller` are the permanent whose ability is being evaluated;
+/// they are used to resolve relative filters like `is_self` and `controller: You`.
 fn subject_filter_matches(
     filter: &TriggerSubjectFilter,
     subject_id: Option<ObjectId>,
@@ -65,6 +65,8 @@ fn subject_filter_matches(
 }
 
 /// Returns true if the trigger condition is satisfied given the current game state and event subject.
+/// Note: P/T comparisons use `effective_power/toughness(0)` — continuous effects (anthems) are NOT
+/// applied here, so global boosts do not affect Evolve/Training condition evaluation.
 fn trigger_condition_satisfied(
     condition: &TriggerCondition,
     subject_id: Option<ObjectId>,

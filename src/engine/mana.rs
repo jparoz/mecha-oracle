@@ -89,6 +89,10 @@ pub fn reset_mana(mut state: GameState) -> Result<GameState, EngineError> {
     Ok(state)
 }
 
+/// Maps basic land subtypes to the mana color they produce (CR 305.6).
+/// Returns `Colorless` if no recognised subtype is found.
+/// Only one color is returned — for multi-subtype lands (dual lands), `inject_intrinsic_abilities`
+/// calls this once per subtype when constructing the `CardObject`.
 fn land_produces(subtypes: &[String]) -> ManaColor {
     for s in subtypes {
         match s.as_str() {

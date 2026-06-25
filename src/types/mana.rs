@@ -1,3 +1,5 @@
+/// One of the six mana colors (CR 105). `Colorless` is a color for pool/pip purposes
+/// even though it is not a "color" under CR 105.2 — it occupies its own pip symbol {C}.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ManaColor {
     White,
@@ -45,6 +47,9 @@ pub enum ManaPip {
     Snow,
 }
 
+/// An ordered list of mana pips forming a card's mana cost (CR 202).
+/// The order follows card text (e.g. `{1}{G}` is `[Generic(1), Green]`).
+/// Use `mana_value()` for the numeric sum per CR 202.3.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ManaCost {
     pub pips: Vec<ManaPip>,
@@ -104,11 +109,18 @@ impl ManaCost {
             .sum()
     }
 
+    /// Returns true if the cost contains at least one {X} pip.
+    /// Used to decide whether `x_value` must be supplied at cast/activation time.
     pub fn has_x(&self) -> bool {
         self.pips.iter().any(|p| matches!(p, ManaPip::X))
     }
 }
 
+/// A player's mana pool (CR 106). Holds the current unspent mana by color.
+///
+/// Snow invariant: `snow_X ≤ X` for every color X. The six `snow_*` fields are a tagged
+/// subset — adding non-snow mana leaves them unchanged; adding snow mana via `add_snow`
+/// increments both. Deducting snow mana must decrement both the color and snow field.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ManaPool {
     pub white: u32,
@@ -127,6 +139,7 @@ pub struct ManaPool {
 }
 
 impl ManaPool {
+    /// Adds `amount` non-snow mana of `color` to the pool (CR 106.4).
     pub fn add(&mut self, color: ManaColor, amount: u32) {
         match color {
             ManaColor::White => self.white += amount,
@@ -151,10 +164,12 @@ impl ManaPool {
         }
     }
 
+    /// Total mana in the pool across all colors (including colorless), excluding snow shadow counts.
     pub fn total(&self) -> u32 {
         self.white + self.blue + self.black + self.red + self.green + self.colorless
     }
 
+    /// Total snow-tagged mana across all colors. Always ≤ `total()`.
     pub fn total_snow(&self) -> u32 {
         self.snow_white
             + self.snow_blue
@@ -164,6 +179,7 @@ impl ManaPool {
             + self.snow_colorless
     }
 
+    /// Returns true if no mana of any color is in the pool.
     pub fn is_empty(&self) -> bool {
         self.total() == 0
     }
