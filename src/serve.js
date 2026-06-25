@@ -458,6 +458,7 @@ function annStyle(kind) {
   if (kind === 'reminder_text' || kind === 'ability_word') return 'font-style:italic';
   if (kind === 'parsed_unimplemented') return 'color:#4dd9d9;text-decoration:underline';
   if (kind === 'unparsed') return 'color:red;text-decoration:underline';
+  if (kind === 'active') return '';   // inherits default tooltip colour — explicitly handled
   return '';
 }
 
@@ -468,13 +469,19 @@ function renderOracleText(card) {
   const parts = [];
   let pos = 0;
   for (const ann of annotations) {
-    if (ann.start > pos) parts.push(renderManaSymbols(text.slice(pos, ann.start)));
+    if (ann.start > pos) {
+      const gap = renderManaSymbols(text.slice(pos, ann.start));
+      parts.push(`<span style="color:#c8b820">${gap}</span>`);
+    }
     const style = annStyle(ann.kind);
     const content = renderManaSymbols(text.slice(ann.start, ann.end));
     parts.push(style ? `<span style="${style}">${content}</span>` : content);
     pos = ann.end;
   }
-  if (pos < text.length) parts.push(renderManaSymbols(text.slice(pos)));
+  if (pos < text.length) {
+    const gap = renderManaSymbols(text.slice(pos));
+    parts.push(`<span style="color:#c8b820">${gap}</span>`);
+  }
   return `<div style="white-space:pre-wrap">${parts.join('')}</div>`;
 }
 
