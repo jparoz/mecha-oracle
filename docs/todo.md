@@ -77,3 +77,104 @@ Currently `casting.rs` only handles standard `ManaCost` payment.
   pair/unpair logic on zone changes.
 
 ---
+
+# Road to 99% card coverage (no ParsedUnimplemented)
+
+The items below are ordered roughly by leverage — the first few blocks affect every card
+with any effect text; later blocks address progressively narrower keyword mechanics.
+
+## Block 1 — Effect step coverage (highest leverage)
+
+`try_parse_effect_step` only handles: `Add {mana}`, draw N cards, mill N, gain N life,
+`gets +N/+M until end of turn`, and `deals N damage`. Everything else becomes
+`EffectStep::Unimplemented`, blocking resolution of virtually all activated abilities and
+ETB triggers. Missing patterns:
+
+- Destroy / exile target — "Destroy target creature", "Exile target permanent"
+- Return to hand — "Return target creature to its owner's hand"
+- Create tokens — "Create a 1/1 green Elf creature token"
+- Lose life — "Each opponent loses 1 life" / "target player loses N life"
+- Discard — "Target player discards a card"
+- Search library / tutor — "Search your library for a card"
+- Tap / untap target permanent
+- Generalized counter placement on a target (currently only AddCounter on source)
+
+## Block 2 — Activated ability cost parsing
+
+`parse_activation_cost` only handles `{T}` and mana costs; everything else becomes
+`CostComponent::Unimplemented`. Common costs that currently fall through:
+
+- Sacrifice a [permanent type]: "Sacrifice a creature:", "Sacrifice ~:"
+- Pay life: "Pay 2 life:"
+- Discard a card
+- Remove a counter from ~
+
+## Block 3 — Triggered ability parser breadth
+
+Only ETB (self-referential), Ward, and a handful of combat triggers are parsed.
+Missing trigger patterns:
+
+- "Whenever you cast a spell" / "Whenever you draw a card" (very common)
+- "At the beginning of [step]" for steps other than upkeep (draw, combat, end)
+- "Whenever ~ attacks/blocks" with arbitrary effects
+- "When ~ dies" — triggers on graveyard zone change; extremely common
+- "Whenever a [creature type/subtype] enters" — tribal synergies
+- "Whenever ~ deals combat damage to a player"
+
+## Block 4 — Graveyard / non-battlefield activated abilities
+
+`engine/activated.rs` only handles battlefield activations. Entire class of graveyard
+activations is unimplemented as a framework, blocking:
+Scavenge, Unearth, Flashback, Escape, Dredge, Delve, Retrace, Jump-start.
+
+## Block 5 — Alternative and additional casting costs
+
+`casting.rs` handles only standard mana cost payment. No framework for:
+
+- Alternative costs (Morph, Bestow, Overload, Surge, Spectacle, etc.)
+- Additional costs — Kicker/Multikicker are parsed but the engine doesn't yet collect
+  the extra mana at cast time
+- Cost reductions (Convoke, Improvise, Affinity, Emerge, Delve)
+
+## Block 6 — Continuous effect coverage
+
+`try_parse_continuous_pt_effect` covers only three patterns. Missing:
+
+- "Creatures you control have [keyword]" — granting evasion en masse
+- "~ has [keyword]" — self-granting static abilities
+- "[Subtype] creatures you control have/get…"
+- Anthem effects beyond simple P/T modification (e.g. "have haste", "can't be blocked")
+
+## Block 7 — Counter-based keyword mechanics
+
+Counter infrastructure exists but the following keywords have no parsing→execution path:
+
+- Modular N — ETB with N +1/+1 counters; dies → move counters to target artifact creature
+- Graft N — ETB with N +1/+1 counters; other creature ETB → move one counter to it
+- Bloodthirst N — ETB with N +1/+1 counters if an opponent was dealt damage this turn
+- Fabricate N — ETB choice: N +1/+1 counters or N 1/1 Servo tokens
+- Level up — activated ability adding level counters, granting P/T and abilities per level
+
+## Block 8 — Combat keyword mechanics (targeted engine additions)
+
+- Provoke (702.39) — `must_block` field on `CombatState`; target creature must block ~
+- Annihilator N (702.86) — defending player sacrifices N permanents on attack trigger
+- Extort (702.101) — optional payment triggered ability + `EffectStep::LoseLife`
+- Crew N (702.122) — Vehicle animation activated ability outside the normal mana path
+
+## Block 9 — Zone-change and lifecycle mechanics
+
+- Suspend N — exile with N time counters; upkeep trigger removes one; cast when last is removed
+- Cascade (702.85) — exile cards off top until a cheaper one is found, cast it free
+- Madness [cost] — redirect discard to exile, allow cast from exile for alternative cost
+- Rebound (702.88) — exile on resolution, cast again from exile at next upkeep
+
+## Block 10 — Static ability engine coverage for parsed-but-ignored keywords
+
+Several keywords are `ParsedUnimplemented` despite having clear static rules:
+
+- Changeling — permanent has all creature types at all times (702.73)
+- Devoid — permanent is colorless regardless of mana cost (702.114)
+- Partner / Partner with — commander-zone rules; appears on many non-commander cards too
+
+---
