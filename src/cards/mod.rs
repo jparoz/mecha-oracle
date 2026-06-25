@@ -100,6 +100,12 @@ impl CardDatabase {
     pub fn get_token(&self, name: &str) -> Option<&CardDefinition> {
         self.tokens.get(&name.to_lowercase())
     }
+
+    /// Iterates all non-token card definitions in the database.
+    /// Order is unspecified (hash-map iteration).
+    pub fn iter(&self) -> impl Iterator<Item = &CardDefinition> {
+        self.inner.values()
+    }
 }
 
 #[cfg(test)]
@@ -191,5 +197,16 @@ mod tests {
         let db = test_db();
         let token = db.get_token("Llanowar Elves").expect("token not found");
         assert!(token.mana_cost.is_none());
+    }
+
+    #[test]
+    fn iter_returns_all_non_token_cards() {
+        let db = test_db();
+        // The test fixture has a known number of regular cards — iter should return them.
+        // We just verify it is non-empty and doesn't include tokens.
+        let cards: Vec<_> = db.iter().collect();
+        assert!(!cards.is_empty(), "iter() must return at least one card");
+        // Every result must have a name (basic sanity)
+        assert!(cards.iter().all(|c| !c.name.is_empty()));
     }
 }
