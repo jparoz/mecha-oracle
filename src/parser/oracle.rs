@@ -326,6 +326,7 @@ fn push_keyword_annotation(
     let kind = match span {
         RulesText::Unparsed(_) => AnnotationKind::Unparsed,
         RulesText::ParsedUnimplemented(_) => AnnotationKind::ParsedUnimplemented,
+        RulesText::Active(_) => AnnotationKind::Active,
         _ => return,
     };
     let raw_slice = &original[raw_start..raw_end];
@@ -1230,6 +1231,12 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<RulesText>, Vec<Text
                         CostComponent, TriggerEvent, TriggerTargetMode, TriggeredAbility, TurnOwner,
                     };
                     let components = vec![CostComponent::PayLife(n)];
+                    let para_start = subslice_offset(text, paragraph);
+                    annotations.push(TextAnnotation {
+                        start: para_start,
+                        end: para_start + paragraph.len(),
+                        kind: AnnotationKind::Active,
+                    });
                     spans.push(RulesText::Active(Rule::Triggered(TriggeredAbility {
                         trigger: TriggerEvent::TargetedBy {
                             controller: TurnOwner::Opponent,
@@ -1300,14 +1307,17 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<RulesText>, Vec<Text
                     .iter()
                     .any(|c| matches!(c, CostComponent::Unimplemented(_)));
                 if let Some(effect) = parse_ability_effect(effect_str) {
-                    if has_unimplemented_cost {
-                        let para_start = subslice_offset(text, paragraph);
-                        annotations.push(TextAnnotation {
-                            start: para_start,
-                            end: para_start + paragraph.len(),
-                            kind: AnnotationKind::ParsedUnimplemented,
-                        });
-                    }
+                    let para_start = subslice_offset(text, paragraph);
+                    let ann_kind = if has_unimplemented_cost {
+                        AnnotationKind::ParsedUnimplemented
+                    } else {
+                        AnnotationKind::Active
+                    };
+                    annotations.push(TextAnnotation {
+                        start: para_start,
+                        end: para_start + paragraph.len(),
+                        kind: ann_kind,
+                    });
                     spans.push(RulesText::Active(Rule::Activated(ActivatedAbility {
                         cost,
                         target_requirements: vec![],
@@ -1328,20 +1338,28 @@ pub fn parse_permanent(text: &str, card_name: &str) -> (Vec<RulesText>, Vec<Text
 
         // ETB trigger check: "When/Whenever this enters…" or "When <CardName> enters…"
         if let Some(span) = try_parse_etb_trigger(paragraph, card_name) {
-            if let RulesText::ParsedUnimplemented(_) = &span {
-                let para_start = subslice_offset(text, paragraph);
-                annotations.push(TextAnnotation {
-                    start: para_start,
-                    end: para_start + paragraph.len(),
-                    kind: AnnotationKind::ParsedUnimplemented,
-                });
-            }
+            let para_start = subslice_offset(text, paragraph);
+            let ann_kind = match &span {
+                RulesText::ParsedUnimplemented(_) => AnnotationKind::ParsedUnimplemented,
+                _ => AnnotationKind::Active,
+            };
+            annotations.push(TextAnnotation {
+                start: para_start,
+                end: para_start + paragraph.len(),
+                kind: ann_kind,
+            });
             spans.push(span);
             continue;
         }
 
         // Continuous P/T effect: "Creatures you control get +N/+M." etc. (CR 611.3b)
         if let Some(span) = try_parse_continuous_pt_effect(paragraph) {
+            let para_start = subslice_offset(text, paragraph);
+            annotations.push(TextAnnotation {
+                start: para_start,
+                end: para_start + paragraph.len(),
+                kind: AnnotationKind::Active,
+            });
             spans.push(span);
             continue;
         }
@@ -2890,17 +2908,28 @@ mod tests {
         let text =
             "Deathtouch (Any amount of damage this deals to a creature is enough to destroy it.)";
         let (_, annotations) = parse_permanent(text, "");
-        assert_eq!(annotations.len(), 1);
-        assert_eq!(annotations[0].kind, AnnotationKind::ReminderText);
+        // Expect Active annotation for "Deathtouch" keyword plus ReminderText for the parens.
+        assert_eq!(annotations.len(), 2);
+        let active_ann = annotations
+            .iter()
+            .find(|a| a.kind == AnnotationKind::Active)
+            .expect("expected Active annotation for implemented keyword");
+        assert_eq!(active_ann.start, 0);
+        assert_eq!(active_ann.end, "Deathtouch".len());
+        let rt_ann = annotations
+            .iter()
+            .find(|a| a.kind == AnnotationKind::ReminderText)
+            .expect("expected ReminderText annotation");
         let expected_start = text.find('(').unwrap();
-        assert_eq!(annotations[0].start, expected_start);
-        assert_eq!(annotations[0].end, text.len());
+        assert_eq!(rt_ann.start, expected_start);
+        assert_eq!(rt_ann.end, text.len());
     }
 
     #[test]
-    fn parsed_keyword_emits_no_annotation() {
+    fn parsed_keyword_emits_active_annotation() {
         let (_, annotations) = parse_permanent("Flying", "");
-        assert!(annotations.is_empty());
+        assert_eq!(annotations.len(), 1);
+        assert_eq!(annotations[0].kind, AnnotationKind::Active);
     }
 
     #[test]
@@ -2972,13 +3001,65 @@ mod tests {
     }
 
     #[test]
-    fn fully_parsed_spans_emit_no_annotations() {
+    fn fully_parsed_spans_emit_active_annotations() {
         let (_, a1) = parse_permanent("When this enters, draw a card.", "");
-        assert!(a1.is_empty());
+        assert_eq!(a1.len(), 1);
+        assert_eq!(a1[0].kind, AnnotationKind::Active);
         let (_, a2) = parse_permanent("{T}: Add {G}.", "");
-        assert!(a2.is_empty());
+        assert_eq!(a2.len(), 1);
+        assert_eq!(a2[0].kind, AnnotationKind::Active);
         let (_, a3) = parse_permanent("Flying", "");
-        assert!(a3.is_empty());
+        assert_eq!(a3.len(), 1);
+        assert_eq!(a3[0].kind, AnnotationKind::Active);
+    }
+
+    // ── Task 2: Active annotation tests ──────────────────────────────────────
+
+    #[test]
+    fn flying_emits_active_annotation() {
+        let (_, anns) = parse_permanent("Flying", "Test");
+        assert!(
+            anns.iter().any(|a| a.kind == AnnotationKind::Active),
+            "expected Active annotation for implemented keyword"
+        );
+    }
+
+    #[test]
+    fn unimplemented_activation_cost_emits_parsed_unimplemented_annotation() {
+        // "Sacrifice a creature" is an unimplemented cost component
+        let (_, anns) = parse_permanent("Sacrifice a creature: Draw a card.", "Test");
+        assert!(
+            anns.iter()
+                .any(|a| a.kind == AnnotationKind::ParsedUnimplemented),
+            "expected ParsedUnimplemented annotation for unimplemented activation cost"
+        );
+    }
+
+    #[test]
+    fn clean_activated_ability_emits_active_annotation() {
+        let (_, anns) = parse_permanent("{T}: Add {G}.", "Test");
+        assert!(
+            anns.iter().any(|a| a.kind == AnnotationKind::Active),
+            "expected Active annotation for fully-parsed activated ability"
+        );
+    }
+
+    #[test]
+    fn etb_trigger_emits_active_annotation() {
+        let (_, anns) = parse_permanent("When this enters, you gain 1 life.", "Test");
+        assert!(
+            anns.iter().any(|a| a.kind == AnnotationKind::Active),
+            "expected Active annotation for parsed ETB trigger"
+        );
+    }
+
+    #[test]
+    fn continuous_pt_effect_emits_active_annotation() {
+        let (_, anns) = parse_permanent("Creatures you control get +1/+1.", "Test");
+        assert!(
+            anns.iter().any(|a| a.kind == AnnotationKind::Active),
+            "expected Active annotation for continuous PT effect"
+        );
     }
 
     // ── Promoted keyword families (Task 3) ────────────────────────────────────
