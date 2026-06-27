@@ -1805,9 +1805,32 @@ pub fn parse_instant_or_sorcery(
             continue;
         }
         let spell_ability = parse_spell_paragraph(paragraph, card_name);
+
+        // Emit ParsedUnimplemented annotations for unimplemented effect steps.
+        // EffectStep::Unimplemented(s) stores the source text trimmed from the
+        // paragraph, so it is always a substring of `paragraph`.
+        for step in &spell_ability.steps {
+            if let EffectStep::Unimplemented(s) = step
+                && let Some(pos) = paragraph.find(s.as_str())
+            {
+                let start = subslice_offset(text, &paragraph[pos..pos + s.len()]);
+                annotations.push(TextAnnotation {
+                    start,
+                    end: start + s.len(),
+                    kind: AnnotationKind::ParsedUnimplemented,
+                });
+            }
+        }
+
         spans.push(RulesText::Active(Rule::SpellAbility(spell_ability)));
         annotate_spell_paragraph(paragraph, text, &mut annotations);
     }
+
+    // Sort then deduplicate: annotate_spell_paragraph may produce the same range
+    // for keyword actions (e.g. "Scry 2") that the step loop above also catches.
+    annotations.sort_by_key(|a| (a.start, a.end));
+    annotations.dedup_by(|a, b| a.start == b.start && a.end == b.end);
+
     (spans, annotations)
 }
 
@@ -3580,5 +3603,55 @@ mod tests {
             spans,
             vec![RulesText::ParsedUnimplemented("Kicker badcost".to_string())]
         );
+    }
+
+    #[test]
+    fn unimplemented_spell_step_emits_parsed_unimplemented_annotation() {
+        // "Create a 1/1 token." is not handled by try_parse_effect_step
+        let (_, anns) = parse_instant_or_sorcery("Create a 1/1 white Soldier token.", "Test");
+        assert!(
+            anns.iter()
+                .any(|a| a.kind == AnnotationKind::ParsedUnimplemented),
+            "expected ParsedUnimplemented annotation for unimplemented spell step"
+        );
+    }
+
+    #[test]
+    fn implemented_spell_step_does_not_emit_parsed_unimplemented_annotation() {
+        // "Draw a card." parses successfully — should produce no ParsedUnimplemented annotation
+        let (_, anns) = parse_instant_or_sorcery("Draw a card.", "Test");
+        assert!(
+            !anns
+                .iter()
+                .any(|a| a.kind == AnnotationKind::ParsedUnimplemented),
+            "DrawCard step should not produce ParsedUnimplemented annotation"
+        );
+    }
+
+    #[test]
+    fn mixed_spell_text_emits_annotation_only_for_unimplemented_part() {
+        // "Mill 2." parses; "Create a token." does not
+        let (_, anns) = parse_instant_or_sorcery("Mill 2. Create a 1/1 Soldier token.", "Test");
+        let unimpl_count = anns
+            .iter()
+            .filter(|a| a.kind == AnnotationKind::ParsedUnimplemented)
+            .count();
+        assert_eq!(
+            unimpl_count, 1,
+            "exactly one ParsedUnimplemented annotation expected"
+        );
+    }
+
+    #[test]
+    fn spell_annotations_have_no_duplicate_ranges() {
+        // Scry is in SPELL_KEYWORD_ACTIONS (annotated by annotate_spell_paragraph)
+        // AND would be caught as EffectStep::Unimplemented — verify no duplicate
+        let (_, anns) = parse_instant_or_sorcery("Scry 2.", "Test");
+        let scry_anns: Vec<_> = anns
+            .iter()
+            .filter(|a| a.kind == AnnotationKind::ParsedUnimplemented)
+            .collect();
+        // There should be exactly one annotation for "Scry 2" (deduplication)
+        assert_eq!(scry_anns.len(), 1);
     }
 }
